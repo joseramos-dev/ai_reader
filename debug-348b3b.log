@@ -1,0 +1,1 @@
+{"sessionId": "348b3b", "timestamp": 1781897312052, "location": "ollama_client.py:chat_structured", "message": "chat request start", "data": {"url": "http://127.0.0.1:11434/api/chat", "model": "qwen3:8b"}, "hypothesisId": "H2,H5", "runId": "pre-fix"}

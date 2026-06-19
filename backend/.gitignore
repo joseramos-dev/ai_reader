@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.py[cod]
+.venv/
+*.safetensors
+*.wav
+*.mp3
+dist/
+.uv/
+uploads/
+data/

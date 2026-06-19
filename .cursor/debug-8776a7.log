@@ -1,0 +1,6 @@
+{"sessionId":"8776a7","hypothesisId":"play","location":"useReadAloud.ts:onAudio","message":"enqueueBuffer","data":{"index":0,"page":1,"producerGen":2},"timestamp":1781783589647,"runId":"nav-fix3"}
+{"sessionId":"8776a7","hypothesisId":"play","location":"useReadAloud.ts:onAudio","message":"enqueueBuffer","data":{"index":1,"page":1,"producerGen":2},"timestamp":1781783591643,"runId":"nav-fix3"}
+{"sessionId":"8776a7","hypothesisId":"A","location":"DropPdfPage.tsx:loadRecentWithRetry","message":"recent fetch ok","data":{"attempt":1,"count":10},"timestamp":1781810883663,"runId":"recent-debug"}
+{"sessionId":"8776a7","hypothesisId":"A","location":"DropPdfPage.tsx:loadRecentWithRetry","message":"recent fetch ok","data":{"attempt":1,"count":10},"timestamp":1781810883672,"runId":"recent-debug"}
+{"sessionId":"8776a7","hypothesisId":"A","location":"DropPdfPage.tsx:loadRecentWithRetry","message":"recent fetch ok","data":{"attempt":1,"count":10},"timestamp":1781810898693,"runId":"recent-debug"}
+{"sessionId":"8776a7","hypothesisId":"A","location":"DropPdfPage.tsx:loadRecentWithRetry","message":"recent fetch ok","data":{"attempt":1,"count":10},"timestamp":1781810898696,"runId":"recent-debug"}
