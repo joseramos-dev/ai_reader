@@ -6,6 +6,8 @@ plugins {
 
 android {
     namespace = "dev.joseramos.aireader.ai.rag"
+    // Las pruebas JVM pasan por `android.util.Log` en los caminos de error: que no haga nada.
+    testOptions { unitTests.isReturnDefaultValues = true }
 }
 
 // RAG: indexación de fragmentos, búsqueda híbrida (vectorial + texto completo) y respuestas con citas.

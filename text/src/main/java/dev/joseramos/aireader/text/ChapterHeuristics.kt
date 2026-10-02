@@ -1,7 +1,10 @@
 package dev.joseramos.aireader.text
 
-/** Capítulo detectado: título y página de inicio (base 1). */
-data class DetectedChapter(val title: String, val startPage: Int)
+/**
+ * Entrada del índice detectada: título, página de inicio (base 1) y profundidad ([level] 0 son los
+ * capítulos o temas; 1 y 2, sus apartados y subapartados).
+ */
+data class DetectedChapter(val title: String, val startPage: Int, val level: Int = 0)
 
 /**
  * Detección de capítulos sin índice: busca, en las primeras líneas de cada página, encabezados

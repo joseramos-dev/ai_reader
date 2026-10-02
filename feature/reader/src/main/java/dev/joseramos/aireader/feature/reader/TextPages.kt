@@ -48,7 +48,8 @@ data class PhraseLocation(val page: Int, val paragraph: Int, val phrase: Int)
 /**
  * Modo lectura de texto: el texto limpio de cada página, con tipografía propia y tamaño ajustable.
  * Un elemento de la lista por página, para que el número de página coincida con el modo PDF; las
- * páginas se separan con una línea y su número, y los títulos se destacan en grande y en negrita.
+ * páginas se separan con una línea y su número. Los títulos salen en negrita y a un tamaño según su
+ * nivel (el que tenían en el PDF), y se respetan los saltos de renglón del PDF (versos, listas).
  * En las novelas, los nombres de los personajes ya desbloqueados se subrayan y abren su ficha.
  * Con [onTapPhrase] (mientras suena la voz), tocar una frase sigue la lectura desde ella.
  */
@@ -74,11 +75,13 @@ internal fun TextPages(
         lineHeight = LINE_HEIGHT.em,
         textAlign = TextAlign.Start
     )
-    val headingStyle = bodyStyle.copy(
-        fontSize = (HEADING_SIZE * textScale).sp,
-        fontWeight = FontWeight.Bold,
-        lineHeight = HEADING_LINE_HEIGHT.em
-    )
+    val headingStyles = HEADING_SIZES.map { size ->
+        bodyStyle.copy(
+            fontSize = (size * textScale).sp,
+            fontWeight = FontWeight.Bold,
+            lineHeight = HEADING_LINE_HEIGHT.em
+        )
+    }
     SelectionContainer(modifier) {
         LazyColumn(state = listState, contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
             items(pageCount, key = { it }) { index ->
@@ -89,8 +92,11 @@ internal fun TextPages(
                     verticalArrangement = Arrangement.spacedBy(Spacing.s)
                 ) {
                     PageSeparator(index + 1)
-                    page?.paragraphs?.forEachIndexed { p, paragraph ->
-                        val heading = remember(paragraph, titles) { HeadingDetector.isHeading(paragraph, titles) }
+                    page?.paragraphs.orEmpty().forEachIndexed { p, paragraph ->
+                        // Nivel del PDF (por tamaño de letra); si no lo hay, se adivina por el texto.
+                        val guessed = remember(paragraph, titles) { HeadingDetector.isHeading(paragraph, titles) }
+                        val level = page?.levelOf(p)?.takeIf { it > 0 } ?: if (guessed) GUESSED_LEVEL else 0
+                        val heading = level > 0
                         val phrase = highlight?.takeIf { it.page == index + 1 && it.paragraph == p }?.phrase
                         val text = remember(paragraph, phrase, names, colors, onTapCharacter) {
                             annotated(paragraph, phrase, colors.highlight, names, colors.accent, onTapCharacter)
@@ -108,7 +114,7 @@ internal fun TextPages(
                         }
                         Text(
                             text,
-                            style = if (heading) headingStyle else bodyStyle,
+                            style = if (heading) headingStyles[minOf(level, HEADING_SIZES.size) - 1] else bodyStyle,
                             color = colors.label,
                             onTextLayout = { layout = it },
                             modifier = (
@@ -203,7 +209,12 @@ internal fun phraseAt(paragraph: String, offset: Int): Int =
     phraseRanges(paragraph).indexOfLast { it != null && it.first <= offset }.coerceAtLeast(0)
 
 private const val BODY_SIZE = 18
-private const val HEADING_SIZE = 24
+
+/** Tamaño de los títulos por nivel (1 es el mayor); los niveles más profundos usan el último. */
+private val HEADING_SIZES = listOf(26, 22, 20, 18)
+
+/** Nivel de los títulos reconocidos solo por el texto («Capítulo 3»), sin tamaño de letra del PDF. */
+private const val GUESSED_LEVEL = 2
 private const val HEADING_LINE_HEIGHT = 1.25
 private val PAGE_GAP = 28.dp
 private const val LINE_HEIGHT = 1.5

@@ -16,8 +16,9 @@ import kotlinx.coroutines.ensureActive
 
 /**
  * Etapa de embeddings de la indexación: trocea cada capítulo en fragmentos (que Room añade al
- * índice de texto completo) y calcula su vector. Es reanudable: solo procesa los fragmentos que
- * aún no tienen vector del modelo actual, y descarta los de modelos anteriores.
+ * índice de texto completo) y calcula su vector. Los fragmentos se crean aparte y sin el modelo,
+ * para que el chat pueda buscar por palabras aunque los embeddings no estén. Es reanudable: solo
+ * procesa los fragmentos que aún no tienen vector del modelo actual, y descarta los de modelos anteriores.
  */
 class BookEmbeddingIndexer @Inject constructor(
     private val content: BookContentRepository,
@@ -26,13 +27,14 @@ class BookEmbeddingIndexer @Inject constructor(
     private val embedder: Embedder
 ) : EmbeddingStage {
 
+    override suspend fun prepareChunks(bookId: String) {
+        if (chunkDao.countByBook(bookId) == 0) chunkDao.insertAll(buildChunks(bookId))
+    }
+
     override suspend fun run(bookId: String, onProgress: suspend (Float) -> Unit): Boolean {
         if (!embedder.isAvailable()) return false
-        var chunks = chunkDao.getByBook(bookId)
-        if (chunks.isEmpty()) {
-            chunkDao.insertAll(buildChunks(bookId))
-            chunks = chunkDao.getByBook(bookId)
-        }
+        prepareChunks(bookId)
+        val chunks = chunkDao.getByBook(bookId)
         embeddingDao.deleteOtherModels(bookId, embedder.modelId)
         val done = embeddingDao.embeddedChunkIds(bookId, embedder.modelId).toSet()
         val pending = chunks.filter { it.id !in done }

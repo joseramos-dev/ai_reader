@@ -36,6 +36,8 @@ object DataModule {
 
     @Provides fun pageTextDao(db: AppDatabase) = db.pageTextDao()
 
+    @Provides fun pageLayoutDao(db: AppDatabase) = db.pageLayoutDao()
+
     @Provides fun chunkDao(db: AppDatabase) = db.chunkDao()
 
     @Provides fun chunkEmbeddingDao(db: AppDatabase) = db.chunkEmbeddingDao()

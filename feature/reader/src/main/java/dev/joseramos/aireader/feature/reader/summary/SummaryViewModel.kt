@@ -24,12 +24,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** Resumen que se está mostrando: de un capítulo (en breve o detallado) o del libro entero. */
-data class SummaryTarget(val chapter: Chapter?, val detailed: Boolean = false) {
-    val kind: SummaryKind get() = when {
-        chapter == null -> SummaryKind.BOOK
-        detailed -> SummaryKind.CHAPTER_LONG
-        else -> SummaryKind.CHAPTER_SHORT
-    }
+data class SummaryTarget(val chapter: Chapter, val detailed: Boolean = false) {
+    val kind: SummaryKind get() = if (detailed) SummaryKind.CHAPTER_LONG else SummaryKind.CHAPTER_SHORT
 }
 
 data class SummariesUiState(
@@ -56,10 +52,10 @@ class SummaryViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SummariesUiState())
 
     fun summaryFor(state: SummariesUiState, target: SummaryTarget): Summary? =
-        state.summaries.firstOrNull { it.chapterId == target.chapter?.id && it.kind == target.kind }
+        state.summaries.firstOrNull { it.chapterId == target.chapter.id && it.kind == target.kind }
 
     fun jobFor(state: SummariesUiState, target: SummaryTarget): SummaryJob? =
-        state.jobs[SummaryKey(bookId, target.chapter?.id, target.kind)]
+        state.jobs[SummaryKey(bookId, target.chapter.id, target.kind)]
 
     /** Repaso «Hasta ahora…» guardado, si lo hay. */
     fun recapFor(state: SummariesUiState): Summary? = state.summaries.firstOrNull { it.kind == SummaryKind.RECAP }
@@ -87,14 +83,5 @@ class SummaryViewModel @Inject constructor(
         }
     }
 
-    fun generate(target: SummaryTarget) {
-        val chapter = target.chapter
-        if (chapter ==
-            null
-        ) {
-            generator.summarizeBook(bookId)
-        } else {
-            generator.summarizeChapter(bookId, chapter, target.detailed)
-        }
-    }
+    fun generate(target: SummaryTarget) = generator.summarizeChapter(bookId, target.chapter, target.detailed)
 }

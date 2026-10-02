@@ -11,12 +11,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * versiona en git: cualquier cambio de entidades requiere subir [version] y añadir la migración.
  *
  * - v2: marcapáginas, `maxPage`, tipo de documento, repasos (`untilPage`) y personajes (F8–F11).
+ * - v3: geometría de las líneas (`page_layouts`), nivel de cada párrafo y apartados en el índice.
  */
 @Database(
     entities = [
         BookEntity::class,
         ChapterEntity::class,
         PageTextEntity::class,
+        PageLayoutEntity::class,
         ChunkEntity::class,
         ChunkFtsEntity::class,
         ChunkEmbeddingEntity::class,
@@ -32,9 +34,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RelationEntity::class,
         CharacterScanEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2, spec = AppDatabase.Migration1To2::class)]
+    autoMigrations = [
+        AutoMigration(from = 1, to = 2, spec = AppDatabase.Migration1To2::class),
+        AutoMigration(from = 2, to = 3)
+    ]
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
@@ -42,6 +47,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun chapterDao(): ChapterDao
 
     abstract fun pageTextDao(): PageTextDao
+
+    abstract fun pageLayoutDao(): PageLayoutDao
 
     abstract fun chunkDao(): ChunkDao
 

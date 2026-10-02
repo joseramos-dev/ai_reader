@@ -66,6 +66,27 @@ class AppDatabaseTest {
     }
 
     @Test
+    fun chapterQueriesSeparateChaptersFromSections() = runTest {
+        db.bookDao().upsert(book("a", importedAt = 1))
+        fun entry(number: Int, title: String, page: Int, level: Int) = ChapterEntity(
+            bookId = "a",
+            number = number,
+            title = title,
+            startPage = page,
+            endPage = page,
+            source = ChapterSource.OUTLINE,
+            level = level
+        )
+        db.chapterDao().insertAll(
+            listOf(entry(2, "Tema 2", 10, 0), entry(1, "Tema 1", 1, 0), entry(1, "1.1", 3, 1), entry(1, "1.1.1", 3, 2))
+        )
+
+        assertEquals(listOf("Tema 1", "Tema 2"), db.chapterDao().getByBook("a").map { it.title })
+        assertEquals(listOf("Tema 1", "1.1", "1.1.1", "Tema 2"), db.chapterDao().getContents("a").map { it.title })
+        assertEquals(0, db.chapterDao().countDependents("a"))
+    }
+
+    @Test
     fun deletingBookCascadesToEverything() = runTest {
         db.bookDao().upsert(book("a", importedAt = 1))
         val chapterId = db.chapterDao().insertAll(

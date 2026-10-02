@@ -63,7 +63,10 @@ data class ReaderUiState(
     val pageSizes: List<Size> = emptyList(),
     val startPage: Int = 1,
     val currentPage: Int = 1,
+    /** Capítulos (nivel 0): los que se resumen y por los que salta la voz. */
     val chapters: List<Chapter> = emptyList(),
+    /** Índice completo, con los apartados de cada capítulo, para el menú. */
+    val contents: List<Chapter> = emptyList(),
     val pages: List<PageText> = emptyList(),
     val mode: ReaderMode = ReaderMode.PDF,
     val textScale: Float = 1f,
@@ -71,6 +74,9 @@ data class ReaderUiState(
 ) {
     val pageCount: Int get() = pageSizes.size
     val currentChapter: Chapter? get() = chapters.lastOrNull { currentPage >= it.startPage }
+
+    /** La entrada más concreta del índice (capítulo o apartado) en la que está la página actual. */
+    val currentEntry: Chapter? get() = contents.lastOrNull { currentPage >= it.startPage }
 }
 
 /**
@@ -128,18 +134,19 @@ class ReaderViewModel @Inject constructor(
 
     val state: StateFlow<ReaderUiState> = combine(
         bookRepository.observeBook(bookId),
-        contentRepository.observeChapters(bookId),
+        contentRepository.observeContents(bookId),
         contentRepository.observePages(bookId),
         settings.settings,
         meta
-    ) { book, chapters, pages, appSettings, m ->
+    ) { book, contents, pages, appSettings, m ->
         ReaderUiState(
             book = book,
             opened = m.opened,
             pageSizes = m.pageSizes,
             startPage = m.startPage,
             currentPage = m.currentPage,
-            chapters = chapters,
+            chapters = contents.filter { it.level == 0 },
+            contents = contents,
             pages = pages,
             mode = m.mode,
             textScale = appSettings.textScale,
@@ -170,6 +177,7 @@ class ReaderViewModel @Inject constructor(
         } else {
             ReaderPlayback(
                 isPlaying = playing.isPlaying,
+                isListening = playing.isListening,
                 location = playing.position?.let { PhraseLocation(it.page, it.paragraph, it.phrase) },
                 phrase = playing.phrase,
                 error = playing.error
@@ -195,13 +203,24 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun pause() = playbackController.pause()
+    /** Controles de la voz mientras se escucha este libro. */
+    val listening = ListeningActions(
+        onPause = playbackController::pause,
+        onResume = { viewModelScope.launch { playbackController.resume() } },
+        onPreviousPhrase = playbackController::previous,
+        onNextPhrase = playbackController::next,
+        onPreviousPage = playbackController::previousPage,
+        onNextPage = playbackController::nextPage,
+        onStop = playbackController::stop
+    )
 
     fun downloadVoice() = modelManager.download(playbackController.state.value.voiceId)
 
     fun dismissPlaybackError() = playbackController.clearError()
 
     init {
+        // Si sonaba otro libro, se para y se olvida (frases, audio y mini reproductor) al abrir este.
+        viewModelScope.launch { playbackController.onBookOpened(bookId) }
         viewModelScope.launch { open() }
         viewModelScope.launch {
             visiblePage.filterNotNull().distinctUntilChanged().debounce(SAVE_DEBOUNCE_MS).collect { page ->

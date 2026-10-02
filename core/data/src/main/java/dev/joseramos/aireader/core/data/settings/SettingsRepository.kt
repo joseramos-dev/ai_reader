@@ -6,10 +6,12 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -77,6 +79,20 @@ class SettingsRepository @Inject constructor(@Named(SETTINGS_STORE) private val 
         dataStore.edit { it[AUTO_CHARACTERS] = enabled }
     }
 
+    /**
+     * «Anti-spoilers» del chat de un libro: activado salvo que se haya desactivado para ese libro.
+     * Se guardan solo los libros en los que está desactivado.
+     */
+    fun observeAntiSpoilers(bookId: String): Flow<Boolean> =
+        dataStore.data.map { bookId !in it[SPOILERS_ALLOWED].orEmpty() }.distinctUntilChanged()
+
+    suspend fun setAntiSpoilers(bookId: String, enabled: Boolean) {
+        dataStore.edit { prefs ->
+            val allowed = prefs[SPOILERS_ALLOWED].orEmpty()
+            prefs[SPOILERS_ALLOWED] = if (enabled) allowed - bookId else allowed + bookId
+        }
+    }
+
     companion object {
         const val SETTINGS_STORE = "settings"
         private val THEME = stringPreferencesKey("theme_mode")
@@ -85,5 +101,6 @@ class SettingsRepository @Inject constructor(@Named(SETTINGS_STORE) private val 
         private val SUMMARY_MODEL = stringPreferencesKey("summary_model")
         private val TEXT_SCALE = floatPreferencesKey("text_scale")
         private val AUTO_CHARACTERS = booleanPreferencesKey("auto_character_analysis")
+        private val SPOILERS_ALLOWED = stringSetPreferencesKey("spoilers_allowed_books")
     }
 }

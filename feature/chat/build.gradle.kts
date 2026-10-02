@@ -11,4 +11,5 @@ dependencies {
     implementation(project(":ai:llm"))
     implementation(project(":ai:models"))
     implementation(project(":ai:embeddings"))
+    implementation(project(":indexing"))
 }

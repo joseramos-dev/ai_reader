@@ -18,11 +18,12 @@ object PhraseSplitter {
     )
     private const val SENTENCE_STARTERS = "¿¡«\"“—('"
 
-    fun split(paragraph: String, maxChars: Int = DEFAULT_MAX_CHARS): List<String> {
-        val text = paragraph.replace(Regex("\\s+"), " ").trim()
-        if (text.isEmpty()) return emptyList()
-        return sentences(text).flatMap { splitLong(it, maxChars) }
-    }
+    /** Los saltos de renglón del párrafo (versos, elementos de una lista) también cierran frase. */
+    fun split(paragraph: String, maxChars: Int = DEFAULT_MAX_CHARS): List<String> =
+        paragraph.split('\n').flatMap { line ->
+            val text = line.replace(Regex("\\s+"), " ").trim()
+            if (text.isEmpty()) emptyList() else sentences(text).flatMap { splitLong(it, maxChars) }
+        }
 
     private fun sentences(text: String): List<String> {
         val result = mutableListOf<String>()

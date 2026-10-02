@@ -33,6 +33,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 enum class PlaybackStatus { IDLE, LOADING, PLAYING, PAUSED, ENDED }
@@ -64,6 +66,9 @@ data class PlaybackState(
 ) {
     val isActive: Boolean get() = bookId != null && status != PlaybackStatus.IDLE
     val isPlaying: Boolean get() = status == PlaybackStatus.PLAYING || status == PlaybackStatus.LOADING
+
+    /** Se está escuchando el libro: sonando, preparando la frase o en pausa (no al terminar ni parado). */
+    val isListening: Boolean get() = bookId != null && (isPlaying || status == PlaybackStatus.PAUSED)
 }
 
 /**
@@ -71,8 +76,13 @@ data class PlaybackState(
  *
  * frases (canal de 3) → síntesis en un único hilo → audio PCM (canal de 2) → AudioTrack.
  *
- * Mientras suena una frase se sintetiza la siguiente. Saltar, cambiar de velocidad o de posición
- * cancela la sesión y la vuelve a arrancar desde la frase nueva. La posición se guarda por frase.
+ * Mientras suena una frase se sintetiza la siguiente. Saltar (de frase, de página o de capítulo),
+ * cambiar de velocidad o de posición cancela la sesión —se descarta la síntesis pendiente y el audio
+ * que quedaba en el búfer— y la vuelve a arrancar desde la frase nueva. Si estaba en pausa, sigue en
+ * pausa en la frase nueva. La posición se guarda por frase.
+ *
+ * Las órdenes que cambian de sesión (empezar, saltar, parar) se ejecutan de una en una, en orden, para
+ * que varios toques seguidos no dejen dos sesiones sonando a la vez.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @Suppress("TooManyFunctions") // Es la API completa de un reproductor: no gana nada partiéndola.
@@ -90,6 +100,7 @@ class PlaybackEngine @Inject constructor(
 
     private val synthDispatcher = Dispatchers.Default.limitedParallelism(1)
     private val paused = MutableStateFlow(false)
+    private val commands = Mutex()
     private var session: Job? = null
     private var sleepJob: Job? = null
     private var sleepChapterEnd: Int? = null
@@ -111,7 +122,26 @@ class PlaybackEngine @Inject constructor(
 
     /** Empieza a leer [bookId] desde [from]. */
     suspend fun start(bookId: String, from: ReadingPosition, speed: Float = _state.value.speed) {
+        commands.withLock { startLocked(bookId, from, speed, keepPaused = false) }
+    }
+
+    /**
+     * Si la lectura en curso es de otro libro distinto de [bookId], la para y olvida todo lo suyo
+     * (frases, audio pendiente, capítulos y estado), para que no quede nada de él al abrir otro.
+     */
+    suspend fun releaseOtherBook(bookId: String) {
+        commands.withLock {
+            val current = _state.value.bookId
+            if (current != null && current != bookId) stopLocked()
+        }
+    }
+
+    private suspend fun startLocked(bookId: String, from: ReadingPosition, speed: Float, keepPaused: Boolean) {
         stopSession()
+        // Antes que el estado: un «reanudar» que llegue mientras se prepara la sesión no se pierde.
+        paused.value = keepPaused
+        // El temporizador de apagado era del libro anterior: no debe pausar el nuevo.
+        if (_state.value.bookId != bookId) setSleepTimer(SleepTimer.Off)
         val book = books.getBook(bookId) ?: return
         chapters = content.chapters(bookId)
         val language = languageOf(bookId, from.page)
@@ -120,7 +150,7 @@ class PlaybackEngine @Inject constructor(
             bookTitle = book.title,
             chapterTitle = chapterAt(from.page)?.title,
             coverPath = book.coverPath,
-            status = PlaybackStatus.LOADING,
+            status = if (paused.value) PlaybackStatus.PAUSED else PlaybackStatus.LOADING,
             position = from,
             speed = speed,
             sleepTimer = _state.value.sleepTimer.takeIf { _state.value.bookId == bookId } ?: SleepTimer.Off,
@@ -135,9 +165,10 @@ class PlaybackEngine @Inject constructor(
             _state.update { it.copy(status = PlaybackStatus.IDLE, error = PlaybackError.TEXT_NOT_READY) }
             return
         }
-        paused.value = false
-        audioManager.requestAudioFocus(focusRequest)
-        wakeLock.acquire(WAKE_LOCK_TIMEOUT_MS)
+        if (!paused.value) {
+            audioManager.requestAudioFocus(focusRequest)
+            wakeLock.acquire(WAKE_LOCK_TIMEOUT_MS)
+        }
         session = scope.launch { runSession(bookId, from, speed, language) }
     }
 
@@ -166,15 +197,21 @@ class PlaybackEngine @Inject constructor(
         }
     }
 
+    /** Deja de escuchar: para la sesión, suelta la voz y el foco de audio y vacía el estado. */
     fun stop() {
-        scope.launch {
-            savePosition(force = true)
-            stopSession()
-            setSleepTimer(SleepTimer.Off)
-            audioManager.abandonAudioFocusRequest(focusRequest)
-            voice.release()
-            _state.value = PlaybackState(speed = _state.value.speed)
-        }
+        scope.launch { commands.withLock { stopLocked() } }
+    }
+
+    private suspend fun stopLocked() {
+        savePosition(force = true)
+        stopSession()
+        setSleepTimer(SleepTimer.Off)
+        audioManager.abandonAudioFocusRequest(focusRequest)
+        voice.release()
+        chapters = emptyList()
+        paused.value = false
+        resumeOnFocusGain = false
+        _state.value = PlaybackState(speed = _state.value.speed)
     }
 
     /** Descarta el error de un intento fallido de empezar (sin tocar una lectura en curso). */
@@ -190,39 +227,41 @@ class PlaybackEngine @Inject constructor(
         }
     }
 
-    fun next() = restart { current -> current.copy(phrase = current.phrase + 1) }
+    /** Abandona la frase actual (aunque esté a medias) y pasa a la siguiente. En la última, no hace nada. */
+    fun next() = jump { bookId, position -> PhraseSource(content, bookId).next(position) }
 
-    fun previous() {
-        val bookId = _state.value.bookId ?: return
-        val position = _state.value.position ?: return
-        scope.launch { start(bookId, PhraseSource(content, bookId).previous(position)) }
+    /** Vuelve a la frase anterior (en la primera del libro, la repite). */
+    fun previous() = jump { bookId, position -> PhraseSource(content, bookId).previous(position) }
+
+    /** Primera frase de la siguiente página con texto (se saltan las vacías o escaneadas). */
+    fun nextPage() = jump { bookId, position -> PhraseSource(content, bookId).nextPage(position.page) }
+
+    /** Primera frase de la página con texto anterior; en la primera, vuelve al principio de la actual. */
+    fun previousPage() = jump { bookId, position ->
+        PhraseSource(content, bookId).previousPage(position.page) ?: ReadingPosition(position.page)
     }
 
     /** Salta al principio del capítulo siguiente (si lo hay). */
-    fun nextChapter() {
-        val bookId = _state.value.bookId ?: return
-        val page = _state.value.position?.page ?: return
-        val next = chapters.firstOrNull { it.startPage > page } ?: return
-        scope.launch { start(bookId, ReadingPosition(next.startPage)) }
+    fun nextChapter() = jump { _, position ->
+        chapters.firstOrNull { it.startPage > position.page }?.let { ReadingPosition(it.startPage) }
     }
 
     /**
      * Como en un reproductor de música: si ya se ha avanzado dentro del capítulo, vuelve a su
      * principio; si se está en su principio, va al capítulo anterior.
      */
-    fun previousChapter() {
-        val bookId = _state.value.bookId ?: return
-        val position = _state.value.position ?: return
-        val current = chapterAt(position.page) ?: return
-        val atStart = position == ReadingPosition(current.startPage)
-        val target = if (atStart) chapters.lastOrNull { it.startPage < current.startPage } ?: current else current
-        scope.launch { start(bookId, ReadingPosition(target.startPage)) }
+    fun previousChapter() = jump { _, position ->
+        chapterAt(position.page)?.let { current ->
+            val atStart = position == ReadingPosition(current.startPage)
+            val target = if (atStart) chapters.lastOrNull { it.startPage < current.startPage } ?: current else current
+            ReadingPosition(target.startPage)
+        }
     }
 
     fun setSpeed(speed: Float) {
         if (speed == _state.value.speed) return
         _state.update { it.copy(speed = speed) }
-        if (_state.value.isPlaying) restart { it }
+        if (_state.value.isListening) jump { _, position -> position }
     }
 
     fun setSleepTimer(timer: SleepTimer) {
@@ -266,10 +305,22 @@ class PlaybackEngine @Inject constructor(
         return true
     }
 
-    private fun restart(transform: (ReadingPosition) -> ReadingPosition) {
-        val bookId = _state.value.bookId ?: return
-        val position = _state.value.position ?: return
-        scope.launch { start(bookId, transform(position)) }
+    /**
+     * Reanuda la lectura en la posición que devuelva [target] (`null`: no se mueve). Se calcula ya
+     * dentro de la cola de órdenes, a partir de la posición que dejó la orden anterior, para que
+     * tocar «siguiente» tres veces avance tres frases.
+     */
+    private fun jump(target: suspend (bookId: String, position: ReadingPosition) -> ReadingPosition?) {
+        scope.launch {
+            commands.withLock {
+                val current = _state.value
+                val bookId = current.bookId ?: return@withLock
+                val position = current.position ?: return@withLock
+                if (current.status == PlaybackStatus.IDLE) return@withLock
+                val to = target(bookId, position) ?: return@withLock
+                startLocked(bookId, to, current.speed, keepPaused = current.status == PlaybackStatus.PAUSED)
+            }
+        }
     }
 
     private suspend fun runSession(bookId: String, from: ReadingPosition, speed: Float, language: Language) =
@@ -301,7 +352,11 @@ class PlaybackEngine @Inject constructor(
                     savePosition(force = true)
                     releaseWakeLock()
                 } finally {
-                    runCatching { track.stop() }
+                    // Al saltar o parar se descarta lo que quedaba en el búfer: no debe oírse ni un trozo.
+                    runCatching {
+                        track.pause()
+                        track.flush()
+                    }
                     track.release()
                 }
             }

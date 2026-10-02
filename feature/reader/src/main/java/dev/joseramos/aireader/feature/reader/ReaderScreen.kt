@@ -38,7 +38,6 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.TextFields
-import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -53,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -78,7 +78,6 @@ import dev.joseramos.aireader.core.designsystem.component.AppBottomSheet
 import dev.joseramos.aireader.core.designsystem.component.BarIconButton
 import dev.joseramos.aireader.core.designsystem.component.Cell
 import dev.joseramos.aireader.core.designsystem.component.EmptyState
-import dev.joseramos.aireader.core.designsystem.component.PlainButton
 import dev.joseramos.aireader.core.designsystem.component.barBlur
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.BarSize
@@ -93,6 +92,8 @@ import kotlinx.coroutines.launch
 /** Estado de la lectura en voz alta que muestra el lector (lo aporta F5). */
 data class ReaderPlayback(
     val isPlaying: Boolean = false,
+    /** Se está escuchando este libro (sonando o en pausa): se muestran los controles de la voz. */
+    val isListening: Boolean = false,
     val location: PhraseLocation? = null,
     val phrase: String? = null,
     val error: PlaybackError? = null
@@ -105,11 +106,11 @@ class ReaderActions(
     val onSetMode: (ReaderMode) -> Unit,
     val onSetTextScale: (Float) -> Unit,
     val onListen: ((page: Int) -> Unit)? = null,
-    val onPause: (() -> Unit)? = null,
+    /** Controles mientras se escucha: frase y página anterior/siguiente, pausa y detener. */
+    val listening: ListeningActions? = null,
     /** Seguir la lectura en voz alta desde una frase tocada en el modo texto. */
     val onListenFrom: ((PhraseLocation) -> Unit)? = null,
     val onOpenAi: (() -> Unit)? = null,
-    val onChapterSummary: ((Chapter) -> Unit)? = null,
     val onToggleBookmark: (page: Int) -> Unit = {},
     val onBookmarkNote: (page: Int, note: String?) -> Unit = { _, _ -> },
     val onDeleteBookmark: (id: Long) -> Unit = {},
@@ -160,11 +161,14 @@ internal fun ReaderScreen(
     LaunchedEffect(listState) {
         snapshotFlow { listState.dominantPage() }.collect(actions.onPageVisible)
     }
-    // Mientras suena la voz, la vista sigue a la página que se está leyendo.
-    LaunchedEffect(playback.location?.page, playback.isPlaying) {
+    // Mientras se escucha, la vista sigue a la página que se está leyendo (también al saltar con los
+    // controles de la voz, aunque se haya desplazado a mano a otra página).
+    var followRequests by remember { mutableIntStateOf(0) }
+    LaunchedEffect(playback.location?.page, playback.isPlaying, followRequests) {
         val page = playback.location?.page ?: return@LaunchedEffect
-        if (playback.isPlaying && page != listState.dominantPage()) listState.animateScrollToItem(page - 1)
+        if (playback.isListening && page != listState.dominantPage()) listState.animateScrollToItem(page - 1)
     }
+    val listening = remember(actions.listening) { actions.listening?.following { followRequests++ } }
     val scrollTo: (Int) -> Unit = { page ->
         scope.launch {
             listState.scrollToItem(
@@ -186,7 +190,8 @@ internal fun ReaderScreen(
 
     val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val contentPadding = PaddingValues(top = topInset + BarSize.topBar, bottom = bottomInset + CONTROLS_HEIGHT)
+    val controlsHeight = if (playback.isListening) CONTROLS_HEIGHT + LISTENING_EXTRA_HEIGHT else CONTROLS_HEIGHT
+    val contentPadding = PaddingValues(top = topInset + BarSize.topBar, bottom = bottomInset + controlsHeight)
 
     Box(
         Modifier.fillMaxSize().background(
@@ -240,7 +245,7 @@ internal fun ReaderScreen(
             )
         }
         AnimatedVisibility(
-            visible = controlsVisible || playback.isPlaying,
+            visible = controlsVisible || playback.isListening,
             enter = fadeIn() + slideInVertically { it },
             exit = fadeOut() + slideOutVertically { it },
             modifier = Modifier.align(Alignment.BottomCenter)
@@ -251,6 +256,7 @@ internal fun ReaderScreen(
                 extras = extras,
                 expanded = controlsVisible,
                 actions = actions,
+                listening = listening,
                 onChapters = { sheet = ReaderSheet.CHAPTERS },
                 onAppearance = { sheet = ReaderSheet.APPEARANCE },
                 onGoToPage = { goToPage = true },
@@ -267,12 +273,6 @@ internal fun ReaderScreen(
             onSelectPage = { page ->
                 sheet = null
                 scrollTo(page)
-            },
-            onSummary = actions.onChapterSummary?.let { summary ->
-                { chapter: Chapter ->
-                    sheet = null
-                    summary(chapter)
-                }
             },
             onDeleteBookmark = actions.onDeleteBookmark,
             onDismiss = { sheet = null }
@@ -346,7 +346,7 @@ private fun TextModeContent(
         onTapCharacter = actions.onOpenCharacter,
         // Solo con la voz en marcha (sonando o en pausa); si no, tocar muestra u oculta los controles.
         onTapPhrase = actions.onListenFrom?.takeIf { playback.location != null },
-        chapters = state.chapters
+        chapters = state.contents
     )
 }
 
@@ -403,6 +403,7 @@ private fun BottomControls(
     extras: ReaderExtras,
     expanded: Boolean,
     actions: ReaderActions,
+    listening: ListeningActions?,
     onChapters: () -> Unit,
     onAppearance: () -> Unit,
     onGoToPage: () -> Unit,
@@ -427,7 +428,7 @@ private fun BottomControls(
                 modifier = Modifier.padding(bottom = Spacing.xxs)
             )
         }
-        if (playback.isPlaying && playback.phrase != null) {
+        if (playback.isListening && playback.phrase != null) {
             // Tira «leyendo ahora»: en modo PDF no se puede resaltar sobre la página.
             Text(
                 playback.phrase,
@@ -438,6 +439,7 @@ private fun BottomControls(
                 modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xxs)
             )
         }
+        if (playback.isListening && listening != null) ListeningBar(playback.isPlaying, listening)
         if (expanded) {
             val shownPage = dragging?.roundToInt() ?: state.currentPage
             Text(
@@ -470,15 +472,10 @@ private fun BottomControls(
                     stringResource(R.string.reader_chapters),
                     onChapters
                 )
-                if (actions.onListen != null) {
-                    if (playback.isPlaying) {
-                        ControlButton(Icons.Rounded.Pause, stringResource(R.string.reader_pause)) {
-                            actions.onPause?.invoke()
-                        }
-                    } else {
-                        ControlButton(Icons.Outlined.Headphones, stringResource(R.string.reader_listen)) {
-                            actions.onListen.invoke(state.currentPage)
-                        }
+                // Mientras se escucha, la pausa y el resto de controles están en la barra de la voz.
+                if (actions.onListen != null && !playback.isListening) {
+                    ControlButton(Icons.Outlined.Headphones, stringResource(R.string.reader_listen)) {
+                        actions.onListen.invoke(state.currentPage)
                     }
                 }
                 actions.onOpenAi?.let {
@@ -486,12 +483,25 @@ private fun BottomControls(
                 }
                 ControlButton(Icons.Outlined.TextFields, stringResource(R.string.reader_appearance), onAppearance)
             }
-        } else if (playback.isPlaying) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                ControlButton(Icons.Rounded.Pause, stringResource(R.string.reader_pause)) { actions.onPause?.invoke() }
-            }
         }
     }
+}
+
+/** Las mismas acciones, avisando además de que la vista debe volver a la página que se lee. */
+private fun ListeningActions.following(onFollow: () -> Unit): ListeningActions {
+    fun wrap(action: () -> Unit): () -> Unit = {
+        action()
+        onFollow()
+    }
+    return ListeningActions(
+        onPause = onPause,
+        onResume = wrap(onResume),
+        onPreviousPhrase = wrap(onPreviousPhrase),
+        onNextPhrase = wrap(onNextPhrase),
+        onPreviousPage = wrap(onPreviousPage),
+        onNextPage = wrap(onNextPage),
+        onStop = onStop
+    )
 }
 
 @Composable
@@ -515,7 +525,6 @@ private fun ContentsSheet(
     state: ReaderUiState,
     extras: ReaderExtras,
     onSelectPage: (Int) -> Unit,
-    onSummary: ((Chapter) -> Unit)?,
     onDeleteBookmark: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -537,9 +546,7 @@ private fun ContentsSheet(
             }
         }
         when (tab) {
-            ContentsTab.CHAPTERS -> ChaptersList(state.chapters, state.currentChapter, {
-                onSelectPage(it.startPage)
-            }, onSummary)
+            ContentsTab.CHAPTERS -> ChaptersList(state.contents, state.currentEntry) { onSelectPage(it.startPage) }
             ContentsTab.BOOKMARKS -> BookmarksList(
                 bookmarks = extras.bookmarks,
                 chapters = state.chapters,
@@ -552,12 +559,7 @@ private fun ContentsSheet(
 }
 
 @Composable
-private fun ChaptersList(
-    chapters: List<Chapter>,
-    current: Chapter?,
-    onSelect: (Chapter) -> Unit,
-    onSummary: ((Chapter) -> Unit)?
-) {
+private fun ChaptersList(chapters: List<Chapter>, current: Chapter?, onSelect: (Chapter) -> Unit) {
     if (chapters.isEmpty()) {
         Text(
             stringResource(R.string.reader_no_chapters),
@@ -569,21 +571,20 @@ private fun ChaptersList(
     }
     LazyColumn(Modifier.heightIn(max = 560.dp)) {
         items(chapters, key = { it.id }) { chapter ->
+            // Los apartados van sangrados bajo su capítulo.
             Cell(
                 title = chapter.title,
                 subtitle = stringResource(R.string.reader_page_short, chapter.startPage),
+                modifier = Modifier.padding(start = SECTION_INDENT * chapter.level),
                 onClick = { onSelect(chapter) },
                 trailing = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        onSummary?.let { PlainButton(stringResource(R.string.reader_summary), { it(chapter) }) }
-                        if (chapter.id == current?.id) {
-                            Icon(
-                                Icons.Outlined.Check,
-                                contentDescription = null,
-                                tint = AppTheme.colors.accentText,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
+                    if (chapter.id == current?.id) {
+                        Icon(
+                            Icons.Outlined.Check,
+                            contentDescription = null,
+                            tint = AppTheme.colors.accentText,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                 }
             )
@@ -669,5 +670,9 @@ private fun GoToPageDialog(pageCount: Int, onGo: (Int) -> Unit, onDismiss: () ->
 }
 
 private val CONTROLS_HEIGHT = 140.dp
+
+/** Lo que añaden la barra de la voz y la frase que se está leyendo. */
+private val LISTENING_EXTRA_HEIGHT = ListeningBarHeight + 44.dp
+private val SECTION_INDENT = 16.dp
 private const val BOOKMARK_CHIP_MS = 6_000L
 private const val PERCENT = 100

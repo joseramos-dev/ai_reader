@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
@@ -27,20 +28,26 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
@@ -85,6 +92,8 @@ fun NavGraphBuilder.chatScreen(onBack: () -> Unit, onOpenPage: (bookId: String, 
             onOpenPage = { onOpenPage(viewModel.bookId, it) },
             onOpenSettings = { askKey = true },
             onDownloadModel = viewModel::downloadModel,
+            onRetryIndexing = viewModel::retryIndexing,
+            onSetAntiSpoilers = viewModel::setAntiSpoilers,
             onDismissError = viewModel::dismissError
         )
         // La clave se pide aquí mismo: al guardarla, el chat se habilita sin salir del libro.
@@ -102,6 +111,8 @@ private fun ChatScreen(
     onOpenPage: (Int) -> Unit,
     onOpenSettings: () -> Unit,
     onDownloadModel: () -> Unit,
+    onRetryIndexing: () -> Unit,
+    onSetAntiSpoilers: (Boolean) -> Unit,
     onDismissError: () -> Unit
 ) {
     val colors = AppTheme.colors
@@ -160,7 +171,7 @@ private fun ChatScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(Spacing.m)
         ) {
             if (state.messages.isEmpty() && state.streaming == null) {
-                item { EmptyChat(enabled = state.availability == ChatAvailability.Ready, onSend = onSend) }
+                item { EmptyChat(enabled = state.availability is ChatAvailability.Ready, onSend = onSend) }
             }
             items(state.messages, key = { it.id }) { message -> MessageBubble(message, onOpenPage) }
             state.streaming?.let { partial ->
@@ -182,10 +193,71 @@ private fun ChatScreen(
 
         Box(Modifier.navigationBarsPadding()) {
             when (val availability = state.availability) {
-                ChatAvailability.Ready -> InputBar(state.answering, onSend, onStop)
-                else -> AvailabilityBanner(availability, onOpenSettings, onDownloadModel)
+                is ChatAvailability.Ready -> Column {
+                    SearchNotice(availability.search, onDownloadModel, onRetryIndexing)
+                    AntiSpoilersRow(state.antiSpoilers, state.spoilerLimit, onSetAntiSpoilers)
+                    InputBar(state.answering, onSend, onStop)
+                }
+                else -> AvailabilityBanner(availability, onOpenSettings, onRetryIndexing)
             }
         }
+    }
+}
+
+/**
+ * Casilla «Anti-spoilers»: marcada, las respuestas no revelan nada posterior a la página más
+ * avanzada leída. Al desmarcarla se pide confirmación, porque a partir de ahí puede haber spoilers.
+ */
+@Composable
+private fun AntiSpoilersRow(enabled: Boolean, limit: Int, onChange: (Boolean) -> Unit) {
+    val colors = AppTheme.colors
+    var confirmOff by remember { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = enabled, role = Role.Checkbox) { checked ->
+                if (checked) onChange(true) else confirmOff = true
+            }
+            .padding(horizontal = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = enabled,
+            onCheckedChange = null,
+            colors = CheckboxDefaults.colors(
+                checkedColor = colors.accent,
+                uncheckedColor = colors.secondaryLabel,
+                checkmarkColor = Color.White
+            )
+        )
+        Text(stringResource(R.string.chat_anti_spoilers), style = AppTheme.typography.subheadline, color = colors.label)
+        Text(
+            stringResource(
+                if (enabled) R.string.chat_anti_spoilers_until else R.string.chat_anti_spoilers_off,
+                limit
+            ),
+            style = AppTheme.typography.footnote,
+            color = colors.secondaryLabel,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = Spacing.xs)
+        )
+    }
+    if (confirmOff) {
+        AlertDialog(
+            onDismissRequest = { confirmOff = false },
+            title = { Text(stringResource(R.string.chat_spoilers_dialog_title)) },
+            text = { Text(stringResource(R.string.chat_spoilers_dialog_message, limit)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmOff = false
+                    onChange(false)
+                }) { Text(stringResource(R.string.chat_spoilers_disable), color = colors.destructive) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmOff = false }) { Text(stringResource(R.string.chat_spoilers_cancel)) }
+            }
+        )
     }
 }
 
@@ -201,6 +273,7 @@ private fun EmptyChat(enabled: Boolean, onSend: (String) -> Unit) {
             val suggestions =
                 listOf(
                     R.string.chat_suggestion_topic,
+                    R.string.chat_suggestion_chapter,
                     R.string.chat_suggestion_ideas,
                     R.string.chat_suggestion_characters
                 )
@@ -318,11 +391,7 @@ private fun InputBar(answering: Boolean, onSend: (String) -> Unit, onStop: () ->
 }
 
 @Composable
-private fun AvailabilityBanner(
-    availability: ChatAvailability,
-    onOpenSettings: () -> Unit,
-    onDownloadModel: () -> Unit
-) {
+private fun AvailabilityBanner(availability: ChatAvailability, onOpenSettings: () -> Unit, onRetry: () -> Unit) {
     val colors = AppTheme.colors
     Column(Modifier.fillMaxWidth().padding(Spacing.m), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         when (availability) {
@@ -334,7 +403,6 @@ private fun AvailabilityBanner(
                 )
                 PrimaryButton(stringResource(R.string.chat_add_key), onOpenSettings, Modifier.fillMaxWidth())
             }
-            is ChatAvailability.ModelMissing -> ModelMissing(availability.model, onDownloadModel)
             is ChatAvailability.Indexing -> {
                 Text(
                     stringResource(R.string.chat_indexing, (availability.progress * PERCENT).toInt()),
@@ -345,47 +413,93 @@ private fun AvailabilityBanner(
                     availability.progress
                 }, Modifier.fillMaxWidth(), color = colors.accent, trackColor = colors.fill)
             }
-            ChatAvailability.Failed -> Text(
-                stringResource(R.string.chat_index_failed),
-                style = AppTheme.typography.subheadline,
-                color = colors.destructive
-            )
-            ChatAvailability.Ready -> Unit
+            ChatAvailability.Unavailable -> {
+                Text(
+                    stringResource(R.string.chat_unavailable),
+                    style = AppTheme.typography.subheadline,
+                    color = colors.secondaryLabel
+                )
+                PrimaryButton(stringResource(R.string.chat_retry), onRetry, Modifier.fillMaxWidth())
+            }
+            ChatAvailability.Failed -> {
+                Text(
+                    stringResource(R.string.chat_index_failed),
+                    style = AppTheme.typography.subheadline,
+                    color = colors.destructive
+                )
+                PrimaryButton(stringResource(R.string.chat_retry), onRetry, Modifier.fillMaxWidth())
+            }
+            ChatAvailability.Loading, is ChatAvailability.Ready -> Unit
+        }
+    }
+}
+
+/**
+ * Aviso discreto sobre la barra de escribir cuando se busca solo por palabras (sin embeddings):
+ * se puede preguntar igual, pero se explica por qué las respuestas pueden ser peores y qué hacer.
+ */
+@Composable
+private fun SearchNotice(search: SearchQuality, onDownloadModel: () -> Unit, onRetry: () -> Unit) {
+    if (search == SearchQuality.Full) return
+    val colors = AppTheme.colors
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = Spacing.m, vertical = Spacing.xxs),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
+    ) {
+        when (search) {
+            is SearchQuality.Improving -> {
+                Notice(stringResource(R.string.chat_search_improving, (search.progress * PERCENT).toInt()))
+                LinearProgressIndicator(progress = {
+                    search.progress
+                }, Modifier.fillMaxWidth(), color = colors.accent, trackColor = colors.fill)
+            }
+            is SearchQuality.ModelMissing -> ModelMissing(search.model, onDownloadModel)
+            SearchQuality.Unsupported -> {
+                Notice(stringResource(R.string.chat_search_unsupported))
+                NoticeAction(stringResource(R.string.chat_retry), onRetry)
+            }
+            SearchQuality.Full -> Unit
         }
     }
 }
 
 @Composable
 private fun ModelMissing(model: ModelState, onDownload: () -> Unit) {
-    val colors = AppTheme.colors
     val sizeMb = (ModelCatalog.e5Small.sizeBytes / BYTES_PER_MB).toInt()
-    Text(
-        stringResource(R.string.chat_model_missing, sizeMb),
-        style = AppTheme.typography.subheadline,
-        color = colors.secondaryLabel
-    )
+    Notice(stringResource(R.string.chat_model_missing, sizeMb))
     when (model) {
         is ModelState.Downloading -> {
-            Text(
-                stringResource(R.string.chat_downloading, (model.progress * PERCENT).toInt()),
-                style = AppTheme.typography.footnote,
-                color = colors.secondaryLabel
-            )
+            Notice(stringResource(R.string.chat_downloading, (model.progress * PERCENT).toInt()))
             LinearProgressIndicator(progress = {
                 model.progress
-            }, Modifier.fillMaxWidth(), color = colors.accent, trackColor = colors.fill)
+            }, Modifier.fillMaxWidth(), color = AppTheme.colors.accent, trackColor = AppTheme.colors.fill)
         }
-        ModelState.Installing -> Text(
-            stringResource(R.string.chat_installing),
-            style = AppTheme.typography.footnote,
-            color = colors.secondaryLabel
-        )
+        ModelState.Installing -> Notice(stringResource(R.string.chat_installing))
         is ModelState.Failed -> {
-            Text(model.message, style = AppTheme.typography.footnote, color = colors.destructive)
-            PrimaryButton(stringResource(R.string.chat_download_model), onDownload, Modifier.fillMaxWidth())
+            Text(model.message, style = AppTheme.typography.footnote, color = AppTheme.colors.destructive)
+            NoticeAction(stringResource(R.string.chat_download_model), onDownload)
         }
-        else -> PrimaryButton(stringResource(R.string.chat_download_model), onDownload, Modifier.fillMaxWidth())
+        else -> NoticeAction(stringResource(R.string.chat_download_model), onDownload)
     }
+}
+
+@Composable
+private fun Notice(text: String) {
+    Text(text, style = AppTheme.typography.footnote, color = AppTheme.colors.secondaryLabel)
+}
+
+@Composable
+private fun NoticeAction(text: String, onClick: () -> Unit) {
+    Text(
+        text,
+        style = AppTheme.typography.footnote,
+        color = AppTheme.colors.accentText,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(AppTheme.colors.accentFill)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = Spacing.s, vertical = Spacing.xxs)
+    )
 }
 
 private const val PERCENT = 100

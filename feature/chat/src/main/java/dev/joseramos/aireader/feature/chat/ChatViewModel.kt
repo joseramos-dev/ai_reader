@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.feature.chat
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -13,16 +14,24 @@ import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.ai.rag.AskBook
 import dev.joseramos.aireader.ai.rag.AskEvent
 import dev.joseramos.aireader.ai.rag.HybridRetriever
+import dev.joseramos.aireader.ai.rag.ReadingContext
 import dev.joseramos.aireader.core.common.ApplicationScope
+import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.book.Book
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.ChatMessage
 import dev.joseramos.aireader.core.data.book.ChatRepository
+import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.data.settings.SecretStore
+import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.core.data.settings.UsageRepository
+import dev.joseramos.aireader.indexing.IndexScheduler
+import dev.joseramos.aireader.indexing.StageCrashGuard
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -31,24 +40,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-/** Si se puede preguntar y, si no, por qué (para explicarlo con una acción). */
-sealed interface ChatAvailability {
-    data object Ready : ChatAvailability
-
-    data object NoApiKey : ChatAvailability
-
-    data class ModelMissing(val model: ModelState) : ChatAvailability
-
-    data class Indexing(val progress: Float) : ChatAvailability
-
-    data object Failed : ChatAvailability
-}
+import kotlinx.coroutines.withContext
 
 data class ChatUiState(
     val book: Book? = null,
@@ -56,11 +54,22 @@ data class ChatUiState(
     val streaming: String? = null,
     val answering: Boolean = false,
     val error: String? = null,
-    val availability: ChatAvailability = ChatAvailability.Ready,
-    val usage: DailyUsage = DailyUsage()
+    val availability: ChatAvailability = ChatAvailability.Loading,
+    val usage: DailyUsage = DailyUsage(),
+    /** Anti-spoilers: las respuestas no revelan nada posterior a [spoilerLimit] (la página más avanzada leída). */
+    val antiSpoilers: Boolean = true,
+    val spoilerLimit: Int = 1
 )
 
-private data class ChatInputs(val book: Book?, val hasKey: Boolean, val model: ModelState, val usage: DailyUsage)
+private data class Spoilers(val enabled: Boolean, val limit: Int)
+
+private data class ChatInputs(
+    val book: Book?,
+    val hasKey: Boolean,
+    val model: ModelState,
+    val usage: DailyUsage,
+    val hasChunks: Boolean
+)
 
 private data class Transient(val streaming: String? = null, val answering: Boolean = false, val error: String? = null)
 
@@ -69,13 +78,18 @@ private data class Transient(val streaming: String? = null, val answering: Boole
 class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     books: BookRepository,
+    private val scheduler: IndexScheduler,
+    private val crashGuard: StageCrashGuard,
     private val secrets: SecretStore,
     private val chat: ChatRepository,
     private val askBook: AskBook,
     private val retriever: HybridRetriever,
+    private val settings: SettingsRepository,
+    private val positions: ReadingPositionRepository,
     private val models: ModelManager,
     usage: UsageRepository,
-    @ApplicationScope private val appScope: CoroutineScope
+    @ApplicationScope private val appScope: CoroutineScope,
+    @IoDispatcher private val io: CoroutineDispatcher
 ) : ViewModel() {
     val bookId = savedStateHandle.toRoute<ChatRoute>().bookId
     private val threadId = MutableStateFlow<Long?>(null)
@@ -86,16 +100,21 @@ class ChatViewModel @Inject constructor(
         chat.observeMessages(it)
     }.onStart { emit(emptyList()) }
 
-    private val inputs = combine(books.observeBook(bookId), secrets.hasApiKey, models.states, usage.today) {
-            book,
-            hasKey,
-            modelStates,
-            today
-        ->
-        ChatInputs(book, hasKey, modelStates[ModelCatalog.e5Small.id] ?: ModelState.NotInstalled, today)
+    private val inputs = combine(
+        books.observeBook(bookId),
+        secrets.hasApiKey,
+        models.states,
+        usage.today,
+        retriever.observeSearchable(bookId)
+    ) { book, hasKey, modelStates, today, hasChunks ->
+        ChatInputs(book, hasKey, modelStates[ModelCatalog.e5Small.id] ?: ModelState.NotInstalled, today, hasChunks)
     }
 
-    val state: StateFlow<ChatUiState> = combine(inputs, messages, transient) { input, messages, t ->
+    private val spoilers = combine(settings.observeAntiSpoilers(bookId), positions.observeMaxPage(bookId)) { on, max ->
+        Spoilers(on, maxOf(1, max))
+    }
+
+    val state: StateFlow<ChatUiState> = combine(inputs, messages, transient, spoilers) { input, messages, t, spoilers ->
         val book = input.book
         ChatUiState(
             book = book,
@@ -103,13 +122,27 @@ class ChatViewModel @Inject constructor(
             streaming = t.streaming,
             answering = t.answering,
             error = t.error,
-            availability = availability(book, input.hasKey, input.model),
-            usage = input.usage
+            availability = chatAvailability(
+                book?.indexStatus,
+                book?.indexProgress ?: 0f,
+                input.hasKey,
+                input.model,
+                input.hasChunks
+            ),
+            usage = input.usage,
+            antiSpoilers = spoilers.enabled,
+            spoilerLimit = spoilers.limit
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
 
     init {
         viewModelScope.launch { threadId.value = chat.currentThread(bookId) }
+        // Si la indexación se quedó a medias sin trabajo pendiente (Android lo canceló), se reanuda;
+        // si sigue en marcha, no se toca (KEEP). Así el chat no espera a algo que ya no corre.
+        viewModelScope.launch {
+            val book = books.observeBook(bookId).filterNotNull().first()
+            if (book.indexStatus in RESUMABLE) scheduler.enqueue(bookId)
+        }
     }
 
     fun send(question: String) {
@@ -119,7 +152,7 @@ class ChatViewModel @Inject constructor(
         answerJob = viewModelScope.launch {
             transient.value = Transient(streaming = "", answering = true)
             try {
-                askBook.ask(bookId, thread, text).collect { event ->
+                askBook.ask(bookId, thread, text, readingContext()).collect { event ->
                     when (event) {
                         is AskEvent.Delta -> transient.update {
                             it.copy(streaming = (it.streaming ?: "") + event.text)
@@ -132,8 +165,26 @@ class ChatViewModel @Inject constructor(
                 transient.value = Transient(error = e.message)
             } catch (e: EmbeddingModelMissingException) {
                 transient.value = Transient(error = e.message)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                // Cualquier otro fallo (base de datos, búsqueda…) se muestra en lugar de cerrar la app.
+                Log.e(TAG, "Fallo respondiendo en el chat de $bookId", e)
+                transient.value = Transient(error = GENERIC_ERROR)
             }
         }
+    }
+
+    /** Activa o desactiva anti-spoilers para este libro (se recuerda). */
+    fun setAntiSpoilers(enabled: Boolean) {
+        viewModelScope.launch { settings.setAntiSpoilers(bookId, enabled) }
+    }
+
+    /** La página actual y, con anti-spoilers, el límite: la más avanzada entre la leída y la actual. */
+    private suspend fun readingContext(): ReadingContext {
+        val current = positions.get(bookId)?.page ?: 1
+        val ui = state.value
+        return ReadingContext(current, if (ui.antiSpoilers) maxOf(ui.spoilerLimit, current) else null)
     }
 
     fun stop() {
@@ -150,6 +201,14 @@ class ChatViewModel @Inject constructor(
 
     fun downloadModel() = models.download(ModelCatalog.e5Small.id)
 
+    /** «Reintentar»: vuelve a preparar el libro para el chat, olvidando los fallos anteriores. */
+    fun retryIndexing() {
+        viewModelScope.launch {
+            withContext(io) { crashGuard.reset(bookId) }
+            scheduler.enqueue(bookId, replace = true)
+        }
+    }
+
     fun saveApiKey(key: String) {
         viewModelScope.launch { secrets.setApiKey(key) }
     }
@@ -159,12 +218,9 @@ class ChatViewModel @Inject constructor(
         appScope.launch { retriever.release() }
     }
 
-    private fun availability(book: Book?, hasKey: Boolean, model: ModelState): ChatAvailability = when {
-        !hasKey -> ChatAvailability.NoApiKey
-        book == null -> ChatAvailability.Indexing(0f)
-        book.indexStatus == IndexStatus.READY -> ChatAvailability.Ready
-        book.indexStatus == IndexStatus.FAILED -> ChatAvailability.Failed
-        model !is ModelState.Installed -> ChatAvailability.ModelMissing(model)
-        else -> ChatAvailability.Indexing(book.indexProgress)
+    private companion object {
+        val RESUMABLE = setOf(IndexStatus.PENDING, IndexStatus.EXTRACTING_TEXT, IndexStatus.EMBEDDING)
+        const val TAG = "ChatViewModel"
+        const val GENERIC_ERROR = "No se pudo responder. Inténtalo de nuevo."
     }
 }

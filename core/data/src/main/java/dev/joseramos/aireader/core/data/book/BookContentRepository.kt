@@ -10,13 +10,33 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 
-/** Capítulo con sus páginas (base 1, ambas incluidas). */
-data class Chapter(val id: Long, val number: Int, val title: String, val startPage: Int, val endPage: Int) {
+/**
+ * Entrada del índice con sus páginas (base 1, ambas incluidas). [level] 0 es un capítulo; 1 y 2, sus
+ * apartados y subapartados.
+ */
+data class Chapter(
+    val id: Long,
+    val number: Int,
+    val title: String,
+    val startPage: Int,
+    val endPage: Int,
+    val level: Int = 0
+) {
     operator fun contains(page: Int) = page in startPage..endPage
 }
 
-/** Texto limpio de una página, dividido en párrafos. */
-data class PageText(val page: Int, val paragraphs: List<String>, val isScanned: Boolean)
+/**
+ * Texto limpio de una página, dividido en párrafos. [levels] da el nivel de cada párrafo (0 texto,
+ * 1… títulos de mayor a menor); está vacío si el libro se procesó sin geometría.
+ */
+data class PageText(
+    val page: Int,
+    val paragraphs: List<String>,
+    val isScanned: Boolean,
+    val levels: List<Int> = emptyList()
+) {
+    fun levelOf(paragraph: Int): Int = levels.getOrElse(paragraph) { 0 }
+}
 
 /** Capítulos y texto extraído de un libro, tal como los usan el lector, la voz y la IA. */
 @Singleton
@@ -28,6 +48,10 @@ class BookContentRepository @Inject constructor(
         chapterDao.observeByBook(bookId).map { list -> list.map { it.toChapter() } }
 
     suspend fun chapters(bookId: String): List<Chapter> = chapterDao.getByBook(bookId).map { it.toChapter() }
+
+    /** Índice completo: capítulos con sus apartados, en orden de lectura. */
+    fun observeContents(bookId: String): Flow<List<Chapter>> =
+        chapterDao.observeContents(bookId).map { list -> list.map { it.toChapter() } }
 
     fun observePages(bookId: String): Flow<List<PageText>> =
         pageTextDao.observeByBook(bookId).map { list -> list.filter { it.cleanerVersion > 0 }.map { it.toPageText() } }
@@ -44,10 +68,11 @@ class BookContentRepository @Inject constructor(
         pagesFrom(bookId, fromPage, toPage - fromPage + 1).joinToString("\n\n") { it.paragraphs.joinToString("\n\n") }
 }
 
-private fun ChapterEntity.toChapter() = Chapter(id, number, title, startPage, endPage)
+private fun ChapterEntity.toChapter() = Chapter(id, number, title, startPage, endPage, level)
 
 private fun PageTextEntity.toPageText() = PageText(
     page = page,
     paragraphs = runCatching { Json.decodeFromString<List<String>>(paragraphsJson) }.getOrDefault(emptyList()),
-    isScanned = isScanned
+    isScanned = isScanned,
+    levels = runCatching { Json.decodeFromString<List<Int>>(levelsJson) }.getOrDefault(emptyList())
 )

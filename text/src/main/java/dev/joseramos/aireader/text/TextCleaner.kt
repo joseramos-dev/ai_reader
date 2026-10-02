@@ -10,15 +10,18 @@ data class DocumentLayout(val headerLines: Set<String> = emptySet(), val footerL
  * quita cabeceras, pies y números de página, une palabras cortadas por guion y líneas partidas,
  * y devuelve párrafos de lectura. Cualquier cambio de reglas debe subir [VERSION] para que los
  * libros ya procesados se vuelvan a limpiar.
+ *
+ * - v2: párrafos, saltos de renglón y títulos según la geometría de cada línea ([LayoutAnalyzer]).
+ * - v3: ancho de la primera palabra bien medido cuando el PDF trae espacios (saltos de renglón).
  */
 object TextCleaner {
-    const val VERSION = 1
+    const val VERSION = 3
 
     private const val HYPHENS = "-‐‑–—"
     private val hyphenBreak = Regex("(\\w)[$HYPHENS]\\s*\\n\\s*(\\w)")
     private val hyphenBreakSpaced = Regex("(\\w)[$HYPHENS]\\s+(\\p{Ll})")
     private val lineHyphenSuffix = Regex("(\\w+)[$HYPHENS]\\s*$")
-    private val trailingHyphenWord = Regex("^(.+?\\s)?(\\w+)[$HYPHENS]\\s*$")
+    private val trailingHyphenWord = Regex("^(.+?\\s)?(\\w+)[$HYPHENS]\\s*$", RegexOption.DOT_MATCHES_ALL)
     private val pageNumber = Regex(
         "^\\s*(?:(?:p[áa]g(?:\\.|ina)?\\.?\\s*)?\\d+\\s*(?:de\\s+\\d+)?|[-–—]\\s*\\d+\\s*[-–—]|\\d+\\s*/\\s*\\d+)\\s*$",
         RegexOption.IGNORE_CASE
@@ -51,7 +54,7 @@ object TextCleaner {
     /** Convierte el texto bruto de una página en párrafos limpios. */
     fun pageToParagraphs(raw: String, layout: DocumentLayout): List<String> {
         if (raw.isBlank()) return emptyList()
-        val lines = stripMargins(normalizeCharacters(raw).lines(), layout)
+        val lines = stripMargins(normalizeCharacters(raw).lines(), layout) { it }
         val paragraphs = mutableListOf<String>()
         val buffer = mutableListOf<String>()
         fun flush() {
@@ -80,15 +83,28 @@ object TextCleaner {
         if (left.isEmpty() || right.isEmpty()) return left to right
         val match = trailingHyphenWord.find(left.last()) ?: return left to right
         val first = right.first().trim()
-        val word = first.substringBefore(' ')
+        val word = first.takeWhile { !it.isWhitespace() }
         if (word.isEmpty() || !word.first().isLowerCase()) return left to right
         val prefix = match.groupValues[1]
         val stem = match.groupValues[2]
-        val remainder = first.removePrefix(word).trimStart()
+        val remainder = first.removePrefix(word).trimStart(' ')
         val newLeft = left.dropLast(1) + "$prefix$stem$word".trimEnd()
         val newRight = if (remainder.isEmpty()) right.drop(1) else listOf(remainder) + right.drop(1)
         return newLeft to newRight
     }
+
+    /** Como [mergeAcrossPages], pero con párrafos con nivel: solo se unen dos párrafos de texto normal. */
+    fun mergeBlocksAcrossPages(left: List<TextBlock>, right: List<TextBlock>): Pair<List<TextBlock>, List<TextBlock>> {
+        val last = left.lastOrNull() ?: return left to right
+        val first = right.firstOrNull() ?: return left to right
+        if (last.level != 0 || first.level != 0) return left to right
+        val (l, r) = mergeAcrossPages(listOf(last.text), listOf(first.text))
+        return left.dropLast(1) + TextBlock(l.single()) to r.map { TextBlock(it) } + right.drop(1)
+    }
+
+    /** Quita las cabeceras, pies y números de página de las líneas (con geometría) de una página. */
+    fun stripMargins(lines: List<TextLine>, layout: DocumentLayout): List<TextLine> =
+        stripMargins(lines, layout) { it.text }
 
     /** Ligaduras (ﬁ → fi), comillas tipográficas simples y espacios raros. */
     fun normalizeCharacters(text: String): String = Normalizer.normalize(text, Normalizer.Form.NFKC)
@@ -117,16 +133,14 @@ object TextCleaner {
 
     private fun isRepeated(line: String, set: Set<String>) = normalizeLine(line) in set || fuzzyKey(line) in set
 
-    private fun stripMargins(lines: List<String>, layout: DocumentLayout): List<String> {
+    private fun <T> stripMargins(lines: List<T>, layout: DocumentLayout, text: (T) -> String): List<T> {
         val result = lines.toMutableList()
-        fun dropTop() =
-            result.firstOrNull { it.isNotBlank() }?.let { isRepeated(it, layout.headerLines) || isPageNumber(it) } ==
-                true
-        fun dropBottom() =
-            result.lastOrNull { it.isNotBlank() }?.let { isRepeated(it, layout.footerLines) || isPageNumber(it) } ==
-                true
-        while (result.isNotEmpty() && (result.first().isBlank() || dropTop())) result.removeAt(0)
-        while (result.isNotEmpty() && (result.last().isBlank() || dropBottom())) result.removeAt(result.lastIndex)
+        fun dropTop() = result.firstOrNull { text(it).isNotBlank() }
+            ?.let { isRepeated(text(it), layout.headerLines) || isPageNumber(text(it)) } == true
+        fun dropBottom() = result.lastOrNull { text(it).isNotBlank() }
+            ?.let { isRepeated(text(it), layout.footerLines) || isPageNumber(text(it)) } == true
+        while (result.isNotEmpty() && (text(result.first()).isBlank() || dropTop())) result.removeAt(0)
+        while (result.isNotEmpty() && (text(result.last()).isBlank() || dropBottom())) result.removeAt(result.lastIndex)
         return result
     }
 
@@ -156,7 +170,8 @@ object TextCleaner {
         return fixHyphens(text.toString().replace(whitespace, " ").trim())
     }
 
-    private fun fixHyphens(input: String): String {
+    /** Une las palabras partidas por guion que hayan quedado dentro de un párrafo. */
+    fun fixHyphens(input: String): String {
         var text = input
         repeat(MAX_HYPHEN_PASSES) {
             val updated = text.replace(hyphenBreak, "$1$2").replace(hyphenBreakSpaced, "$1$2")

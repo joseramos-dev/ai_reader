@@ -24,7 +24,7 @@
     <string name="library_info_status">Estado</string>
     <string name="library_status_ready">Listo</string>
     <string name="library_status_preparing">Preparando</string>
-    <string name="library_status_needs_model">Listo para leer (falta el modelo para el chat)</string>
+    <string name="library_status_needs_model">Listo (el chat busca solo por palabras)</string>
     <string name="library_status_failed">Error al preparar</string>
     <string name="library_error_title">No se pudo importar</string>
     <string name="library_ok">Aceptar</string>

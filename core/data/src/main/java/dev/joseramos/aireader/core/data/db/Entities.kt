@@ -56,6 +56,11 @@ data class BookEntity(
     @ColumnInfo(defaultValue = "AUTO") val documentTypeSource: DocumentTypeSource = DocumentTypeSource.AUTO
 )
 
+/**
+ * Entrada del índice del libro. [level] 0 son los capítulos (o temas), que son los que se resumen y
+ * por los que salta la voz; 1 y 2 son sus apartados y subapartados, que solo aparecen en el menú. Los
+ * apartados llevan el [number] de su capítulo.
+ */
 @Entity(
     tableName = "chapters",
     foreignKeys = [ForeignKey(BookEntity::class, ["id"], ["bookId"], onDelete = CASCADE)],
@@ -68,7 +73,8 @@ data class ChapterEntity(
     val title: String,
     val startPage: Int,
     val endPage: Int,
-    val source: ChapterSource
+    val source: ChapterSource,
+    @ColumnInfo(defaultValue = "0") val level: Int = 0
 )
 
 @Entity(
@@ -84,8 +90,21 @@ data class PageTextEntity(
     /** Párrafos del texto limpio, como array JSON de cadenas. */
     val paragraphsJson: String,
     val isScanned: Boolean,
-    val cleanerVersion: Int
+    val cleanerVersion: Int,
+    /** Nivel de cada párrafo (0 texto, 1… títulos de mayor a menor), como array JSON de enteros. */
+    @ColumnInfo(defaultValue = "[]") val levelsJson: String = "[]"
 )
+
+/**
+ * Líneas de una página con su geometría (posición, tamaño de letra, negrita), como array JSON de
+ * `TextLine`. Va aparte de [PageTextEntity] para no cargarlo cada vez que el lector lee el texto.
+ */
+@Entity(
+    tableName = "page_layouts",
+    primaryKeys = ["bookId", "page"],
+    foreignKeys = [ForeignKey(BookEntity::class, ["id"], ["bookId"], onDelete = CASCADE)]
+)
+data class PageLayoutEntity(val bookId: String, val page: Int, val linesJson: String)
 
 @Entity(
     tableName = "chunks",

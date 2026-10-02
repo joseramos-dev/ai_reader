@@ -55,4 +55,38 @@ class MigrationTest {
         }
         db.close()
     }
+
+    @Test
+    fun migrate2To3AddsLevelsWithDefaults() {
+        helper.createDatabase(2).apply {
+            execSQL(
+                """
+                INSERT INTO books (id, title, author, fileName, filePath, pageCount, coverPath, importedAt,
+                    lastOpenedAt, indexStatus, indexProgress, cleanerVersion, documentTypeSource)
+                VALUES ('a', 'Libro', NULL, 'a.pdf', '/a.pdf', 10, NULL, 1, NULL, 'READY', 1.0, 1, 'AUTO')
+                """.trimIndent()
+            )
+            execSQL(
+                "INSERT INTO chapters (bookId, number, title, startPage, endPage, source) " +
+                    "VALUES ('a', 1, 'Uno', 1, 10, 'OUTLINE')"
+            )
+            execSQL(
+                "INSERT INTO page_texts " +
+                    "(bookId, page, rawText, cleanText, paragraphsJson, isScanned, cleanerVersion) " +
+                    "VALUES ('a', 1, 'raw', 'clean', '[\"clean\"]', 0, 1)"
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(3, emptyList())
+        db.prepare("SELECT level FROM chapters WHERE bookId = 'a'").use {
+            assertTrue(it.step())
+            assertEquals(0, it.getInt(0))
+        }
+        db.prepare("SELECT levelsJson FROM page_texts WHERE bookId = 'a'").use {
+            assertTrue(it.step())
+            assertEquals("[]", it.getText(0))
+        }
+        db.close()
+    }
 }

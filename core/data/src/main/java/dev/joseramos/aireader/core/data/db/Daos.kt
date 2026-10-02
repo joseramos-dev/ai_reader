@@ -39,6 +39,12 @@ interface BookDao {
     @Query("SELECT id FROM books WHERE indexStatus = :status")
     suspend fun idsWithStatus(status: IndexStatus): List<String>
 
+    /** Libros en [status] que aún no tienen fragmentos (sin ellos el chat no puede buscar). */
+    @Query(
+        "SELECT id FROM books WHERE indexStatus = :status AND NOT EXISTS (SELECT 1 FROM chunks WHERE bookId = books.id)"
+    )
+    suspend fun idsWithStatusWithoutChunks(status: IndexStatus): List<String>
+
     @Query("UPDATE books SET indexStatus = :status, indexProgress = :progress WHERE id = :id")
     suspend fun updateIndexState(id: String, status: IndexStatus, progress: Float)
 
@@ -55,19 +61,59 @@ interface BookDao {
     suspend fun delete(id: String)
 }
 
+/** Capítulos ([ChapterEntity.level] 0) y, en los métodos `*Contents`, el índice completo con apartados. */
 @Dao
 interface ChapterDao {
-    @Query("SELECT * FROM chapters WHERE bookId = :bookId ORDER BY number")
+    @Query("SELECT * FROM chapters WHERE bookId = :bookId AND level = 0 ORDER BY number")
     fun observeByBook(bookId: String): Flow<List<ChapterEntity>>
 
-    @Query("SELECT * FROM chapters WHERE bookId = :bookId ORDER BY number")
+    @Query("SELECT * FROM chapters WHERE bookId = :bookId AND level = 0 ORDER BY number")
     suspend fun getByBook(bookId: String): List<ChapterEntity>
+
+    @Query("SELECT * FROM chapters WHERE bookId = :bookId ORDER BY startPage, level, id")
+    fun observeContents(bookId: String): Flow<List<ChapterEntity>>
+
+    @Query("SELECT * FROM chapters WHERE bookId = :bookId ORDER BY startPage, level, id")
+    suspend fun getContents(bookId: String): List<ChapterEntity>
 
     @Insert
     suspend fun insertAll(chapters: List<ChapterEntity>): List<Long>
 
     @Query("DELETE FROM chapters WHERE bookId = :bookId")
     suspend fun deleteByBook(bookId: String)
+
+    /** Resúmenes de capítulo y análisis de personajes que se perderían al rehacer los capítulos. */
+    @Query(
+        """
+        SELECT (SELECT COUNT(*) FROM summaries WHERE bookId = :bookId AND chapterId IS NOT NULL) +
+            (SELECT COUNT(*) FROM character_scans WHERE bookId = :bookId)
+        """
+    )
+    suspend fun countDependents(bookId: String): Int
+
+    /** Vuelve a enlazar los fragmentos del chat con el capítulo que contiene su primera página. */
+    @Query(
+        """
+        UPDATE chunks SET chapterId = (
+            SELECT c.id FROM chapters c
+            WHERE c.bookId = chunks.bookId AND c.level = 0 AND chunks.startPage BETWEEN c.startPage AND c.endPage
+            ORDER BY c.startPage DESC LIMIT 1
+        ) WHERE bookId = :bookId
+        """
+    )
+    suspend fun remapChunks(bookId: String)
+}
+
+@Dao
+interface PageLayoutDao {
+    @Query("SELECT * FROM page_layouts WHERE bookId = :bookId ORDER BY page")
+    suspend fun getByBook(bookId: String): List<PageLayoutEntity>
+
+    @Query("SELECT page FROM page_layouts WHERE bookId = :bookId")
+    suspend fun pages(bookId: String): List<Int>
+
+    @Upsert
+    suspend fun upsert(layout: PageLayoutEntity)
 }
 
 @Dao
@@ -87,6 +133,10 @@ interface PageTextDao {
     @Query("SELECT COUNT(*) FROM page_texts WHERE bookId = :bookId AND cleanerVersion = :cleanerVersion")
     suspend fun countUpToDate(bookId: String, cleanerVersion: Int): Int
 
+    /** Libros con texto limpiado por una versión anterior del limpiador. */
+    @Query("SELECT DISTINCT bookId FROM page_texts WHERE cleanerVersion > 0 AND cleanerVersion < :cleanerVersion")
+    suspend fun bookIdsWithOutdatedText(cleanerVersion: Int): List<String>
+
     @Upsert
     suspend fun upsert(page: PageTextEntity)
 }
@@ -105,6 +155,16 @@ interface ChunkDao {
     @Query("SELECT * FROM chunks WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<Long>): List<ChunkEntity>
 
+    @Query("SELECT COUNT(*) FROM chunks WHERE bookId = :bookId")
+    suspend fun countByBook(bookId: String): Int
+
+    /** Si el libro ya tiene fragmentos, es decir, si el chat puede buscar en él. */
+    @Query("SELECT EXISTS(SELECT 1 FROM chunks WHERE bookId = :bookId)")
+    fun observeHasChunks(bookId: String): Flow<Boolean>
+
+    @Query("SELECT id FROM chunks WHERE bookId = :bookId ORDER BY ordinal")
+    suspend fun idsByBook(bookId: String): List<Long>
+
     /**
      * Búsqueda de texto completo dentro de un libro. FTS4 no tiene BM25, así que se ordena
      * por el número de coincidencias aproximado; la fusión con la búsqueda vectorial (RRF)
@@ -120,6 +180,28 @@ interface ChunkDao {
         """
     )
     suspend fun searchText(bookId: String, query: String, limit: Int): List<ChunkMatch>
+
+    /** Como [searchText], pero solo en fragmentos que acaban como muy tarde en [maxPage] (anti-spoilers). */
+    @Query(
+        """
+        SELECT c.id AS chunkId, -length(offsets(chunks_fts)) AS score
+        FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid
+        WHERE chunks_fts MATCH :query AND c.bookId = :bookId AND c.endPage <= :maxPage
+        ORDER BY score
+        LIMIT :limit
+        """
+    )
+    suspend fun searchTextUntil(bookId: String, query: String, maxPage: Int, limit: Int): List<ChunkMatch>
+
+    /** Fragmentos que caen entre [fromPage] y [toPage] (ambas incluidas), en orden de lectura. */
+    @Query(
+        """
+        SELECT id FROM chunks
+        WHERE bookId = :bookId AND startPage >= :fromPage AND endPage <= :toPage
+        ORDER BY ordinal
+        """
+    )
+    suspend fun idsInPages(bookId: String, fromPage: Int, toPage: Int): List<Long>
 
     @Query("DELETE FROM chunks WHERE bookId = :bookId")
     suspend fun deleteByBook(bookId: String)

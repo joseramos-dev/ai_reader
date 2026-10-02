@@ -14,4 +14,5 @@ dependencies {
     implementation(libs.onnxruntime.android)
     implementation(libs.djl.tokenizers)
     runtimeOnly(libs.djl.tokenizer.native.android)
+    runtimeOnly(libs.fbjni)
 }

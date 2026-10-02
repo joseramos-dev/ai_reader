@@ -75,6 +75,14 @@ class PhraseSplitterTest {
         assertTrue(phrases.all { it.length <= 120 })
         assertEquals(long, phrases.joinToString(" "))
     }
+
+    @Test
+    fun lineBreaksEndPhrases() {
+        assertEquals(
+            listOf("En un lugar de la Mancha,", "de cuyo nombre no quiero acordarme,", "no ha mucho tiempo."),
+            PhraseSplitter.split("En un lugar de la Mancha,\nde cuyo nombre no quiero acordarme,\nno ha mucho tiempo.")
+        )
+    }
 }
 
 class SpeechNormalizerTest {

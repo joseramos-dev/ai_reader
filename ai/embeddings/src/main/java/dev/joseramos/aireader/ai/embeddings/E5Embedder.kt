@@ -61,12 +61,18 @@ class E5Embedder @Inject constructor(
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
         }
         val session = OrtEnvironment.getEnvironment().createSession(File(dir, "model.onnx").absolutePath, options)
-        val tokenizer = HuggingFaceTokenizer.builder()
-            .optTokenizerPath(File(dir, "tokenizer.json").toPath())
-            .optMaxLength(MAX_TOKENS)
-            .optTruncation(true)
-            .optPadding(false)
-            .build()
+        // El tokenizador es nativo (DJL) y puede no cargar en algunos móviles: entonces no se deja la sesión abierta.
+        val tokenizer = runCatching {
+            HuggingFaceTokenizer.builder()
+                .optTokenizerPath(File(dir, "tokenizer.json").toPath())
+                .optMaxLength(MAX_TOKENS)
+                .optTruncation(true)
+                .optPadding(false)
+                .build()
+        }.getOrElse {
+            session.close()
+            throw it
+        }
         return Loaded(session, tokenizer).also { loaded = it }
     }
 

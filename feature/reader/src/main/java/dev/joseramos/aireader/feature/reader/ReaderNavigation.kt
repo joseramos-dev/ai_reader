@@ -87,10 +87,9 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
             onSetMode = viewModel::setMode,
             onSetTextScale = viewModel::setTextScale,
             onListen = listen,
-            onPause = viewModel::pause,
+            listening = viewModel.listening,
             onListenFrom = viewModel::listenFrom,
             onOpenAi = { aiSheet = true },
-            onChapterSummary = { summaryTarget = SummaryTarget(it) },
             onToggleBookmark = viewModel::toggleBookmark,
             onBookmarkNote = viewModel::setBookmarkNote,
             onDeleteBookmark = viewModel::deleteBookmark,
@@ -109,7 +108,6 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
 
     if (aiSheet) {
         AiActionsSheet(
-            currentChapter = state.currentChapter,
             currentPage = state.currentPage,
             usage = aiUsage,
             onCatchUp = {
@@ -123,14 +121,6 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
                 }
             } else {
                 null
-            },
-            onSummarizeChapter = {
-                aiSheet = false
-                summaryTarget = SummaryTarget(it)
-            },
-            onSummarizeBook = {
-                aiSheet = false
-                summaryTarget = SummaryTarget(chapter = null)
             },
             onAsk = {
                 aiSheet = false
@@ -167,7 +157,6 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
     summaryTarget?.let { target ->
         SummarySheet(
             target = target,
-            bookTitle = state.book?.title.orEmpty(),
             viewModel = summaryViewModel,
             onChangeTarget = { summaryTarget = it },
             onAddApiKey = { retryAfterKey = { summaryViewModel.generate(target) } },

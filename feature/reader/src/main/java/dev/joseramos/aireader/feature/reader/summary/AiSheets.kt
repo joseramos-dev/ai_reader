@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.MenuBook
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.People
@@ -30,7 +28,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.joseramos.aireader.ai.llm.SummaryJob
-import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.designsystem.component.AiUsageRow
 import dev.joseramos.aireader.core.designsystem.component.AppBottomSheet
@@ -43,13 +40,13 @@ import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
 import dev.joseramos.aireader.feature.reader.R
 
-/** Hoja ✦ del lector: las acciones de IA disponibles para el libro y el capítulo actual. */
+/**
+ * Hoja ✦ del lector: las acciones de IA disponibles para el libro. Los resúmenes (de un capítulo o
+ * del libro) se piden en «Pregunta al libro».
+ */
 @Composable
 internal fun AiActionsSheet(
-    currentChapter: Chapter?,
     currentPage: Int,
-    onSummarizeChapter: (Chapter) -> Unit,
-    onSummarizeBook: () -> Unit,
     onAsk: () -> Unit,
     onCatchUp: () -> Unit,
     onCharacters: (() -> Unit)?,
@@ -66,17 +63,6 @@ internal fun AiActionsSheet(
             modifier = Modifier.padding(horizontal = Spacing.xs)
         )
         GroupedSection(dividerInset = GroupedSectionDefaults.IconDividerInset) {
-            if (currentChapter != null) {
-                row {
-                    Cell(
-                        title = stringResource(R.string.ai_summarize_chapter),
-                        subtitle = currentChapter.title,
-                        icon = Icons.Outlined.AutoAwesome,
-                        showChevron = true,
-                        onClick = { onSummarizeChapter(currentChapter) }
-                    )
-                }
-            }
             if (currentPage > 1) {
                 row {
                     Cell(
@@ -103,15 +89,6 @@ internal fun AiActionsSheet(
             }
             row {
                 Cell(
-                    title = stringResource(R.string.ai_summarize_book),
-                    icon = Icons.AutoMirrored.Outlined.MenuBook,
-                    iconBackground = Color(0xFF34C759),
-                    showChevron = true,
-                    onClick = onSummarizeBook
-                )
-            }
-            row {
-                Cell(
                     title = stringResource(R.string.ai_ask),
                     subtitle = stringResource(R.string.ai_ask_subtitle),
                     icon = Icons.Outlined.ChatBubbleOutline,
@@ -125,13 +102,12 @@ internal fun AiActionsSheet(
 }
 
 /**
- * Resumen de un capítulo o del libro. Si no existe, se genera al abrir la hoja. Los errores se
+ * Resumen de un capítulo, que se abre desde «Ponerme al día». Si no existe, se genera al abrir la hoja. Los errores se
  * explican con una acción (por ejemplo, ir a Ajustes si falta la clave).
  */
 @Composable
 internal fun SummarySheet(
     target: SummaryTarget,
-    bookTitle: String,
     viewModel: SummaryViewModel,
     onChangeTarget: (SummaryTarget) -> Unit,
     onAddApiKey: () -> Unit,
@@ -152,19 +128,17 @@ internal fun SummarySheet(
     val colors = AppTheme.colors
     AppBottomSheet(
         onDismissRequest = onDismiss,
-        title = target.chapter?.title ?: bookTitle,
+        title = target.chapter.title,
         skipPartiallyExpanded = false
     ) {
         Column(Modifier.padding(horizontal = Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-            if (target.chapter != null) {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    listOf(false, true).forEachIndexed { i, detailed ->
-                        SegmentedButton(
-                            selected = target.detailed == detailed,
-                            onClick = { onChangeTarget(target.copy(detailed = detailed)) },
-                            shape = SegmentedButtonDefaults.itemShape(i, 2)
-                        ) { Text(stringResource(if (detailed) R.string.ai_detailed else R.string.ai_brief)) }
-                    }
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf(false, true).forEachIndexed { i, detailed ->
+                    SegmentedButton(
+                        selected = target.detailed == detailed,
+                        onClick = { onChangeTarget(target.copy(detailed = detailed)) },
+                        shape = SegmentedButtonDefaults.itemShape(i, 2)
+                    ) { Text(stringResource(if (detailed) R.string.ai_detailed else R.string.ai_brief)) }
                 }
             }
             when {

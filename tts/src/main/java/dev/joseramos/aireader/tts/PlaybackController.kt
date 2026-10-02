@@ -61,6 +61,12 @@ class PlaybackController @Inject constructor(
         if (engine.state.value.error == null) connect().play()
     }
 
+    /**
+     * Al abrir el libro [bookId]: si sonaba otro, se para y se vacía todo lo suyo (frases, audio
+     * pendiente, estado del mini reproductor y notificación), para que no quede nada del anterior.
+     */
+    suspend fun onBookOpened(bookId: String) = engine.releaseOtherBook(bookId)
+
     fun pause() = engine.pause()
 
     suspend fun resume() {
@@ -74,6 +80,10 @@ class PlaybackController @Inject constructor(
     fun next() = engine.next()
 
     fun previous() = engine.previous()
+
+    fun nextPage() = engine.nextPage()
+
+    fun previousPage() = engine.previousPage()
 
     fun nextChapter() = engine.nextChapter()
 

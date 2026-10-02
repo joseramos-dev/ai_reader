@@ -5,7 +5,6 @@
     <string name="reader_page_of">Página %1$d de %2$d</string>
     <string name="reader_chapters">Capítulos</string>
     <string name="reader_listen">Escuchar</string>
-    <string name="reader_pause">Pausar</string>
     <string name="reader_ai">IA</string>
     <string name="reader_appearance">Lectura</string>
     <string name="reader_mode">Modo</string>
@@ -24,7 +23,6 @@
     <string name="reader_text_failed_message">Puede que el PDF sea una imagen escaneada o esté dañado. Puedes leerlo en modo PDF.</string>
     <string name="reader_scanned_page">Esta página es una imagen escaneada y no tiene texto.</string>
     <string name="reader_open_error">No se pudo abrir el PDF</string>
-    <string name="reader_summary">Resumen</string>
     <string name="reader_voice_title">Descarga la voz</string>
     <string name="reader_voice_message">Para escuchar este libro hace falta la %1$s (unos %2$d MB). Se descarga una sola vez y funciona sin conexión.</string>
     <string name="reader_voice_download">Descargar voz</string>
@@ -44,11 +42,13 @@
     <string name="player_sleep_minutes">%1$d min</string>
     <string name="player_sleep_chapter">Fin del capítulo</string>
     <string name="player_stop">Dejar de escuchar</string>
+    <string name="listen_previous_page">Página anterior</string>
+    <string name="listen_next_page">Página siguiente</string>
+    <string name="listen_resume">Reanudar</string>
+    <string name="listen_stop">Detener</string>
     <string name="ai_title">Inteligencia artificial</string>
-    <string name="ai_summarize_chapter">Resumir este capítulo</string>
-    <string name="ai_summarize_book">Resumen del libro</string>
     <string name="ai_ask">Pregunta al libro</string>
-    <string name="ai_ask_subtitle">Un chat sobre este libro: responde con lo que dice el texto y cita la página</string>
+    <string name="ai_ask_subtitle">Pide resúmenes o pregunta lo que quieras: responde con el texto del libro y cita la página</string>
     <string name="ai_brief">Breve</string>
     <string name="ai_detailed">Detallado</string>
     <string name="ai_generating">Generando el resumen…</string>

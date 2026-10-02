@@ -55,6 +55,19 @@ class SettingsAndSecretsTest {
     }
 
     @Test
+    fun antiSpoilersIsOnByDefaultAndRememberedPerBook() = runTest {
+        val repository = SettingsRepository(store("spoilers"))
+        assertTrue(repository.observeAntiSpoilers("a").first())
+
+        repository.setAntiSpoilers("a", enabled = false)
+        assertFalse(repository.observeAntiSpoilers("a").first())
+        assertTrue(repository.observeAntiSpoilers("b").first())
+
+        repository.setAntiSpoilers("a", enabled = true)
+        assertTrue(repository.observeAntiSpoilers("a").first())
+    }
+
+    @Test
     fun apiKeyIsStoredEncryptedAndCanBeCleared() = runTest {
         val dataStore = store("secrets")
         val secrets = SecretStore(dataStore, aead())

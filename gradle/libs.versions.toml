@@ -30,6 +30,7 @@ onnxruntime = "1.30.0"
 pdfboxAndroid = "2.0.27.0"
 commonsCompress = "1.28.0"
 djl = "0.33.0"
+fbjni = "0.7.0"
 benchmark = "1.5.0"
 uiautomator = "2.4.0"
 androidxTestExtJunit = "1.3.0"
@@ -89,6 +90,8 @@ commons-compress = { group = "org.apache.commons", name = "commons-compress", ve
 sherpa-onnx = { group = "com.k2fsa.sherpa.onnx", name = "sherpa-onnx-static", version = "1.13.8" }
 djl-tokenizers = { group = "ai.djl.huggingface", name = "tokenizers", version.ref = "djl" }
 djl-tokenizer-native-android = { group = "ai.djl.android", name = "tokenizer-native", version.ref = "djl" }
+# Solo por su libc++_shared.so, que necesita el tokenizador nativo de DJL y no trae ninguna otra dependencia.
+fbjni = { group = "com.facebook.fbjni", name = "fbjni", version.ref = "fbjni" }
 
 # Plugins de Gradle usados por los plugins de convención (build-logic).
 android-gradlePlugin = { group = "com.android.tools.build", name = "gradle", version.ref = "agp" }

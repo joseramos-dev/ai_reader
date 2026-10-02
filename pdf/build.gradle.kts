@@ -6,7 +6,9 @@ android {
     namespace = "dev.joseramos.aireader.pdf"
 }
 
-// Render de páginas (PdfRenderer del sistema) y extracción de texto e índice (PdfBox-Android).
+// Render de páginas (PdfRenderer del sistema) y extracción de texto e índice (PdfBox-Android). Las
+// líneas con su geometría se devuelven como TextLine de :text.
 dependencies {
+    api(project(":text"))
     implementation(libs.pdfbox.android)
 }

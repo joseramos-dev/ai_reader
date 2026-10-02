@@ -2,4 +2,6 @@
 {{fragments}}
 </fragmentos>
 
+{{position}}
+
 Pregunta: {{question}}

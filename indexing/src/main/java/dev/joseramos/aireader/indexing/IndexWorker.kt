@@ -14,15 +14,22 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dev.joseramos.aireader.core.data.db.BookDao
+import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import java.util.Optional
 import kotlinx.coroutines.CancellationException
 
 /**
- * Etapa opcional de embeddings (F7). La aporta el módulo de RAG; mientras no exista, la
- * indexación termina tras el texto y los capítulos.
+ * Etapa opcional del chat (F7): fragmentos y embeddings. La aporta el módulo de RAG; mientras no
+ * exista, la indexación termina tras el texto y los capítulos.
  */
 interface EmbeddingStage {
+    /**
+     * Trocea el libro en fragmentos (con su índice de texto completo) si aún no los tiene. No usa el
+     * modelo de embeddings: así el chat puede buscar por palabras aunque el modelo falte o falle.
+     */
+    suspend fun prepareChunks(bookId: String)
+
     /** `false` si no se puede ejecutar todavía (por ejemplo, falta descargar el modelo). */
     suspend fun run(bookId: String, onProgress: suspend (Float) -> Unit): Boolean
 }
@@ -62,19 +69,13 @@ class IndexWorker @AssistedInject constructor(
             .onFailure { Log.w(TAG, "Sin primer plano para $bookId", it) }
 
         return try {
-            // Si el trabajo se relanza (Android lo detuvo o la app se cerró) y el texto ya estaba, no
-            // se vuelve a «extrayendo texto 0 %»: el libro sigue pudiéndose leer y escuchar.
-            if (!textIndexer.isComplete(book)) {
-                Log.i(TAG, "Extrayendo el texto de $bookId (${book.pageCount} páginas)")
-                bookDao.updateIndexState(bookId, IndexStatus.EXTRACTING_TEXT, 0f)
-                textIndexer.run(book) { bookDao.updateIndexState(bookId, IndexStatus.EXTRACTING_TEXT, it * TEXT_SHARE) }
-            }
-            bookDao.updateIndexState(bookId, IndexStatus.EMBEDDING, TEXT_SHARE)
-            chapterDetector.run(book)
+            val upgraded = text(book)
+            if (!upgraded) bookDao.updateIndexState(bookId, IndexStatus.EMBEDDING, TEXT_SHARE)
+            chapterDetector.run(book, upgrade = upgraded)
             documentTypeDetector.run(book)
 
-            val embedded = embeddings(bookId)
-            // Si falta el modelo de embeddings, el libro ya se puede leer y escuchar; el chat lo pedirá.
+            val embedded = searchIndex(bookId)
+            // Si los embeddings faltan o fallan, el libro ya se puede leer y escuchar, y el chat busca por palabras.
             bookDao.updateIndexState(
                 bookId,
                 if (embedded) IndexStatus.READY else IndexStatus.TEXT_READY,
@@ -96,29 +97,64 @@ class IndexWorker @AssistedInject constructor(
     }
 
     /**
-     * Fragmentos y vectores para el chat. Es la etapa más pesada (un modelo ONNX en el móvil): si
-     * falla o tumba la app dos veces seguidas con este libro, se salta y el libro queda listo para
-     * leer, sin chat, en lugar de reintentarlo para siempre.
+     * Etapa de texto. Si el trabajo se relanza (Android lo detuvo o la app se cerró) y el texto ya
+     * estaba, no se vuelve a «extrayendo texto 0 %». Si el texto es de una versión anterior del
+     * limpiador, se rehace sin cambiar el estado, porque el libro se sigue pudiendo leer con el texto
+     * antiguo mientras tanto; en ese caso devuelve `true`.
      */
-    @Suppress("TooGenericExceptionCaught") // Incluye errores nativos y de memoria del modelo.
-    private suspend fun embeddings(bookId: String): Boolean {
+    private suspend fun text(book: BookEntity): Boolean {
+        if (textIndexer.isComplete(book)) return false
+        val upgrade = textIndexer.hasOutdatedText(book)
+        Log.i(TAG, "${if (upgrade) "Actualizando" else "Extrayendo"} el texto de ${book.id} (${book.pageCount} págs.)")
+        if (upgrade) {
+            textIndexer.run(book) {}
+        } else {
+            bookDao.updateIndexState(book.id, IndexStatus.EXTRACTING_TEXT, 0f)
+            textIndexer.run(book) { bookDao.updateIndexState(book.id, IndexStatus.EXTRACTING_TEXT, it * TEXT_SHARE) }
+        }
+        return upgrade
+    }
+
+    /**
+     * Fragmentos y vectores para el chat. Los vectores son la etapa más pesada (un modelo ONNX en el
+     * móvil). Cada etapa va protegida por [StageCrashGuard]: si falla o tumba la app dos veces seguidas
+     * con este libro, se salta y el libro queda listo para leer, en lugar de reintentarlo para siempre.
+     */
+    private suspend fun searchIndex(bookId: String): Boolean {
         val stage = embeddingStage.orElse(null) ?: return true
-        if (crashGuard.shouldSkip(EMBEDDING_STAGE, bookId)) {
-            Log.w(TAG, "Se omiten los embeddings de $bookId: la etapa no terminó en los últimos intentos")
+        val chunked = guarded(StageCrashGuard.CHUNKS, bookId) {
+            stage.prepareChunks(bookId)
+            true
+        }
+        return chunked &&
+            guarded(StageCrashGuard.EMBEDDINGS, bookId) {
+                stage.run(bookId) {
+                    bookDao.updateIndexState(bookId, IndexStatus.EMBEDDING, TEXT_SHARE + it * (1 - TEXT_SHARE))
+                }
+            }
+    }
+
+    @Suppress("TooGenericExceptionCaught") // Incluye errores nativos y de memoria del modelo.
+    private suspend fun guarded(name: String, bookId: String, block: suspend () -> Boolean): Boolean {
+        if (crashGuard.shouldSkip(name, bookId)) {
+            Log.w(TAG, "Se omite la etapa $name de $bookId: no terminó en los últimos intentos o no funciona aquí")
             return false
         }
-        crashGuard.begin(EMBEDDING_STAGE, bookId)
+        crashGuard.begin(name, bookId)
         return try {
-            stage.run(bookId) {
-                bookDao.updateIndexState(bookId, IndexStatus.EMBEDDING, TEXT_SHARE + it * (1 - TEXT_SHARE))
-            }.also { crashGuard.end(EMBEDDING_STAGE, bookId) }
+            block()
         } catch (e: CancellationException) {
-            crashGuard.end(EMBEDDING_STAGE, bookId)
             throw e
-        } catch (e: Throwable) {
-            Log.e(TAG, "Fallo calculando los embeddings de $bookId", e)
-            crashGuard.end(EMBEDDING_STAGE, bookId)
+        } catch (e: LinkageError) {
+            // Falta o no carga una biblioteca nativa: no se arreglará reintentando hasta actualizar la app.
+            Log.e(TAG, "La etapa $name no puede funcionar en este dispositivo", e)
+            crashGuard.markUnsupported(name)
             false
+        } catch (e: Throwable) {
+            Log.e(TAG, "Fallo en la etapa $name de $bookId", e)
+            false
+        } finally {
+            crashGuard.end(name, bookId)
         }
     }
 
@@ -152,7 +188,6 @@ class IndexWorker @AssistedInject constructor(
     companion object {
         const val KEY_BOOK_ID = "book_id"
         private const val TAG = "IndexWorker"
-        private const val EMBEDDING_STAGE = "embeddings"
         private const val CHANNEL_ID = "indexing"
         private const val NOTIFICATION_ID = 4101
         private const val MAX_ATTEMPTS = 3

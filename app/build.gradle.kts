@@ -17,6 +17,8 @@ android {
         jniLibs {
             // sherpa-onnx y onnxruntime-android traen cada uno su lib/x86/libonnxruntime.so; x86 de 32 bits no se usa.
             excludes += "lib/x86/**"
+            // De fbjni solo se usa libc++_shared.so (para el tokenizador de DJL).
+            excludes += "lib/*/libfbjni.so"
         }
     }
 
