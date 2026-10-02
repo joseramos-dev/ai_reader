@@ -1,0 +1,257 @@
+package dev.joseramos.aireader.feature.reader
+
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import dev.joseramos.aireader.ai.characters.CharactersSnapshot
+import dev.joseramos.aireader.core.data.book.Bookmark
+import dev.joseramos.aireader.core.data.book.Chapter
+import dev.joseramos.aireader.core.data.book.PageText
+import dev.joseramos.aireader.core.designsystem.component.Cell
+import dev.joseramos.aireader.core.designsystem.component.PlainButton
+import dev.joseramos.aireader.core.designsystem.component.PrimaryButton
+import dev.joseramos.aireader.core.designsystem.theme.AppTheme
+import dev.joseramos.aireader.core.designsystem.theme.BarSize
+import dev.joseramos.aireader.core.designsystem.theme.Radius
+import dev.joseramos.aireader.core.designsystem.theme.Spacing
+import dev.joseramos.aireader.text.PhraseSplitter
+import java.text.DateFormat
+import java.util.Date
+
+/** Icono de marcapáginas de la barra superior: tocar marca o desmarca; mantener pulsado añade una nota. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun BookmarkButton(marked: Boolean, onToggle: () -> Unit, onLongPress: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    Box(
+        Modifier
+            .size(BarSize.minTouch)
+            .clip(RoundedCornerShape(50))
+            .combinedClickable(
+                role = Role.Button,
+                onClickLabel = stringResource(if (marked) R.string.bookmark_remove else R.string.bookmark_add),
+                onLongClickLabel = stringResource(R.string.bookmark_note),
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                    onToggle()
+                },
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongPress()
+                }
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            if (marked) Icons.Rounded.Bookmark else Icons.Outlined.BookmarkBorder,
+            contentDescription = stringResource(if (marked) R.string.bookmark_remove else R.string.bookmark_add),
+            tint = AppTheme.colors.accentText,
+            modifier = Modifier.size(24.dp)
+        )
+    }
+}
+
+@Composable
+internal fun BookmarkNoteDialog(page: Int, initial: String?, onSave: (String?) -> Unit, onDismiss: () -> Unit) {
+    var note by remember { mutableStateOf(initial.orEmpty()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.bookmark_note_title, page)) },
+        text = {
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it.take(MAX_NOTE) },
+                placeholder = { Text(stringResource(R.string.bookmark_note_hint)) },
+                maxLines = 4
+            )
+        },
+        confirmButton = { TextButton(onClick = { onSave(note) }) { Text(stringResource(R.string.bookmark_save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.reader_cancel)) } }
+    )
+}
+
+/** Lista de marcapáginas: página, capítulo, nota o primera frase y fecha. Deslizar para borrar. */
+@Composable
+internal fun BookmarksList(
+    bookmarks: List<Bookmark>,
+    chapters: List<Chapter>,
+    pages: List<PageText>,
+    onSelect: (Bookmark) -> Unit,
+    onDelete: (Bookmark) -> Unit
+) {
+    if (bookmarks.isEmpty()) {
+        Text(
+            stringResource(R.string.bookmarks_empty),
+            style = AppTheme.typography.subheadline,
+            color = AppTheme.colors.secondaryLabel,
+            modifier = Modifier.padding(Spacing.l)
+        )
+        return
+    }
+    val byPage = remember(pages) { pages.associateBy { it.page } }
+    val dates = remember { DateFormat.getDateInstance(DateFormat.MEDIUM) }
+    LazyColumn(Modifier.heightIn(max = 560.dp)) {
+        items(bookmarks, key = { it.id }) { bookmark ->
+            val dismiss = rememberSwipeToDismissBoxState()
+            SwipeToDismissBox(
+                state = dismiss,
+                enableDismissFromStartToEnd = false,
+                onDismiss = { if (it == SwipeToDismissBoxValue.EndToStart) onDelete(bookmark) },
+                backgroundContent = {
+                    Box(
+                        Modifier.fillMaxSize().background(AppTheme.colors.destructive).padding(horizontal = Spacing.l),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        Icon(
+                            Icons.Outlined.Delete,
+                            stringResource(R.string.bookmark_delete),
+                            tint = AppTheme.colors.surface
+                        )
+                    }
+                }
+            ) {
+                val chapter = chapters.lastOrNull { bookmark.page >= it.startPage }
+                val firstPhrase = byPage[bookmark.page]?.paragraphs?.firstOrNull()?.let {
+                    PhraseSplitter.split(it).firstOrNull()
+                }
+                val details = listOfNotNull(chapter?.title, dates.format(Date(bookmark.createdAt))).joinToString(" · ")
+                Cell(
+                    title = bookmark.note ?: firstPhrase ?: stringResource(R.string.reader_page_short, bookmark.page),
+                    subtitle = details,
+                    value = stringResource(R.string.reader_page_short, bookmark.page),
+                    onClick = { onSelect(bookmark) },
+                    modifier = Modifier.background(AppTheme.colors.surface)
+                )
+            }
+        }
+    }
+}
+
+/** Píldora que aparece unos segundos al abrir un libro con marcapáginas. */
+@Composable
+internal fun BookmarkSuggestionChip(page: Int, onGo: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = AppTheme.colors
+    Row(
+        modifier
+            .clip(RoundedCornerShape(50))
+            .background(colors.surfaceElevated)
+            .clickable(role = Role.Button, onClick = onGo)
+            .padding(horizontal = Spacing.m, vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
+    ) {
+        Icon(Icons.Rounded.Bookmark, contentDescription = null, tint = colors.accent, modifier = Modifier.size(18.dp))
+        Text(stringResource(R.string.bookmark_go, page), style = AppTheme.typography.subheadline, color = colors.label)
+    }
+}
+
+/** Tarjeta «¿Repasamos lo anterior?» para libros que llevaban más de una semana sin abrirse. */
+@Composable
+internal fun RecapOfferCard(onRecap: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = AppTheme.colors
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.m)
+            .clip(RoundedCornerShape(Radius.card))
+            .background(colors.surfaceElevated)
+            .padding(Spacing.m),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+    ) {
+        Text(stringResource(R.string.recap_offer_title), style = AppTheme.typography.headline, color = colors.label)
+        Text(
+            stringResource(R.string.recap_offer_message),
+            style = AppTheme.typography.subheadline,
+            color = colors.secondaryLabel
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalAlignment = Alignment.CenterVertically) {
+            PrimaryButton(stringResource(R.string.recap_offer_yes), onRecap)
+            PlainButton(stringResource(R.string.recap_offer_no), onDismiss)
+        }
+    }
+}
+
+/** Fila «En esta página: Raskólnikov · Dunia» del modo PDF, donde no se puede resaltar sobre la página. */
+@Composable
+internal fun PageCharacterChips(
+    characters: CharactersSnapshot,
+    page: PageText?,
+    onOpenCharacter: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val ids = remember(characters, page) {
+        if (page == null || characters.index.isEmpty) emptyList() else characters.index.charactersIn(page.paragraphs)
+    }
+    if (ids.isEmpty()) return
+    val colors = AppTheme.colors
+    LazyRow(
+        modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        item {
+            Text(
+                stringResource(R.string.characters_on_page),
+                style = AppTheme.typography.caption,
+                color = colors.secondaryLabel
+            )
+        }
+        items(ids, key = { it }) { id ->
+            val character = characters.character(id) ?: return@items
+            Text(
+                character.name,
+                style = AppTheme.typography.footnote,
+                color = colors.accentText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(colors.accentFill)
+                    .clickable(role = Role.Button) { onOpenCharacter(id) }
+                    .padding(horizontal = Spacing.s, vertical = Spacing.xxs)
+            )
+        }
+    }
+}
+
+private const val MAX_NOTE = 300

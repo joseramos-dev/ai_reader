@@ -1,0 +1,8 @@
+<libro>
+Título: {{title}}
+Autor: {{author}}
+Páginas: {{pages}}
+
+Capítulos:
+{{chapters}}
+</libro>

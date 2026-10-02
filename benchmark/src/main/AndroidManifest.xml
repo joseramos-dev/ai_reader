@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <queries>
+        <package android:name="dev.joseramos.aireader" />
+    </queries>
+
+    <application>
+        <!--
+            Sirve el PDF de prueba a la app. Es exportado y sin permisos a propósito: Macrobenchmark
+            abre la app desde la shell, que no puede conceder permisos sobre URIs de otra app.
+            Solo existe en el APK de pruebas de rendimiento.
+        -->
+        <provider
+            android:name=".TestPdfProvider"
+            android:authorities="dev.joseramos.aireader.benchmark.pdf"
+            android:exported="true" />
+    </application>
+</manifest>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="characters_title">Personajes</string>
+    <string name="characters_back">Volver</string>
+    <string name="characters_graph">Grafo de relaciones</string>
+    <string name="characters_sort_appearance">Aparición</string>
+    <string name="characters_sort_importance">Importancia</string>
+    <string name="characters_mentions">%1$d</string>
+    <string name="characters_first_page">Desde la p. %1$d</string>
+    <string name="characters_empty_title">Aún no hay personajes</string>
+    <string name="characters_empty_message">Irán apareciendo según avances en la lectura. Nunca se muestra nada de las páginas que no has leído.</string>
+    <string name="characters_not_literature_title">Solo en obras literarias</string>
+    <string name="characters_not_literature_message">Los personajes se analizan en novelas, cuentos y teatro. Si este libro lo es, cambia su tipo en la información del libro (Biblioteca, mantener pulsado).</string>
+    <string name="characters_analyze">Analizar personajes</string>
+    <string name="characters_analyze_hint">La IA lee el libro capítulo a capítulo para reconocer personajes, apodos y relaciones. Cuesta unos céntimos por novela.</string>
+    <string name="characters_analyzing">Analizando personajes… capítulo %1$d de %2$d</string>
+    <string name="characters_failed">No se pudo terminar el análisis.</string>
+    <string name="characters_retry">Reintentar</string>
+    <string name="characters_no_key">Añade tu clave de API para analizar los personajes.</string>
+    <string name="characters_open_settings">Añadir clave de API</string>
+    <string name="characters_book_not_ready">El análisis empezará cuando el libro termine de prepararse.</string>
+
+    <string name="character_first_appearance">Primera aparición</string>
+    <string name="character_page">p. %1$d</string>
+    <string name="character_other_names">Otros nombres</string>
+    <string name="character_facts">Lo que sabemos</string>
+    <string name="character_relations">Relaciones</string>
+    <string name="character_relation_line">%1$s, %2$s %3$s</string>
+    <string name="character_relation_ended">Hasta la p. %1$d</string>
+    <string name="character_nothing_yet">Todavía no se sabe nada más de este personaje.</string>
+    <string name="character_disclaimer">Extraído con IA de las páginas que ya has leído. Puede contener errores.</string>
+
+    <string name="graph_until_chapter">Hasta el capítulo %1$d · %2$s</string>
+    <string name="graph_hide_minor">Ocultar secundarios</string>
+    <string name="graph_empty">Todavía no hay relaciones entre los personajes que conoces.</string>
+    <string name="graph_go_to_page">Ir a la p. %1$d</string>
+    <string name="graph_close">Cerrar</string>
+
+    <string name="relation_group_family">Familia</string>
+    <string name="relation_group_love">Pareja</string>
+    <string name="relation_group_friend">Amistad</string>
+    <string name="relation_group_enemy">Enemistad</string>
+    <string name="relation_group_other">Otras</string>
+
+    <string name="relation_spouse">casado con</string>
+    <string name="relation_family">familiar de</string>
+    <string name="relation_friend">amigo de</string>
+    <string name="relation_romance">pareja de</string>
+    <string name="relation_enemy">enemigo de</string>
+    <string name="relation_acquaintance">conoce a</string>
+    <string name="relation_met">se encontró con</string>
+    <string name="relation_works_with">trabaja con</string>
+    <string name="relation_other">relacionado con</string>
+</resources>

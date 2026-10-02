@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="characters_channel">Análisis de personajes</string>
+    <string name="characters_notification_title">Analizando personajes…</string>
+</resources>

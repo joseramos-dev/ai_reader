@@ -1,0 +1,15 @@
+Clasifica este documento PDF en uno de estos tipos:
+- LITERATURE: novela, cuento, teatro, poesía o cualquier obra narrativa con personajes.
+- SCIENTIFIC: artículo científico, tesis o informe técnico con método, resultados y referencias.
+- EDUCATIONAL: libro de texto, manual o curso organizado en temas o lecciones, con ejercicios o actividades.
+- GENERIC: cualquier otro documento (ensayo divulgativo, informe, contrato, formulario, presentación…).
+
+Título: {{title}}
+Capítulos: {{chapters}}
+
+<muestra>
+{{text}}
+</muestra>
+
+Responde solo con un objeto JSON, sin texto alrededor, con este formato:
+{"tipo": "LITERATURE", "confianza": 0.9, "motivo": "Novela con diálogos y personajes"}

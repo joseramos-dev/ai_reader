@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_title">Pregunta al libro</string>
+    <string name="chat_back">Volver</string>
+    <string name="chat_new">Nueva conversación</string>
+    <string name="chat_placeholder">Escribe una pregunta</string>
+    <string name="chat_send">Enviar</string>
+    <string name="chat_stop">Detener</string>
+    <string name="chat_empty_title">Pregunta lo que quieras</string>
+    <string name="chat_empty_message">Las respuestas salen del texto del libro e incluyen la página de donde se ha sacado cada dato.</string>
+    <string name="chat_suggestion_topic">¿De qué trata el libro?</string>
+    <string name="chat_suggestion_ideas">¿Cuáles son las ideas principales?</string>
+    <string name="chat_suggestion_characters">¿Quiénes son los personajes o autores que aparecen?</string>
+    <string name="chat_page">p. %1$d</string>
+    <string name="chat_no_key">Para preguntar al libro hace falta tu clave de API de Anthropic.</string>
+    <string name="chat_add_key">Añadir clave</string>
+    <string name="chat_model_missing">Para buscar en el libro hace falta un modelo de unos %1$d MB que se descarga una vez.</string>
+    <string name="chat_download_model">Descargar modelo</string>
+    <string name="chat_downloading">Descargando… %1$d %%</string>
+    <string name="chat_installing">Instalando…</string>
+    <string name="chat_indexing">Preparando el libro para las preguntas… %1$d %%</string>
+    <string name="chat_index_failed">No se pudo preparar el libro. Prueba a importarlo de nuevo.</string>
+    <string name="chat_privacy">Se envían a Anthropic tu pregunta y los fragmentos del libro necesarios para responder.</string>
+</resources>

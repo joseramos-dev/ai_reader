@@ -1,0 +1,140 @@
+package dev.joseramos.aireader.feature.reader
+
+import android.graphics.Bitmap
+import android.util.Size
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+
+private const val MAX_ZOOM = 4f
+private const val DOUBLE_TAP_ZOOM = 2f
+
+/** Por encima de este zoom las páginas se vuelven a renderizar al doble de resolución. */
+private const val HIGH_RES_ZOOM = 1.4f
+
+/**
+ * Páginas del PDF en scroll vertical continuo. El zoom con dos dedos (y el doble toque) escala
+ * toda la columna; con un dedo se sigue desplazando en vertical.
+ */
+@Composable
+internal fun PdfPages(
+    listState: LazyListState,
+    pageSizes: List<Size>,
+    render: suspend (index: Int, widthPx: Int) -> Bitmap?,
+    contentPadding: PaddingValues,
+    onTap: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offsetX by remember { mutableFloatStateOf(0f) }
+
+    BoxWithConstraints(
+        modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        if (event.changes.size >= 2) {
+                            scale = (scale * event.calculateZoom()).coerceIn(1f, MAX_ZOOM)
+                            val maxOffset = (scale - 1) * size.width / 2
+                            offsetX = (offsetX + event.calculatePan().x).coerceIn(-maxOffset, maxOffset)
+                            event.changes.forEach { it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onTap() },
+                    onDoubleTap = {
+                        scale = if (scale > 1f) 1f else DOUBLE_TAP_ZOOM
+                        offsetX = 0f
+                    }
+                )
+            }
+    ) {
+        val baseWidth = constraints.maxWidth
+        val renderWidth = if (scale > HIGH_RES_ZOOM) baseWidth * 2 else baseWidth
+        LazyColumn(
+            state = listState,
+            contentPadding = contentPadding,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offsetX
+                }
+        ) {
+            items(pageSizes.size, key = { it }) { index ->
+                PdfPage(index, pageSizes[index], renderWidth, render)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PdfPage(index: Int, size: Size, widthPx: Int, render: suspend (Int, Int) -> Bitmap?) {
+    val bitmap by produceState<ImageBitmap?>(null, index, widthPx) {
+        value = render(index, widthPx)?.asImageBitmap()
+    }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(size.width.toFloat() / size.height.coerceAtLeast(1))
+            .background(Color.White)
+    ) {
+        bitmap?.let {
+            Image(
+                bitmap = it,
+                contentDescription = "Página ${index + 1}",
+                contentScale = ContentScale.FillWidth,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+
+/** Página (base 1) que ocupa la mayor parte de la pantalla. */
+internal fun LazyListState.dominantPage(): Int {
+    val items = layoutInfo.visibleItemsInfo
+    if (items.isEmpty()) return firstVisibleItemIndex + 1
+    val viewportEnd = layoutInfo.viewportEndOffset
+    val best = items.maxBy { item ->
+        val top = item.offset.coerceAtLeast(0)
+        val bottom = (item.offset + item.size).coerceAtMost(viewportEnd)
+        (bottom - top).toFloat().roundToInt()
+    }
+    return best.index + 1
+}

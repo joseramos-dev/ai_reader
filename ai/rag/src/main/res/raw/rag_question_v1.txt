@@ -1,0 +1,5 @@
+<fragmentos>
+{{fragments}}
+</fragmentos>
+
+Pregunta: {{question}}

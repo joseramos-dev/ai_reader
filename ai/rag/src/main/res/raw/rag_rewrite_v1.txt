@@ -1,0 +1,7 @@
+Esta es una conversación sobre un libro. Reescribe la última pregunta del usuario como una pregunta autónoma que se entienda sin la conversación (sustituye «eso», «él», «ese capítulo»… por lo que corresponda). Si ya es autónoma, devuélvela igual. Responde solo con la pregunta.
+
+<conversacion>
+{{history}}
+</conversacion>
+
+Última pregunta: {{question}}

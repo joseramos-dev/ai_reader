@@ -1,0 +1,10 @@
+Este libro en PDF tiene {{pages}} páginas. Cada línea muestra el número de una página y el principio de su primer párrafo.
+
+Identifica los capítulos o secciones principales y la página en la que empieza cada uno. Ignora la portada, el índice, los agradecimientos y las páginas en blanco. Las páginas deben estar entre 1 y {{pages}} y en orden creciente.
+
+Responde solo con un array JSON, sin texto alrededor, con este formato:
+[{"title": "Capítulo 1. El viaje", "page": 7}]
+
+<paginas>
+{{text}}
+</paginas>

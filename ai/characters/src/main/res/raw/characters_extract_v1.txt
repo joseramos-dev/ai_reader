@@ -1,0 +1,23 @@
+Estoy creando fichas de personajes de la novela «{{book}}» capítulo a capítulo, para un lector que no quiere spoilers. Este es el capítulo {{number}}, «{{chapter}}», páginas {{start}}–{{end}}{{part}}. Cada página del texto empieza con su número entre corchetes, como [p. 61].
+
+Personajes ya conocidos de capítulos anteriores (id: nombres y apodos):
+{{known}}
+
+Devuelve los personajes que intervienen o se mencionan con relevancia en este texto, siguiendo estas reglas:
+- Si el personaje ya es conocido, usa su id («c12») aunque aquí aparezca con otro nombre, apodo, diminutivo o tratamiento. A los personajes nuevos dales ids «n1», «n2»…
+- En "names" pon cada forma distinta con la que el texto nombra al personaje (nombre completo, nombre, apellido, apodo, diminutivo, tratamiento), escrita exactamente como en el texto, con la página donde aparece por primera vez. Tipos: NAME (nombre o nombre completo), SURNAME (apellido), NICKNAME (apodo o diminutivo), TITLE (tratamiento o cargo, como «el príncipe»).
+- Si en la historia el personaje pasa a llamarse de otra forma (nuevo título, matrimonio, identidad revelada), indica en "renamedTo" el nombre nuevo y la página.
+- En "facts" pon como mucho 3 datos nuevos e importantes de este texto (quién es, a qué se dedica, rasgos, lo que hace o le pasa), cada uno en una frase breve y con su página. Solo lo que dice el texto, sin interpretar ni adelantar nada.
+- En "relations" pon las relaciones entre personajes que se revelan aquí. Tipos: SPOUSE (matrimonio), FAMILY, FRIEND, ROMANCE, ENEMY, ACQUAINTANCE (conocido), MET (se encontró con), WORKS_WITH, OTHER. "label" dice cómo se lee desde "from" («hermana de», «se encontró con»). Si una relación ya existente termina (ruptura, muerte…), añádela con "ended": true y la página.
+- En "same" pon pares de ids conocidos que resultan ser el mismo personaje.
+- No incluyas personas reales citadas de pasada ni personajes que solo aparecen en una enumeración.
+- Todas las páginas deben estar entre {{start}} y {{end}}.
+
+Responde solo con un objeto JSON, sin texto alrededor, con este formato:
+{"characters": [{"ref": "c12", "names": [{"name": "Rodia", "kind": "NICKNAME", "page": 61}], "renamedTo": null, "facts": [{"page": 63, "text": "Es estudiante y vive en una buhardilla."}]}, {"ref": "n1", "names": [{"name": "Avdotia Románovna", "kind": "NAME", "page": 70}, {"name": "Dunia", "kind": "NICKNAME", "page": 70}], "facts": []}],
+ "relations": [{"from": "n1", "to": "c12", "type": "FAMILY", "label": "hermana de", "page": 70, "ended": false}],
+ "same": []}
+
+<texto>
+{{text}}
+</texto>

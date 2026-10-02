@@ -1,6 +1,6 @@
 # AI Reader
 
-Lector de PDF para Android con lectura en voz alta y funciones de IA sobre el documento: resúmenes por capítulo y chat con el libro (RAG) con citas de página.
+Lector de PDF para Android con lectura en voz alta y funciones de IA sobre el documento: resúmenes por capítulo, repaso de lo leído, chat con el libro (RAG) con citas de página y, en novelas, personajes y relaciones sin spoilers.
 
 - App nativa en **Kotlin + Jetpack Compose**, sin servidor propio.
 - Voz (TTS), embeddings, índice y búsqueda se ejecutan **en el dispositivo**.
@@ -41,9 +41,63 @@ La APK queda en `app/build/outputs/apk/debug/app-debug.apk`. Para instalarla en 
 ## Estructura
 
 ```
-app/                 Módulo de la aplicación
+app/                 Aplicación: Application (Hilt + WorkManager), MainActivity y navegación
+core/common          Dispatchers y ámbitos de corrutinas inyectables
+core/designsystem    Tema (colores, Inter, espaciados) y componentes tipo iOS
+core/data            Room, DataStore, clave de API cifrada (Tink) y repositorios
+pdf                  Render de páginas (PdfRenderer) y extracción de texto e índice (PdfBox)
+text                 Limpieza del texto, frases, fragmentos, normalización para la voz y buscador de nombres
+tts                  Voz Piper (sherpa-onnx), pipeline de audio y servicio de reproducción (Media3)
+indexing             Importación de PDFs e IndexWorker: texto, capítulos, tipo de documento y embeddings
+ai/models            Descarga, verificación e instalación de modelos (voz, embeddings)
+ai/llm               Cliente de Claude, prompts, resúmenes y repaso
+ai/embeddings        Embeddings en el dispositivo (multilingual-e5-small con ONNX Runtime)
+ai/rag               Búsqueda híbrida, respuestas con citas y evaluación de la búsqueda
+ai/characters        Personajes: extracción con IA, fusión de apodos y reglas sin spoilers
+feature/library      Pantalla Biblioteca
+feature/reader       Lector (PDF y texto), voz, marcapáginas y hojas de IA
+feature/chat         Chat con el libro
+feature/characters   Personajes, ficha y grafo de relaciones
+feature/settings     Pantalla Ajustes
+benchmark/           Pruebas de rendimiento con Macrobenchmark
+build-logic/         Plugins de convención de Gradle compartidos por los módulos
+spikes/              App de pruebas técnicas (fase F1), desechable
+tools/spikes/        Scripts auxiliares de los spikes (referencia de tokens en Python)
+tools/rag-eval/      Formato y plantilla del conjunto de preguntas para evaluar la búsqueda
 config/detekt/       Configuración de análisis estático
 gradle/              Wrapper y catálogo de versiones (libs.versions.toml)
 ```
 
-Los módulos de funcionalidades (`:core:*`, `:feature:*`, `:ai:*`, `:tts`, `:pdf`, `:text`) se irán añadiendo según avance el desarrollo.
+Capturas de referencia del sistema de diseño (claro y oscuro), generadas en la JVM:
+
+```bash
+./gradlew :core:designsystem:recordRoborazziDebug
+```
+
+Quedan en `core/designsystem/build/outputs/roborazzi/`.
+
+### Rendimiento (`:benchmark`)
+
+Mide la fluidez del scroll del lector con un PDF generado de 320 páginas. Necesita un móvil conectado
+(mejor real que emulador):
+
+```bash
+./gradlew :benchmark:connectedBenchmarkAndroidTest
+```
+
+### Evaluación de la búsqueda
+
+En las compilaciones de depuración, Ajustes → Acerca de → «Evaluar la búsqueda» mide con un fichero
+de preguntas si el chat encuentra la página de cada respuesta. Formato e instrucciones en
+[tools/rag-eval](tools/rag-eval/README.md).
+
+### App de pruebas técnicas (`:spikes`)
+
+Mide en un móvil real la voz en el dispositivo, los embeddings, el tokenizador, la extracción de texto de PDFs, el audio en segundo plano y el streaming de la API de Claude. Se instala aparte como «AI Reader · Spikes»:
+
+```bash
+./gradlew :spikes:installDebug
+```
+
+La primera compilación descarga el AAR de sherpa-onnx (unos 40 MB) en `spikes/libs/`.
+

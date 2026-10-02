@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_title">Biblioteca</string>
+    <string name="library_empty_title">Tu biblioteca está vacía</string>
+    <string name="library_empty_message">Importa un PDF para leerlo, escucharlo y hacerle preguntas.</string>
+    <string name="library_import">Importar PDF</string>
+    <string name="library_sort">Ordenar</string>
+    <string name="library_sort_recent">Recientes</string>
+    <string name="library_sort_title">Título</string>
+    <string name="library_importing">Importando…</string>
+    <string name="library_pages">%1$d págs.</string>
+    <string name="library_preparing">Preparando… %1$d %%</string>
+    <string name="library_prepare_failed">No se pudo preparar</string>
+    <string name="library_progress">%1$d %% leído</string>
+    <string name="library_new">Sin empezar</string>
+    <string name="library_open">Abrir</string>
+    <string name="library_delete">Eliminar libro</string>
+    <string name="library_delete_title">¿Eliminar «%1$s»?</string>
+    <string name="library_delete_message">Se borrarán el PDF, su texto, los resúmenes y el chat. No se puede deshacer.</string>
+    <string name="library_cancel">Cancelar</string>
+    <string name="library_info_pages">Páginas</string>
+    <string name="library_info_imported">Importado</string>
+    <string name="library_info_status">Estado</string>
+    <string name="library_status_ready">Listo</string>
+    <string name="library_status_preparing">Preparando</string>
+    <string name="library_status_needs_model">Listo para leer (falta el modelo para el chat)</string>
+    <string name="library_status_failed">Error al preparar</string>
+    <string name="library_error_title">No se pudo importar</string>
+    <string name="library_ok">Aceptar</string>
+    <string name="library_open_bookmark">Abrir en el marcapáginas · p. %1$d</string>
+    <string name="library_type">Tipo de documento</string>
+    <string name="library_type_pending">Sin clasificar</string>
+    <string name="library_type_literature">Literatura</string>
+    <string name="library_type_scientific">Científico</string>
+    <string name="library_type_educational">Educativo</string>
+    <string name="library_type_generic">Documento general</string>
+    <string name="library_type_footer">El tipo cambia el estilo de los resúmenes. Personajes y relaciones solo están disponibles en literatura. Si lo eliges tú, no se vuelve a calcular.</string>
+</resources>

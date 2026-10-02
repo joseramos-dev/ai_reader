@@ -1,6 +1,37 @@
 # Ajustes sobre la configuración por defecto de detekt (buildUponDefaultConfig = true).
+# Las excepciones para Compose son las habituales: las funciones @Composable se nombran
+# en PascalCase, describen UI (largas y con valores de diseño) y dan nombre a su fichero.
 
 naming:
   FunctionNaming:
-    # Las funciones @Composable se nombran en PascalCase.
     ignoreAnnotated: ['Composable']
+  MatchingDeclarationName:
+    # Los ficheros se nombran por su composable principal, no por la ruta o el modelo que declaran.
+    active: false
+
+style:
+  ReturnCount:
+    max: 4
+    excludeGuardClauses: true
+  MagicNumber:
+    ignoreAnnotated: ['Composable', 'Preview']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+
+complexity:
+  LongMethod:
+    ignoreAnnotated: ['Composable']
+  LongParameterList:
+    ignoreAnnotated: ['Composable']
+  TooManyFunctions:
+    # Los módulos de Hilt tienen una función @Provides por dependencia.
+    ignoreAnnotated: ['Module']
+    allowedFunctionsPerObject: 15
+    allowedFunctionsPerClass: 20
+  CyclomaticComplexMethod:
+    ignoreAnnotated: ['Composable']
+  ComplexCondition:
+    allowedConditions: 5
+  NestedBlockDepth:
+    allowedDepth: 5
+

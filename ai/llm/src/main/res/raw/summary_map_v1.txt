@@ -1,0 +1,5 @@
+Este es el fragmento {{part}} de {{parts}} del capítulo «{{chapter}}» del libro «{{book}}». Resume este fragmento en un párrafo, conservando nombres, datos y el hilo de los hechos, para combinarlo después con los resúmenes del resto del capítulo.
+
+<fragmento>
+{{text}}
+</fragmento>

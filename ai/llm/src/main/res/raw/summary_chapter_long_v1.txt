@@ -1,0 +1,5 @@
+Resume con detalle el capítulo «{{chapter}}» del libro «{{book}}». Usa entre 3 y 5 párrafos breves y conserva los nombres, fechas, datos y argumentos importantes.
+
+<capitulo>
+{{text}}
+</capitulo>

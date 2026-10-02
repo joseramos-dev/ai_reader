@@ -1,0 +1,665 @@
+package dev.joseramos.aireader.feature.reader
+
+import android.graphics.Bitmap
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
+import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
+import dev.joseramos.aireader.core.data.book.Chapter
+import dev.joseramos.aireader.core.data.db.IndexStatus
+import dev.joseramos.aireader.core.data.settings.AppSettings
+import dev.joseramos.aireader.core.designsystem.component.AppBottomSheet
+import dev.joseramos.aireader.core.designsystem.component.BarIconButton
+import dev.joseramos.aireader.core.designsystem.component.Cell
+import dev.joseramos.aireader.core.designsystem.component.EmptyState
+import dev.joseramos.aireader.core.designsystem.component.PlainButton
+import dev.joseramos.aireader.core.designsystem.component.barBlur
+import dev.joseramos.aireader.core.designsystem.theme.AppTheme
+import dev.joseramos.aireader.core.designsystem.theme.BarSize
+import dev.joseramos.aireader.core.designsystem.theme.Spacing
+import dev.joseramos.aireader.tts.PlaybackError
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.launch
+
+/** Estado de la lectura en voz alta que muestra el lector (lo aporta F5). */
+data class ReaderPlayback(
+    val isPlaying: Boolean = false,
+    val location: PhraseLocation? = null,
+    val phrase: String? = null,
+    val error: PlaybackError? = null
+)
+
+/** Acciones del lector; las de voz, IA y personajes son opcionales para poder montarlo por fases. */
+class ReaderActions(
+    val onBack: () -> Unit,
+    val onPageVisible: (Int) -> Unit,
+    val onSetMode: (ReaderMode) -> Unit,
+    val onSetTextScale: (Float) -> Unit,
+    val onListen: ((page: Int) -> Unit)? = null,
+    val onPause: (() -> Unit)? = null,
+    /** Seguir la lectura en voz alta desde una frase tocada en el modo texto. */
+    val onListenFrom: ((PhraseLocation) -> Unit)? = null,
+    val onOpenAi: (() -> Unit)? = null,
+    val onChapterSummary: ((Chapter) -> Unit)? = null,
+    val onToggleBookmark: (page: Int) -> Unit = {},
+    val onBookmarkNote: (page: Int, note: String?) -> Unit = { _, _ -> },
+    val onDeleteBookmark: (id: Long) -> Unit = {},
+    val onDismissBookmarkSuggestion: () -> Unit = {},
+    val onOpenCharacters: (() -> Unit)? = null,
+    val onOpenCharacter: (Long) -> Unit = {},
+    val onRecap: (() -> Unit)? = null,
+    val onDismissRecap: () -> Unit = {}
+)
+
+private enum class ReaderSheet { CHAPTERS, APPEARANCE }
+
+private enum class ContentsTab { CHAPTERS, BOOKMARKS }
+
+@Composable
+internal fun ReaderScreen(
+    state: ReaderUiState,
+    playback: ReaderPlayback,
+    render: suspend (Int, Int) -> Bitmap?,
+    actions: ReaderActions,
+    extras: ReaderExtras = ReaderExtras(),
+    jumpRequests: Flow<Int> = emptyFlow()
+) {
+    val colors = AppTheme.colors
+    var controlsVisible by rememberSaveable { mutableStateOf(true) }
+    var sheet by rememberSaveable { mutableStateOf<ReaderSheet?>(null) }
+    var goToPage by rememberSaveable { mutableStateOf(false) }
+    var notePage by rememberSaveable { mutableStateOf<Int?>(null) }
+    val scope = rememberCoroutineScope()
+    val hazeState = rememberHazeState()
+
+    if (state.error != null) {
+        EmptyState(
+            Icons.Outlined.TextFields,
+            stringResource(R.string.reader_open_error),
+            state.error,
+            Modifier.statusBarsPadding()
+        )
+        return
+    }
+    if (!state.opened) {
+        Box(Modifier.fillMaxSize().background(colors.groupedBackground))
+        return
+    }
+
+    // Una lista por modo; ambas tienen un elemento por página, así que el índice es la página - 1.
+    val listState = remember(state.mode) { LazyListState(state.startPage - 1) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.dominantPage() }.collect(actions.onPageVisible)
+    }
+    // Mientras suena la voz, la vista sigue a la página que se está leyendo.
+    LaunchedEffect(playback.location?.page, playback.isPlaying) {
+        val page = playback.location?.page ?: return@LaunchedEffect
+        if (playback.isPlaying && page != listState.dominantPage()) listState.animateScrollToItem(page - 1)
+    }
+    val scrollTo: (Int) -> Unit = { page ->
+        scope.launch {
+            listState.scrollToItem(
+                (page - 1).coerceIn(
+                    0,
+                    state.pageCount - 1
+                )
+            )
+        }
+    }
+    LaunchedEffect(listState, jumpRequests) { jumpRequests.collect(scrollTo) }
+    // El chip «Ir al marcapáginas» se ofrece solo unos segundos.
+    LaunchedEffect(extras.bookmarkSuggestion) {
+        if (extras.bookmarkSuggestion != null) {
+            delay(BOOKMARK_CHIP_MS)
+            actions.onDismissBookmarkSuggestion()
+        }
+    }
+
+    val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val contentPadding = PaddingValues(top = topInset + BarSize.topBar, bottom = bottomInset + CONTROLS_HEIGHT)
+
+    Box(
+        Modifier.fillMaxSize().background(
+            if (state.mode ==
+                ReaderMode.PDF
+            ) {
+                colors.groupedBackground
+            } else {
+                colors.background
+            }
+        )
+    ) {
+        Box(Modifier.fillMaxSize().hazeSource(hazeState)) {
+            when (state.mode) {
+                ReaderMode.PDF -> PdfPages(
+                    listState = listState,
+                    pageSizes = state.pageSizes,
+                    render = render,
+                    contentPadding = contentPadding,
+                    onTap = { controlsVisible = !controlsVisible }
+                )
+                ReaderMode.TEXT -> TextModeContent(state, playback, extras, actions, listState, contentPadding) {
+                    controlsVisible =
+                        !controlsVisible
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = controlsVisible,
+            enter = fadeIn() + slideInVertically { -it },
+            exit = fadeOut() + slideOutVertically { -it },
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            TopControls(
+                state = state,
+                marked = extras.bookmarks.any { it.page == state.currentPage },
+                actions = actions,
+                onBookmarkNote = { notePage = state.currentPage },
+                modifier = Modifier.barBlur(hazeState)
+            )
+        }
+        extras.bookmarkSuggestion?.let { page ->
+            BookmarkSuggestionChip(
+                page = page,
+                onGo = {
+                    scrollTo(page)
+                    actions.onDismissBookmarkSuggestion()
+                },
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset + BarSize.topBar + Spacing.xs)
+            )
+        }
+        AnimatedVisibility(
+            visible = controlsVisible || playback.isPlaying,
+            enter = fadeIn() + slideInVertically { it },
+            exit = fadeOut() + slideOutVertically { it },
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            BottomControls(
+                state = state,
+                playback = playback,
+                extras = extras,
+                expanded = controlsVisible,
+                actions = actions,
+                onChapters = { sheet = ReaderSheet.CHAPTERS },
+                onAppearance = { sheet = ReaderSheet.APPEARANCE },
+                onGoToPage = { goToPage = true },
+                onSeek = scrollTo,
+                modifier = Modifier.barBlur(hazeState)
+            )
+        }
+    }
+
+    when (sheet) {
+        ReaderSheet.CHAPTERS -> ContentsSheet(
+            state = state,
+            extras = extras,
+            onSelectPage = { page ->
+                sheet = null
+                scrollTo(page)
+            },
+            onSummary = actions.onChapterSummary?.let { summary ->
+                { chapter: Chapter ->
+                    sheet = null
+                    summary(chapter)
+                }
+            },
+            onDeleteBookmark = actions.onDeleteBookmark,
+            onDismiss = { sheet = null }
+        )
+        ReaderSheet.APPEARANCE -> AppearanceSheet(state, actions, onDismiss = { sheet = null })
+        null -> Unit
+    }
+    notePage?.let { page ->
+        BookmarkNoteDialog(
+            page = page,
+            initial = extras.bookmarks.firstOrNull { it.page == page }?.note,
+            onSave = { note ->
+                actions.onBookmarkNote(page, note)
+                notePage = null
+            },
+            onDismiss = { notePage = null }
+        )
+    }
+    if (goToPage) {
+        GoToPageDialog(state.pageCount, onGo = { page ->
+            goToPage = false
+            scrollTo(page)
+        }, onDismiss = {
+            goToPage =
+                false
+        })
+    }
+}
+
+@Composable
+private fun TextModeContent(
+    state: ReaderUiState,
+    playback: ReaderPlayback,
+    extras: ReaderExtras,
+    actions: ReaderActions,
+    listState: LazyListState,
+    contentPadding: PaddingValues,
+    onTap: () -> Unit
+) {
+    val book = state.book
+    val textReady =
+        book != null && book.indexStatus !in setOf(IndexStatus.PENDING, IndexStatus.EXTRACTING_TEXT, IndexStatus.FAILED)
+    if (!textReady || state.pages.isEmpty()) {
+        EmptyState(
+            icon = Icons.Outlined.TextFields,
+            title = stringResource(R.string.reader_text_preparing_title),
+            message = stringResource(
+                R.string.reader_text_preparing_message,
+                ((book?.indexProgress ?: 0f) * 2 * PERCENT).roundToInt().coerceAtMost(PERCENT)
+            ),
+            modifier = Modifier.padding(contentPadding).pointerInput(Unit) { detectTapGestures { onTap() } }
+        )
+        return
+    }
+    TextPages(
+        listState = listState,
+        pageCount = state.pageCount,
+        pages = state.pages,
+        textScale = state.textScale,
+        highlight = playback.location,
+        contentPadding = contentPadding,
+        modifier = Modifier.pointerInput(Unit) { detectTapGestures { onTap() } },
+        names = extras.characters.index,
+        onTapCharacter = actions.onOpenCharacter,
+        // Solo con la voz en marcha (sonando o en pausa); si no, tocar muestra u oculta los controles.
+        onTapPhrase = actions.onListenFrom?.takeIf { playback.location != null }
+    )
+}
+
+@Composable
+private fun TopControls(
+    state: ReaderUiState,
+    marked: Boolean,
+    actions: ReaderActions,
+    onBookmarkNote: () -> Unit,
+    modifier: Modifier
+) {
+    val colors = AppTheme.colors
+    Box(modifier.fillMaxWidth().statusBarsPadding().height(BarSize.topBar)) {
+        BarIconButton(
+            Icons.AutoMirrored.Rounded.ArrowBackIos,
+            stringResource(R.string.reader_back),
+            actions.onBack,
+            Modifier.align(Alignment.CenterStart).padding(start = Spacing.xxs)
+        )
+        Row(Modifier.align(Alignment.CenterEnd).padding(end = Spacing.xxs)) {
+            actions.onOpenCharacters?.let {
+                BarIconButton(Icons.Outlined.People, stringResource(R.string.reader_characters), it)
+            }
+            BookmarkButton(marked, { actions.onToggleBookmark(state.currentPage) }, onBookmarkNote)
+        }
+        Column(
+            Modifier.align(Alignment.Center).padding(horizontal = 96.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                state.book?.title ?: stringResource(R.string.reader_untitled),
+                style = AppTheme.typography.headline,
+                color = colors.label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            state.currentChapter?.let {
+                Text(
+                    it.title,
+                    style = AppTheme.typography.caption,
+                    color = colors.secondaryLabel,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BottomControls(
+    state: ReaderUiState,
+    playback: ReaderPlayback,
+    extras: ReaderExtras,
+    expanded: Boolean,
+    actions: ReaderActions,
+    onChapters: () -> Unit,
+    onAppearance: () -> Unit,
+    onGoToPage: () -> Unit,
+    onSeek: (Int) -> Unit,
+    modifier: Modifier
+) {
+    val colors = AppTheme.colors
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    Column(modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = Spacing.m, vertical = Spacing.xs)) {
+        if (extras.offerRecap && actions.onRecap != null) {
+            RecapOfferCard(
+                onRecap = actions.onRecap,
+                onDismiss = actions.onDismissRecap,
+                modifier = Modifier.padding(bottom = Spacing.xs)
+            )
+        }
+        if (expanded && state.mode == ReaderMode.PDF) {
+            PageCharacterChips(
+                characters = extras.characters,
+                page = state.pages.firstOrNull { it.page == state.currentPage },
+                onOpenCharacter = actions.onOpenCharacter,
+                modifier = Modifier.padding(bottom = Spacing.xxs)
+            )
+        }
+        if (playback.isPlaying && playback.phrase != null) {
+            // Tira «leyendo ahora»: en modo PDF no se puede resaltar sobre la página.
+            Text(
+                playback.phrase,
+                style = AppTheme.typography.subheadline,
+                color = colors.label,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xxs)
+            )
+        }
+        if (expanded) {
+            val shownPage = dragging?.roundToInt() ?: state.currentPage
+            Text(
+                stringResource(R.string.reader_page_of, shownPage, state.pageCount),
+                style = AppTheme.typography.footnote,
+                color = colors.secondaryLabel,
+                modifier = Modifier.align(
+                    Alignment.CenterHorizontally
+                ).clickable(role = Role.Button, onClick = onGoToPage).padding(Spacing.xxs)
+            )
+            if (state.pageCount > 1) {
+                Slider(
+                    value = dragging ?: state.currentPage.toFloat(),
+                    onValueChange = { dragging = it },
+                    onValueChangeFinished = {
+                        dragging?.let { onSeek(it.roundToInt()) }
+                        dragging = null
+                    },
+                    valueRange = 1f..state.pageCount.toFloat(),
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = colors.accent,
+                        inactiveTrackColor = colors.fill
+                    )
+                )
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                ControlButton(
+                    Icons.AutoMirrored.Rounded.FormatListBulleted,
+                    stringResource(R.string.reader_chapters),
+                    onChapters
+                )
+                if (actions.onListen != null) {
+                    if (playback.isPlaying) {
+                        ControlButton(Icons.Rounded.Pause, stringResource(R.string.reader_pause)) {
+                            actions.onPause?.invoke()
+                        }
+                    } else {
+                        ControlButton(Icons.Outlined.Headphones, stringResource(R.string.reader_listen)) {
+                            actions.onListen.invoke(state.currentPage)
+                        }
+                    }
+                }
+                actions.onOpenAi?.let {
+                    ControlButton(Icons.Outlined.AutoAwesome, stringResource(R.string.reader_ai), it)
+                }
+                ControlButton(Icons.Outlined.TextFields, stringResource(R.string.reader_appearance), onAppearance)
+            }
+        } else if (playback.isPlaying) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                ControlButton(Icons.Rounded.Pause, stringResource(R.string.reader_pause)) { actions.onPause?.invoke() }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ControlButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    val colors = AppTheme.colors
+    Column(
+        Modifier.clickable(
+            role = Role.Button,
+            onClick = onClick
+        ).heightIn(min = BarSize.minTouch).padding(horizontal = Spacing.s, vertical = Spacing.xxs),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(24.dp))
+        Text(label, style = AppTheme.typography.caption, color = colors.secondaryLabel)
+    }
+}
+
+/** Hoja ☰: capítulos y marcapáginas, como el índice de un lector de libros de iOS. */
+@Composable
+private fun ContentsSheet(
+    state: ReaderUiState,
+    extras: ReaderExtras,
+    onSelectPage: (Int) -> Unit,
+    onSummary: ((Chapter) -> Unit)?,
+    onDeleteBookmark: (Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var tab by rememberSaveable { mutableStateOf(ContentsTab.CHAPTERS) }
+    AppBottomSheet(onDismissRequest = onDismiss, skipPartiallyExpanded = false) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.xs)) {
+            ContentsTab.entries.forEachIndexed { i, entry ->
+                SegmentedButton(
+                    selected = tab == entry,
+                    onClick = { tab = entry },
+                    shape = SegmentedButtonDefaults.itemShape(i, ContentsTab.entries.size)
+                ) {
+                    Text(
+                        stringResource(
+                            if (entry == ContentsTab.CHAPTERS) R.string.reader_chapters else R.string.reader_bookmarks
+                        )
+                    )
+                }
+            }
+        }
+        when (tab) {
+            ContentsTab.CHAPTERS -> ChaptersList(state.chapters, state.currentChapter, {
+                onSelectPage(it.startPage)
+            }, onSummary)
+            ContentsTab.BOOKMARKS -> BookmarksList(
+                bookmarks = extras.bookmarks,
+                chapters = state.chapters,
+                pages = state.pages,
+                onSelect = { onSelectPage(it.page) },
+                onDelete = { onDeleteBookmark(it.id) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChaptersList(
+    chapters: List<Chapter>,
+    current: Chapter?,
+    onSelect: (Chapter) -> Unit,
+    onSummary: ((Chapter) -> Unit)?
+) {
+    if (chapters.isEmpty()) {
+        Text(
+            stringResource(R.string.reader_no_chapters),
+            style = AppTheme.typography.subheadline,
+            color = AppTheme.colors.secondaryLabel,
+            modifier = Modifier.padding(Spacing.l)
+        )
+        return
+    }
+    LazyColumn(Modifier.heightIn(max = 560.dp)) {
+        items(chapters, key = { it.id }) { chapter ->
+            Cell(
+                title = chapter.title,
+                subtitle = stringResource(R.string.reader_page_short, chapter.startPage),
+                onClick = { onSelect(chapter) },
+                trailing = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        onSummary?.let { PlainButton(stringResource(R.string.reader_summary), { it(chapter) }) }
+                        if (chapter.id == current?.id) {
+                            Icon(
+                                Icons.Outlined.Check,
+                                contentDescription = null,
+                                tint = AppTheme.colors.accentText,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppearanceSheet(state: ReaderUiState, actions: ReaderActions, onDismiss: () -> Unit) {
+    var scale by remember { mutableFloatStateOf(state.textScale) }
+    AppBottomSheet(onDismissRequest = onDismiss, title = stringResource(R.string.reader_appearance)) {
+        Column(Modifier.padding(horizontal = Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            Text(
+                stringResource(R.string.reader_mode),
+                style = AppTheme.typography.footnote,
+                color = AppTheme.colors.secondaryLabel
+            )
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                ReaderMode.entries.forEachIndexed { i, mode ->
+                    SegmentedButton(
+                        selected = state.mode == mode,
+                        onClick = { actions.onSetMode(mode) },
+                        shape = SegmentedButtonDefaults.itemShape(i, ReaderMode.entries.size)
+                    ) {
+                        Text(
+                            stringResource(
+                                if (mode ==
+                                    ReaderMode.PDF
+                                ) {
+                                    R.string.reader_mode_pdf
+                                } else {
+                                    R.string.reader_mode_text
+                                }
+                            )
+                        )
+                    }
+                }
+            }
+            Text(
+                stringResource(R.string.reader_text_size),
+                style = AppTheme.typography.footnote,
+                color = AppTheme.colors.secondaryLabel
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("A", style = AppTheme.typography.footnote, color = AppTheme.colors.label)
+                Slider(
+                    value = scale,
+                    onValueChange = { scale = it },
+                    onValueChangeFinished = { actions.onSetTextScale(scale) },
+                    valueRange = AppSettings.MIN_TEXT_SCALE..AppSettings.MAX_TEXT_SCALE,
+                    modifier = Modifier.weight(1f).padding(horizontal = Spacing.s),
+                    colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = AppTheme.colors.accent)
+                )
+                Text("A", style = AppTheme.typography.title, color = AppTheme.colors.label)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GoToPageDialog(pageCount: Int, onGo: (Int) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    val page = text.toIntOrNull()?.takeIf { it in 1..pageCount }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.reader_go_to_page)) },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { value -> text = value.filter(Char::isDigit).take(5) },
+                placeholder = { Text("1–$pageCount") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true
+            )
+        },
+        confirmButton = {
+            TextButton(enabled = page != null, onClick = {
+                page?.let(onGo)
+            }) { Text(stringResource(R.string.reader_go)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.reader_cancel)) } }
+    )
+}
+
+private val CONTROLS_HEIGHT = 140.dp
+private const val BOOKMARK_CHIP_MS = 6_000L
+private const val PERCENT = 100

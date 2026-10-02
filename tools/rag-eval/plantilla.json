@@ -1,0 +1,23 @@
+{
+  "books": [
+    {
+      "title": "TÍTULO DE LA NOVELA",
+      "questions": [
+        { "question": "Pregunta sobre un hecho concreto con un nombre propio", "pages": [12] },
+        { "question": "Pregunta parafraseada, sin las palabras del libro", "pages": [40, 41] }
+      ]
+    },
+    {
+      "title": "TÍTULO DEL ENSAYO O LIBRO TÉCNICO",
+      "questions": [
+        { "question": "Pregunta sobre una cifra o un dato", "pages": [7] }
+      ]
+    },
+    {
+      "title": "TÍTULO DEL MANUAL",
+      "questions": [
+        { "question": "Pregunta sobre cómo se hace algo", "pages": [23] }
+      ]
+    }
+  ]
+}
