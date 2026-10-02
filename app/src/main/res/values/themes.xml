@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema mínimo de la ventana; la UI se dibuja entera con Compose. -->
+    <style name="Theme.AIReader" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

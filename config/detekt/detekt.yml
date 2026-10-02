@@ -1,0 +1,6 @@
+# Ajustes sobre la configuración por defecto de detekt (buildUponDefaultConfig = true).
+
+naming:
+  FunctionNaming:
+    # Las funciones @Composable se nombran en PascalCase.
+    ignoreAnnotated: ['Composable']

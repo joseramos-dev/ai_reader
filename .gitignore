@@ -1,0 +1,23 @@
+# Documentación interna de planificación (no se sube al repositorio)
+docs/
+
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+build/
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Logs y depuración
+*.log
+.cursor/
+
+# Sistema
+.DS_Store
+Thumbs.db
