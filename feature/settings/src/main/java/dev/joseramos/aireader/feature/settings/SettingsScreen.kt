@@ -7,10 +7,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ManageSearch
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -25,7 +23,6 @@ import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Summarize
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -40,8 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,7 +45,10 @@ import androidx.navigation.compose.composable
 import dev.joseramos.aireader.ai.models.ModelCatalog
 import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.core.data.settings.AppSettings
+import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.data.settings.ThemeMode
+import dev.joseramos.aireader.core.designsystem.component.AiUsageRow
+import dev.joseramos.aireader.core.designsystem.component.ApiKeySheet
 import dev.joseramos.aireader.core.designsystem.component.AppBottomSheet
 import dev.joseramos.aireader.core.designsystem.component.AppSwitch
 import dev.joseramos.aireader.core.designsystem.component.Cell
@@ -58,9 +56,11 @@ import dev.joseramos.aireader.core.designsystem.component.GroupedSection
 import dev.joseramos.aireader.core.designsystem.component.GroupedSectionDefaults
 import dev.joseramos.aireader.core.designsystem.component.LargeTitleScaffold
 import dev.joseramos.aireader.core.designsystem.component.PlainButton
-import dev.joseramos.aireader.core.designsystem.component.PrimaryButton
+import dev.joseramos.aireader.core.designsystem.component.formatTokens
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
+import dev.joseramos.aireader.text.Language
+import dev.joseramos.aireader.tts.voice
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -76,16 +76,16 @@ fun NavGraphBuilder.settingsScreen() {
     }
 }
 
-private enum class Sheet { THEME, SPEED, API_KEY, CHAT_MODEL, SUMMARY_MODEL }
+private enum class Sheet { THEME, SPEED, API_KEY, CHAT_MODEL, SUMMARY_MODEL, DAILY_BUDGET }
 
-/** Modelos de Claude que se pueden elegir, con su nombre visible. */
-private val claudeModels = listOf(
-    "claude-opus-5-5" to "Opus 5.5",
-    "claude-sonnet-5-5" to "Sonnet 5.5",
-    "claude-haiku-4-5" to "Haiku 4.5"
+/** Modelos de Gemini que se pueden elegir, con su nombre visible. */
+private val geminiModels = listOf(
+    "gemini-3.8-flash" to "Gemini 3.8 Flash",
+    "gemini-3.1-flash-lite" to "Gemini 3.1 Flash-Lite",
+    "gemini-3.1-pro-preview" to "Gemini 3.1 Pro (vista previa)"
 )
 
-private fun modelName(id: String) = claudeModels.firstOrNull { it.first == id }?.second ?: id
+private fun modelName(id: String) = geminiModels.firstOrNull { it.first == id }?.second ?: id
 
 private const val MB = 1_000_000
 
@@ -132,7 +132,9 @@ private fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel)
                         onClick = { sheet = Sheet.SPEED }
                     )
                 }
-                row { VoiceCell(state.voice, viewModel) }
+                Language.entries.forEach { language ->
+                    row { VoiceCell(language, state.voices[language] ?: ModelState.NotInstalled, viewModel) }
+                }
             }
         }
         item(key = "ai") {
@@ -204,6 +206,31 @@ private fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel)
                 }
             }
         }
+        item(key = "ai-usage") {
+            GroupedSection(
+                header = stringResource(R.string.settings_ai_usage),
+                footer = stringResource(R.string.settings_ai_usage_footer)
+            ) {
+                row {
+                    AiUsageRow(
+                        remaining = state.today.remaining,
+                        usedTokens = state.today.tokens,
+                        budgetTokens = state.today.budget,
+                        exhausted = state.today.exhausted,
+                        resetsAt = state.today.resetsAt,
+                        modifier = Modifier.padding(vertical = Spacing.xxs)
+                    )
+                }
+                row {
+                    Cell(
+                        title = stringResource(R.string.settings_daily_budget),
+                        value = formatTokens(state.today.budget),
+                        showChevron = true,
+                        onClick = { sheet = Sheet.DAILY_BUDGET }
+                    )
+                }
+            }
+        }
         item(key = "about") {
             GroupedSection(
                 header = stringResource(R.string.settings_about),
@@ -244,32 +271,41 @@ private fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel)
         )
         Sheet.CHAT_MODEL -> OptionsSheet(
             title = stringResource(R.string.settings_chat_model),
-            options = claudeModels,
+            options = geminiModels,
             selected = settings.chatModel,
             onSelect = viewModel::setChatModel,
             onDismiss = { sheet = null }
         )
         Sheet.SUMMARY_MODEL -> OptionsSheet(
             title = stringResource(R.string.settings_summary_model),
-            options = claudeModels,
+            options = geminiModels,
             selected = settings.summaryModel,
             onSelect = viewModel::setSummaryModel,
             onDismiss = { sheet = null }
         )
+        Sheet.DAILY_BUDGET -> OptionsSheet(
+            title = stringResource(R.string.settings_daily_budget),
+            options = DailyUsage.BUDGET_OPTIONS.map {
+                it to stringResource(R.string.settings_tokens, formatTokens(it))
+            },
+            selected = state.today.budget,
+            onSelect = viewModel::setDailyBudget,
+            onDismiss = { sheet = null }
+        )
         Sheet.SPEED -> SpeedSheet(settings.readingSpeed, viewModel::setSpeed, onDismiss = { sheet = null })
         Sheet.API_KEY -> ApiKeySheet(
-            hasKey = state.hasApiKey,
             onSave = viewModel::saveApiKey,
-            onRemove = viewModel::removeApiKey,
-            onDismiss = { sheet = null }
+            onDismiss = { sheet = null },
+            onRemove = if (state.hasApiKey) viewModel::removeApiKey else null
         )
         null -> Unit
     }
 }
 
 @Composable
-private fun VoiceCell(voice: ModelState, viewModel: SettingsViewModel) {
-    val sizeMb = (ModelCatalog.piperVoice.sizeBytes / MB).toInt()
+private fun VoiceCell(language: Language, voice: ModelState, viewModel: SettingsViewModel) {
+    val info = language.voice()
+    val sizeMb = (info.sizeBytes / MB).toInt()
     val subtitle = when (voice) {
         ModelState.NotInstalled -> stringResource(R.string.settings_voice_not_installed, sizeMb)
         is ModelState.Downloading -> stringResource(R.string.settings_voice_downloading, (voice.progress * 100).toInt())
@@ -278,7 +314,7 @@ private fun VoiceCell(voice: ModelState, viewModel: SettingsViewModel) {
         is ModelState.Failed -> stringResource(R.string.settings_voice_failed, voice.message)
     }
     Cell(
-        title = ModelCatalog.piperVoice.displayName,
+        title = info.displayName,
         subtitle = subtitle,
         icon = Icons.Outlined.RecordVoiceOver,
         iconBackground = Color(0xFFFF2D55),
@@ -286,16 +322,19 @@ private fun VoiceCell(voice: ModelState, viewModel: SettingsViewModel) {
             when (voice) {
                 ModelState.NotInstalled -> PlainButton(
                     stringResource(R.string.settings_download),
-                    viewModel::downloadVoice
+                    { viewModel.downloadVoice(language) }
                 )
-                is ModelState.Failed -> PlainButton(stringResource(R.string.settings_retry), viewModel::downloadVoice)
+                is ModelState.Failed -> PlainButton(
+                    stringResource(R.string.settings_retry),
+                    { viewModel.downloadVoice(language) }
+                )
                 is ModelState.Downloading -> PlainButton(
                     stringResource(R.string.settings_cancel),
-                    viewModel::cancelVoiceDownload
+                    { viewModel.cancelVoiceDownload(language) }
                 )
                 is ModelState.Installed -> Row {
-                    PlainButton(stringResource(R.string.settings_preview), viewModel::previewVoice)
-                    PlainButton(stringResource(R.string.settings_delete), viewModel::deleteVoice)
+                    PlainButton(stringResource(R.string.settings_preview), { viewModel.previewVoice(language) })
+                    PlainButton(stringResource(R.string.settings_delete), { viewModel.deleteVoice(language) })
                 }
                 ModelState.Installing -> Unit
             }
@@ -401,48 +440,6 @@ private fun SpeedSheet(current: Float, onChange: (Float) -> Unit, onDismiss: () 
 }
 
 @Composable
-private fun ApiKeySheet(hasKey: Boolean, onSave: (String) -> Unit, onRemove: () -> Unit, onDismiss: () -> Unit) {
-    var key by remember { mutableStateOf("") }
-    AppBottomSheet(onDismissRequest = onDismiss, title = stringResource(R.string.settings_api_key)) {
-        Column(Modifier.padding(horizontal = Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-            OutlinedTextField(
-                value = key,
-                onValueChange = { key = it },
-                placeholder = { Text(stringResource(R.string.settings_api_key_hint)) },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Text(
-                stringResource(R.string.settings_api_key_help),
-                style = AppTheme.typography.footnote,
-                color = AppTheme.colors.secondaryLabel
-            )
-            PrimaryButton(
-                text = stringResource(R.string.settings_save),
-                enabled = key.isNotBlank(),
-                onClick = {
-                    onSave(key)
-                    onDismiss()
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
-            if (hasKey) {
-                PlainButton(
-                    text = stringResource(R.string.settings_remove_key),
-                    onClick = {
-                        onRemove()
-                        onDismiss()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun themeLabel(mode: ThemeMode) = stringResource(
     when (mode) {
         ThemeMode.SYSTEM -> R.string.settings_theme_system
@@ -452,13 +449,3 @@ private fun themeLabel(mode: ThemeMode) = stringResource(
 )
 
 private fun formatSpeed(speed: Float) = "%.2f".format(speed).trimEnd('0').trimEnd('.', ',').replace('.', ',')
-
-/** «12,3 k» o «1,2 M» tokens. */
-private fun formatTokens(tokens: Long): String = when {
-    tokens >= MILLION -> "%.1f M".format(tokens / MILLION.toDouble())
-    tokens >= THOUSAND -> "%.1f k".format(tokens / THOUSAND.toDouble())
-    else -> tokens.toString()
-}
-
-private const val THOUSAND = 1_000L
-private const val MILLION = 1_000_000L

@@ -54,6 +54,11 @@ class CharacterScanWorker @AssistedInject constructor(
                 // Un capítulo que el modelo no quiere analizar no debe bloquear el resto.
                 Log.w(TAG, "Capítulo ${chapter.number} rechazado", e)
                 dao.upsertScan(CharacterScanEntity(bookId, chapter.id, model, System.currentTimeMillis()))
+            } catch (e: LlmException.RateLimited) {
+                // El nivel gratuito de Gemini limita las peticiones por minuto y por día: se espera y se
+                // sigue por el mismo capítulo (WorkManager reintenta con espera creciente).
+                Log.w(TAG, "Límite de peticiones en el capítulo ${chapter.number}", e)
+                return if (runAttemptCount >= MAX_RATE_LIMIT_ATTEMPTS) Result.failure() else Result.retry()
             } catch (e: LlmException) {
                 Log.w(TAG, "Fallo analizando el capítulo ${chapter.number} (intento ${runAttemptCount + 1})", e)
                 return if (e.isPermanent() || runAttemptCount >= MAX_ATTEMPTS) Result.failure() else Result.retry()
@@ -91,5 +96,6 @@ class CharacterScanWorker @AssistedInject constructor(
         private const val CHANNEL_ID = "characters"
         private const val NOTIFICATION_ID = 4102
         private const val MAX_ATTEMPTS = 5
+        private const val MAX_RATE_LIMIT_ATTEMPTS = 20
     }
 }

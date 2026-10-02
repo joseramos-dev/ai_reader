@@ -12,7 +12,7 @@
     <string name="characters_not_literature_title">Solo en obras literarias</string>
     <string name="characters_not_literature_message">Los personajes se analizan en novelas, cuentos y teatro. Si este libro lo es, cambia su tipo en la información del libro (Biblioteca, mantener pulsado).</string>
     <string name="characters_analyze">Analizar personajes</string>
-    <string name="characters_analyze_hint">La IA lee el libro capítulo a capítulo para reconocer personajes, apodos y relaciones. Cuesta unos céntimos por novela.</string>
+    <string name="characters_analyze_hint">La IA lee el libro capítulo a capítulo para reconocer personajes, apodos y relaciones. Con el nivel gratuito de Gemini no cuesta nada, aunque en una novela larga puede tardar por los límites de peticiones.</string>
     <string name="characters_analyzing">Analizando personajes… capítulo %1$d de %2$d</string>
     <string name="characters_failed">No se pudo terminar el análisis.</string>
     <string name="characters_retry">Reintentar</string>

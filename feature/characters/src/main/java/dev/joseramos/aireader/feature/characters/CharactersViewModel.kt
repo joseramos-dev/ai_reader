@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 enum class CharacterSort { APPEARANCE, IMPORTANCE }
 
@@ -42,7 +43,7 @@ class CharactersViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     books: BookRepository,
     browser: CharacterBrowser,
-    secrets: SecretStore,
+    private val secrets: SecretStore,
     private val analysis: CharacterAnalysis
 ) : ViewModel() {
     private val bookId = savedStateHandle.toRoute<CharactersRoute>().bookId
@@ -63,4 +64,12 @@ class CharactersViewModel @Inject constructor(
     }
 
     fun analyze() = analysis.start(bookId)
+
+    /** Guarda la clave introducida desde esta pantalla y arranca el análisis. */
+    fun saveApiKeyAndAnalyze(key: String) {
+        viewModelScope.launch {
+            secrets.setApiKey(key)
+            analysis.start(bookId)
+        }
+    }
 }

@@ -313,16 +313,23 @@ private fun TextModeContent(
     onTap: () -> Unit
 ) {
     val book = state.book
-    val textReady =
-        book != null && book.indexStatus !in setOf(IndexStatus.PENDING, IndexStatus.EXTRACTING_TEXT, IndexStatus.FAILED)
-    if (!textReady || state.pages.isEmpty()) {
+    // Se muestra el texto en cuanto existe, aunque la indexación siga con capítulos o embeddings.
+    if (state.pages.isEmpty()) {
+        val failed = book?.indexStatus == IndexStatus.FAILED
+        val extracting = book?.indexStatus == IndexStatus.EXTRACTING_TEXT
         EmptyState(
             icon = Icons.Outlined.TextFields,
-            title = stringResource(R.string.reader_text_preparing_title),
-            message = stringResource(
-                R.string.reader_text_preparing_message,
-                ((book?.indexProgress ?: 0f) * 2 * PERCENT).roundToInt().coerceAtMost(PERCENT)
+            title = stringResource(
+                if (failed) R.string.reader_text_failed_title else R.string.reader_text_preparing_title
             ),
+            message = when {
+                failed -> stringResource(R.string.reader_text_failed_message)
+                extracting -> stringResource(
+                    R.string.reader_text_preparing_message,
+                    ((book.indexProgress) * 2 * PERCENT).roundToInt().coerceAtMost(PERCENT)
+                )
+                else -> stringResource(R.string.reader_text_waiting_message)
+            },
             modifier = Modifier.padding(contentPadding).pointerInput(Unit) { detectTapGestures { onTap() } }
         )
         return
@@ -338,7 +345,8 @@ private fun TextModeContent(
         names = extras.characters.index,
         onTapCharacter = actions.onOpenCharacter,
         // Solo con la voz en marcha (sonando o en pausa); si no, tocar muestra u oculta los controles.
-        onTapPhrase = actions.onListenFrom?.takeIf { playback.location != null }
+        onTapPhrase = actions.onListenFrom?.takeIf { playback.location != null },
+        chapters = state.chapters
     )
 }
 

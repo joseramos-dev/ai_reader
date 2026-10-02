@@ -5,7 +5,9 @@ import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
 import dev.joseramos.aireader.ai.models.ModelCatalog
+import dev.joseramos.aireader.ai.models.ModelInfo
 import dev.joseramos.aireader.ai.models.ModelManager
+import dev.joseramos.aireader.text.Language
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,8 +18,8 @@ import kotlinx.coroutines.sync.withLock
 interface TtsEngine {
     val sampleRate: Int
 
-    /** Carga el modelo; `false` si la voz no está descargada. */
-    suspend fun load(): Boolean
+    /** Carga la voz [voiceId] (y libera otra que hubiera cargada); `false` si no está descargada. */
+    suspend fun load(voiceId: String): Boolean
 
     /** PCM float mono a [sampleRate]. [speed] 1.0 es la velocidad normal. */
     fun synthesize(text: String, speed: Float): FloatArray
@@ -25,19 +27,28 @@ interface TtsEngine {
     fun release()
 }
 
-/** Piper (VITS) con la voz `es_ES-davefx-medium` int8, ejecutado con sherpa-onnx. */
+/** Voz de cada idioma que la app sabe leer. */
+fun Language.voice(): ModelInfo = when (this) {
+    Language.SPANISH -> ModelCatalog.spanishVoice
+    Language.ENGLISH -> ModelCatalog.englishVoice
+}
+
+/** Piper (VITS) con sherpa-onnx: `es_ES-davefx-medium` o `en_US-lessac-medium`, ambas int8. */
 @Singleton
 class PiperTtsEngine @Inject constructor(private val models: ModelManager) : TtsEngine {
     private val mutex = Mutex()
 
     @Volatile private var tts: OfflineTts? = null
+    private var loadedId: String? = null
 
     override val sampleRate: Int get() = tts?.sampleRate() ?: DEFAULT_SAMPLE_RATE
 
-    override suspend fun load(): Boolean = mutex.withLock {
-        if (tts != null) return@withLock true
-        val dir = models.installedDir(ModelCatalog.piperVoice.id) ?: return@withLock false
+    override suspend fun load(voiceId: String): Boolean = mutex.withLock {
+        if (tts != null && loadedId == voiceId) return@withLock true
+        val dir = models.installedDir(voiceId) ?: return@withLock false
+        release()
         tts = create(dir)
+        loadedId = voiceId
         true
     }
 
@@ -47,6 +58,7 @@ class PiperTtsEngine @Inject constructor(private val models: ModelManager) : Tts
     override fun release() {
         tts?.release()
         tts = null
+        loadedId = null
     }
 
     private fun create(dir: File): OfflineTts {

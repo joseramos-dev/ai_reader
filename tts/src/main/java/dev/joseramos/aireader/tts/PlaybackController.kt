@@ -8,6 +8,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.joseramos.aireader.core.data.book.ReadingPosition
 import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
+import dev.joseramos.aireader.text.Language
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.StateFlow
@@ -85,7 +86,7 @@ class PlaybackController @Inject constructor(
 
     fun setSleepTimer(timer: SleepTimer) = engine.setSleepTimer(timer)
 
-    suspend fun preview(text: String): Boolean = engine.preview(text)
+    suspend fun preview(text: String, language: Language = Language.SPANISH): Boolean = engine.preview(text, language)
 
     private suspend fun connect(): MediaController {
         controller?.takeIf { it.isConnected }?.let { return it }

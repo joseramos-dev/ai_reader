@@ -23,8 +23,8 @@ data class ModelInfo(
 }
 
 object ModelCatalog {
-    /** La única voz de la app (docs/02-diseno-tecnico.md §5.1). */
-    val piperVoice = ModelInfo(
+    /** Voz en español (docs/02-diseno-tecnico.md §5.1). */
+    val spanishVoice = ModelInfo(
         id = "tts-piper-es_ES-davefx-medium-int8",
         kind = ModelKind.TTS_VOICE,
         displayName = "Voz en español",
@@ -40,6 +40,26 @@ object ModelCatalog {
             )
         )
     )
+
+    /** Voz en inglés para los libros en inglés: Piper `en_US-lessac-medium` int8. */
+    val englishVoice = ModelInfo(
+        id = "tts-piper-en_US-lessac-medium-int8",
+        kind = ModelKind.TTS_VOICE,
+        displayName = "Voz en inglés",
+        version = "sherpa-onnx tts-models",
+        archive = ArchiveType.TAR_BZ2,
+        files = listOf(
+            ModelFile(
+                url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/" +
+                    "vits-piper-en_US-lessac-medium-int8.tar.bz2",
+                name = "voice.tar.bz2",
+                sha256 = "f1c6d0295cf16087b05f80fdca5b44daca5cd78e2c425d419a42ba34929805f9",
+                sizeBytes = 20_969_179
+            )
+        )
+    )
+
+    val voices: List<ModelInfo> = listOf(spanishVoice, englishVoice)
 
     /** Versión fijada del repositorio para que los sha256 no cambien. */
     private const val E5_REPO = "https://huggingface.co/Xenova/multilingual-e5-small/resolve/" +
@@ -68,7 +88,7 @@ object ModelCatalog {
         )
     )
 
-    val all: List<ModelInfo> = listOf(piperVoice, e5Small)
+    val all: List<ModelInfo> = voices + e5Small
 
     fun byId(id: String): ModelInfo = all.first { it.id == id }
 }

@@ -15,8 +15,9 @@ import dev.joseramos.aireader.core.data.db.CharacterScanEntity
 import javax.inject.Inject
 
 /**
- * Analiza un capítulo con el modelo de resúmenes (Haiku): le pasa el texto, con la página marcada,
- * y la lista compacta de personajes ya conocidos, para que reutilice sus ids en vez de duplicarlos.
+ * Analiza un capítulo con el modelo de resúmenes (Gemini Flash-Lite por defecto): le pasa el texto,
+ * con la página marcada, y la lista compacta de personajes ya conocidos, para que reutilice sus ids
+ * en vez de duplicarlos.
  * Los capítulos largos van por bloques, y cada bloque ya conoce lo extraído en el anterior.
  */
 class CharacterExtractor @Inject constructor(
@@ -57,7 +58,8 @@ class CharacterExtractor @Inject constructor(
                 LlmRequest(
                     model = model,
                     messages = listOf(LlmMessage(LlmRole.USER, prompt)),
-                    maxTokens = MAX_TOKENS
+                    maxTokens = MAX_TOKENS,
+                    jsonOutput = true
                 )
             ).text
             Extraction.parse(answer)?.let { return it }

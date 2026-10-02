@@ -2,8 +2,8 @@ package dev.joseramos.aireader.text
 
 /**
  * Prepara una frase para la síntesis de voz: expande abreviaturas y convierte números romanos en
- * contextos inequívocos («capítulo IV», «siglo XVIII») a cifras, que la voz lee correctamente.
- * Solo afecta a lo que se pronuncia; el texto mostrado no cambia.
+ * contextos inequívocos («capítulo IV», «siglo XVIII», «Chapter IV») a cifras, que la voz lee
+ * correctamente. Solo afecta a lo que se pronuncia; el texto mostrado no cambia.
  */
 object SpeechNormalizer {
     private val replacements = listOf(
@@ -28,21 +28,42 @@ object SpeechNormalizer {
         "EE. UU." to "Estados Unidos",
         "EE.UU." to "Estados Unidos"
     )
+    private val englishReplacements = listOf(
+        "e.g." to "for example",
+        "i.e." to "that is",
+        "Mrs." to "Missus",
+        "Mr." to "Mister",
+        "Ms." to "Miz",
+        "Dr." to "Doctor",
+        "Jr." to "Junior",
+        "vs." to "versus",
+        "etc." to "et cetera",
+        "approx." to "approximately"
+    )
+    private val englishRomanContext = Regex(
+        "\\b(chapter|part|book|volume|act|scene|lesson|century)\\s+([IVXLCDM]+)\\b",
+        RegexOption.IGNORE_CASE
+    )
     private val romanContext = Regex(
         "\\b(cap[ií]tulo|parte|libro|tomo|siglo|volumen|acto|escena|lecci[oó]n)\\s+([IVXLCDM]+)\\b",
         RegexOption.IGNORE_CASE
     )
     private val romanValues = mapOf('I' to 1, 'V' to 5, 'X' to 10, 'L' to 50, 'C' to 100, 'D' to 500, 'M' to 1000)
 
-    fun normalize(phrase: String): String {
+    fun normalize(phrase: String, language: Language = Language.SPANISH): String {
+        val english = language == Language.ENGLISH
         var text = phrase
-        for ((abbreviation, expansion) in replacements) {
+        for ((abbreviation, expansion) in if (english) englishReplacements else replacements) {
             text = text.replace(abbreviation, expansion)
         }
-        text = text.replace("%", " por ciento").replace("&", " y ")
+        text = if (english) {
+            text.replace("%", " percent").replace("&", " and ")
+        } else {
+            text.replace("%", " por ciento").replace("&", " y ")
+        }
         // Si la frase acababa en una abreviatura («… etc.»), se conserva el punto final para la entonación.
         if (phrase.trimEnd().endsWith('.') && !text.trimEnd().endsWith('.')) text = text.trimEnd() + "."
-        return romanContext.replace(text) { match ->
+        return (if (english) englishRomanContext else romanContext).replace(text) { match ->
             val value = romanToInt(match.groupValues[2].uppercase())
             if (value != null) "${match.groupValues[1]} $value" else match.value
         }

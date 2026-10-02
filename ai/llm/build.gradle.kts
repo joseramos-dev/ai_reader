@@ -8,12 +8,12 @@ android {
     namespace = "dev.joseramos.aireader.ai.llm"
 }
 
-// Cliente de la API de Claude (SDK oficial de Java), prompts y resúmenes.
+// Cliente de la API de Gemini (REST con OkHttp), prompts y resúmenes.
 dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:data"))
     implementation(project(":indexing"))
     implementation(project(":text"))
-    implementation(libs.anthropic.java)
+    implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
 }

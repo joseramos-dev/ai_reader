@@ -14,6 +14,8 @@ import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.book.ReadingPosition
 import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
+import dev.joseramos.aireader.text.Language
+import dev.joseramos.aireader.text.LanguageDetector
 import dev.joseramos.aireader.text.SpeechNormalizer
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -55,7 +57,10 @@ data class PlaybackState(
     val phrase: String? = null,
     val speed: Float = 1f,
     val sleepTimer: SleepTimer = SleepTimer.Off,
-    val error: PlaybackError? = null
+    val error: PlaybackError? = null,
+    /** Idioma del libro y voz que le corresponde (la que hay que descargar si falta). */
+    val language: Language = Language.SPANISH,
+    val voiceId: String = Language.SPANISH.voice().id
 ) {
     val isActive: Boolean get() = bookId != null && status != PlaybackStatus.IDLE
     val isPlaying: Boolean get() = status == PlaybackStatus.PLAYING || status == PlaybackStatus.LOADING
@@ -91,6 +96,9 @@ class PlaybackEngine @Inject constructor(
     private var chapters: List<Chapter> = emptyList()
     private var lastSavedAt = 0L
 
+    /** Idioma detectado de cada libro (se calcula una vez por sesión). */
+    private val languages = mutableMapOf<String, Language>()
+
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private val wakeLock = context.getSystemService(PowerManager::class.java)
         .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "aireader:read-aloud")
@@ -106,6 +114,7 @@ class PlaybackEngine @Inject constructor(
         stopSession()
         val book = books.getBook(bookId) ?: return
         chapters = content.chapters(bookId)
+        val language = languageOf(bookId, from.page)
         _state.value = PlaybackState(
             bookId = bookId,
             bookTitle = book.title,
@@ -114,9 +123,11 @@ class PlaybackEngine @Inject constructor(
             status = PlaybackStatus.LOADING,
             position = from,
             speed = speed,
-            sleepTimer = _state.value.sleepTimer.takeIf { _state.value.bookId == bookId } ?: SleepTimer.Off
+            sleepTimer = _state.value.sleepTimer.takeIf { _state.value.bookId == bookId } ?: SleepTimer.Off,
+            language = language,
+            voiceId = language.voice().id
         )
-        if (!voice.load()) {
+        if (!voice.load(language.voice().id)) {
             _state.update { it.copy(status = PlaybackStatus.IDLE, error = PlaybackError.VOICE_MISSING) }
             return
         }
@@ -127,7 +138,7 @@ class PlaybackEngine @Inject constructor(
         paused.value = false
         audioManager.requestAudioFocus(focusRequest)
         wakeLock.acquire(WAKE_LOCK_TIMEOUT_MS)
-        session = scope.launch { runSession(bookId, from, speed) }
+        session = scope.launch { runSession(bookId, from, speed, language) }
     }
 
     fun pause() {
@@ -236,11 +247,12 @@ class PlaybackEngine @Inject constructor(
         _state.update { it.copy(sleepTimer = applied) }
     }
 
-    /** Lee una frase de prueba (Ajustes) si no hay ninguna lectura en curso. */
-    suspend fun preview(text: String): Boolean {
-        if (_state.value.isPlaying || !voice.load()) return false
-        val pcm =
-            withContext(synthDispatcher) { voice.synthesize(SpeechNormalizer.normalize(text), _state.value.speed) }
+    /** Lee una frase de prueba (Ajustes) con la voz de [language] si no hay ninguna lectura en curso. */
+    suspend fun preview(text: String, language: Language = Language.SPANISH): Boolean {
+        if (_state.value.isPlaying || !voice.load(language.voice().id)) return false
+        val pcm = withContext(synthDispatcher) {
+            voice.synthesize(SpeechNormalizer.normalize(text, language), _state.value.speed)
+        }
         withContext(Dispatchers.IO) {
             val track = newTrack(voice.sampleRate)
             try {
@@ -260,37 +272,40 @@ class PlaybackEngine @Inject constructor(
         scope.launch { start(bookId, transform(position)) }
     }
 
-    private suspend fun runSession(bookId: String, from: ReadingPosition, speed: Float) = coroutineScope {
-        val texts = Channel<Phrase>(TEXT_BUFFER)
-        val audio = Channel<Pair<Phrase, FloatArray>>(AUDIO_BUFFER)
-        launch {
-            PhraseSource(content, bookId).from(from).collect { texts.send(it) }
-            texts.close()
-        }
-        launch(synthDispatcher) {
-            for (phrase in texts) audio.send(phrase to voice.synthesize(SpeechNormalizer.normalize(phrase.text), speed))
-            audio.close()
-        }
-        withContext(Dispatchers.IO) {
-            val track = newTrack(voice.sampleRate)
-            var lastFrames = 0
-            try {
-                track.play()
-                for ((phrase, pcm) in audio) {
-                    onPhraseStart(phrase)
-                    writeInterruptibly(track, pcm)
-                    lastFrames = pcm.size
+    private suspend fun runSession(bookId: String, from: ReadingPosition, speed: Float, language: Language) =
+        coroutineScope {
+            val texts = Channel<Phrase>(TEXT_BUFFER)
+            val audio = Channel<Pair<Phrase, FloatArray>>(AUDIO_BUFFER)
+            launch {
+                PhraseSource(content, bookId).from(from).collect { texts.send(it) }
+                texts.close()
+            }
+            launch(synthDispatcher) {
+                for (phrase in texts) {
+                    audio.send(phrase to voice.synthesize(SpeechNormalizer.normalize(phrase.text, language), speed))
                 }
-                drain(track, lastFrames)
-                _state.update { it.copy(status = PlaybackStatus.ENDED, phrase = null) }
-                savePosition(force = true)
-                releaseWakeLock()
-            } finally {
-                runCatching { track.stop() }
-                track.release()
+                audio.close()
+            }
+            withContext(Dispatchers.IO) {
+                val track = newTrack(voice.sampleRate)
+                var lastFrames = 0
+                try {
+                    track.play()
+                    for ((phrase, pcm) in audio) {
+                        onPhraseStart(phrase)
+                        writeInterruptibly(track, pcm)
+                        lastFrames = pcm.size
+                    }
+                    drain(track, lastFrames)
+                    _state.update { it.copy(status = PlaybackStatus.ENDED, phrase = null) }
+                    savePosition(force = true)
+                    releaseWakeLock()
+                } finally {
+                    runCatching { track.stop() }
+                    track.release()
+                }
             }
         }
-    }
 
     private suspend fun onPhraseStart(phrase: Phrase) {
         val end = sleepChapterEnd
@@ -349,6 +364,12 @@ class PlaybackEngine @Inject constructor(
         releaseWakeLock()
     }
 
+    /** Idioma del libro, a partir de unas páginas de texto desde [page]. */
+    private suspend fun languageOf(bookId: String, page: Int): Language = languages.getOrPut(bookId) {
+        val sample = content.pagesFrom(bookId, page, LANGUAGE_SAMPLE_PAGES).flatMap { it.paragraphs }
+        LanguageDetector.detect(sample)
+    }
+
     private fun chapterAt(page: Int): Chapter? = chapters.lastOrNull { page >= it.startPage }
 
     private fun releaseWakeLock() {
@@ -374,6 +395,7 @@ class PlaybackEngine @Inject constructor(
 
     private companion object {
         const val TEXT_BUFFER = 3
+        const val LANGUAGE_SAMPLE_PAGES = 8
         const val AUDIO_BUFFER = 2
         const val SLICES_PER_SECOND = 10
         const val SAVE_INTERVAL_MS = 3_000L

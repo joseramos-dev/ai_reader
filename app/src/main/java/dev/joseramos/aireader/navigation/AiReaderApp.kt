@@ -99,7 +99,6 @@ fun AiReaderApp(
                 readerScreen(
                     onBack = navController::popBackStack,
                     onOpenChat = { navController.navigate(ChatRoute(it)) },
-                    onOpenSettings = { navController.navigateToTab(TopLevel.SETTINGS) },
                     onOpenCharacters = { navController.navigate(CharactersRoute(it)) }
                 )
                 charactersScreens(
@@ -108,16 +107,14 @@ fun AiReaderApp(
                         // Vuelve al lector de debajo, abierto en la página pedida.
                         navController.navigate(ReaderRoute(bookId, page)) { popUpTo<ReaderRoute> { inclusive = true } }
                     },
-                    onOpenGraph = { navController.navigate(RelationsGraphRoute(it)) },
-                    onOpenSettings = { navController.navigateToTab(TopLevel.SETTINGS) }
+                    onOpenGraph = { navController.navigate(RelationsGraphRoute(it)) }
                 )
                 chatScreen(
                     onBack = navController::popBackStack,
                     onOpenPage = { bookId, page ->
                         // Sustituye el lector que hay debajo del chat por uno abierto en la página citada.
                         navController.navigate(ReaderRoute(bookId, page)) { popUpTo<ReaderRoute> { inclusive = true } }
-                    },
-                    onOpenSettings = { navController.navigateToTab(TopLevel.SETTINGS) }
+                    }
                 )
             }
         }

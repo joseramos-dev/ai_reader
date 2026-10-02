@@ -15,11 +15,14 @@ import dev.joseramos.aireader.ai.rag.RagEvaluator
 import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.settings.ApiUsage
 import dev.joseramos.aireader.core.data.settings.AppSettings
+import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.core.data.settings.ThemeMode
 import dev.joseramos.aireader.core.data.settings.UsageRepository
+import dev.joseramos.aireader.text.Language
 import dev.joseramos.aireader.tts.PlaybackController
+import dev.joseramos.aireader.tts.voice
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,10 +46,12 @@ sealed interface RagEvalState {
 data class SettingsUiState(
     val settings: AppSettings = AppSettings(),
     val hasApiKey: Boolean = false,
-    val voice: ModelState = ModelState.NotInstalled,
+    /** Estado de la voz de cada idioma. */
+    val voices: Map<Language, ModelState> = emptyMap(),
     /** Modelo de embeddings para buscar en el libro (chat). */
     val searchModel: ModelState = ModelState.NotInstalled,
-    val usage: ApiUsage = ApiUsage()
+    val usage: ApiUsage = ApiUsage(),
+    val today: DailyUsage = DailyUsage()
 )
 
 @HiltViewModel
@@ -60,21 +65,22 @@ class SettingsViewModel @Inject constructor(
     private val playback: PlaybackController,
     private val usageRepository: UsageRepository
 ) : ViewModel() {
-    private val voiceId = ModelCatalog.piperVoice.id
     private val searchModelId = ModelCatalog.e5Small.id
 
     val state: StateFlow<SettingsUiState> = combine(
         settingsRepository.settings,
         secretStore.hasApiKey,
         modelManager.states,
-        usageRepository.usage
-    ) { settings, hasKey, models, usage ->
+        usageRepository.usage,
+        usageRepository.today
+    ) { settings, hasKey, models, usage, today ->
         SettingsUiState(
             settings = settings,
             hasApiKey = hasKey,
-            voice = models[voiceId] ?: ModelState.NotInstalled,
+            voices = Language.entries.associateWith { models[it.voice().id] ?: ModelState.NotInstalled },
             searchModel = models[searchModelId] ?: ModelState.NotInstalled,
-            usage = usage
+            usage = usage,
+            today = today
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -92,13 +98,15 @@ class SettingsViewModel @Inject constructor(
 
     fun removeApiKey() = launch { secretStore.clearApiKey() }
 
+    fun setDailyBudget(tokens: Long) = launch { usageRepository.setDailyBudget(tokens) }
+
     fun resetUsage() = launch { usageRepository.reset() }
 
-    fun downloadVoice() = modelManager.download(voiceId)
+    fun downloadVoice(language: Language) = modelManager.download(language.voice().id)
 
-    fun cancelVoiceDownload() = modelManager.cancel(voiceId)
+    fun cancelVoiceDownload(language: Language) = modelManager.cancel(language.voice().id)
 
-    fun deleteVoice() = launch { modelManager.delete(voiceId) }
+    fun deleteVoice(language: Language) = launch { modelManager.delete(language.voice().id) }
 
     fun downloadSearchModel() = modelManager.download(searchModelId)
 
@@ -132,7 +140,9 @@ class SettingsViewModel @Inject constructor(
         _ragEval.value = null
     }
 
-    fun previewVoice() = launch { playback.preview(PREVIEW_TEXT) }
+    fun previewVoice(language: Language) = launch {
+        playback.preview(if (language == Language.ENGLISH) PREVIEW_TEXT_EN else PREVIEW_TEXT, language)
+    }
 
     private fun launch(block: suspend () -> Unit) {
         viewModelScope.launch { block() }
@@ -140,5 +150,6 @@ class SettingsViewModel @Inject constructor(
 
     private companion object {
         const val PREVIEW_TEXT = "Hola. Así sonará la lectura en voz alta de tus libros."
+        const val PREVIEW_TEXT_EN = "Hello. This is how your English books will sound when read aloud."
     }
 }

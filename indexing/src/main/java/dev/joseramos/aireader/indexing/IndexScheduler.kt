@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -22,6 +23,9 @@ class IndexScheduler @Inject constructor(@ApplicationContext private val context
         val request = OneTimeWorkRequestBuilder<IndexWorker>()
             .setInputData(workDataOf(IndexWorker.KEY_BOOK_ID to bookId))
             .setConstraints(Constraints.Builder().setRequiresStorageNotLow(true).build())
+            // Urgente: arranca enseguida aunque la app pase a segundo plano (si se agota la cuota de
+            // trabajos urgentes, se ejecuta como uno normal).
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .addTag(TAG)
             .build()
         val policy = if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP

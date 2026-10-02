@@ -9,5 +9,6 @@ android {
 dependencies {
     implementation(project(":ai:models"))
     implementation(project(":tts"))
+    implementation(project(":text"))
     implementation(project(":ai:rag"))
 }

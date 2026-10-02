@@ -314,11 +314,16 @@ private fun BookTile(book: Book, onOpen: () -> Unit, onLongPress: () -> Unit, mo
 @Composable
 private fun TileStatus(book: Book) {
     val colors = AppTheme.colors
-    val preparing = book.indexStatus in setOf(IndexStatus.PENDING, IndexStatus.EXTRACTING_TEXT) ||
-        (book.indexStatus == IndexStatus.EMBEDDING && book.indexProgress < 1f)
+    // El texto es la primera mitad de la indexación; la segunda (capítulos y búsqueda del chat) ya
+    // no impide leer, así que se muestra aparte y sin barra de «preparando».
+    val preparing = book.indexStatus in setOf(IndexStatus.PENDING, IndexStatus.EXTRACTING_TEXT)
     val text = when {
         book.indexStatus == IndexStatus.FAILED -> stringResource(R.string.library_prepare_failed)
-        preparing -> stringResource(R.string.library_preparing, (book.indexProgress * PERCENT).toInt())
+        preparing -> stringResource(R.string.library_preparing, (book.indexProgress * 2 * PERCENT).toInt())
+        book.indexStatus == IndexStatus.EMBEDDING && book.indexProgress < 1f -> stringResource(
+            R.string.library_preparing_chat,
+            ((book.indexProgress - TEXT_SHARE) * 2 * PERCENT).toInt().coerceIn(0, PERCENT)
+        )
         book.currentPage != null -> stringResource(R.string.library_progress, (book.readingProgress * PERCENT).toInt())
         else -> stringResource(R.string.library_new)
     }
@@ -333,7 +338,7 @@ private fun TileStatus(book: Book) {
             colors.secondaryLabel
         }
     )
-    val progress = if (preparing) book.indexProgress else book.readingProgress
+    val progress = if (preparing) book.indexProgress * 2 else book.readingProgress
     if (preparing || book.currentPage != null) {
         LinearProgressIndicator(
             progress = { progress },
@@ -410,3 +415,6 @@ private fun typeLabel(type: DocumentType) = when (type) {
 
 private const val COVER_RATIO = 0.7f
 private const val PERCENT = 100
+
+/** Parte del progreso de indexación que corresponde al texto (ver IndexWorker). */
+private const val TEXT_SHARE = 0.5f

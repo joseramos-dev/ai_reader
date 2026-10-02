@@ -27,7 +27,7 @@ sealed interface SummaryJob {
 }
 
 /**
- * Genera resúmenes con el modelo de resúmenes (Haiku por defecto):
+ * Genera resúmenes con el modelo de resúmenes (Gemini Flash-Lite por defecto):
  * - Capítulo que cabe (≈30 k tokens): una sola llamada con el texto completo, sin truncar.
  * - Capítulo largo: se resume por bloques de ≈8 k tokens y luego se combinan (map-reduce).
  * - Libro: a partir de los resúmenes breves de cada capítulo, generando los que falten.
@@ -197,8 +197,7 @@ class SummaryGenerator @Inject constructor(
             model = model,
             system = listOf(SystemBlock(prompts.summarySystem), SystemBlock(style(bookId))),
             messages = listOf(LlmMessage(LlmRole.USER, prompt)),
-            maxTokens = SUMMARY_MAX_TOKENS,
-            effort = "low"
+            maxTokens = SUMMARY_MAX_TOKENS
         )
     ).text.trim()
 

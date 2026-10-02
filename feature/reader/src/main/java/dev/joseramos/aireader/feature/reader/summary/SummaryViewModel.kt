@@ -12,12 +12,16 @@ import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.book.Summary
 import dev.joseramos.aireader.core.data.book.SummaryRepository
 import dev.joseramos.aireader.core.data.db.SummaryKind
+import dev.joseramos.aireader.core.data.settings.DailyUsage
+import dev.joseramos.aireader.core.data.settings.SecretStore
+import dev.joseramos.aireader.core.data.settings.UsageRepository
 import dev.joseramos.aireader.feature.reader.ReaderRoute
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /** Resumen que se está mostrando: de un capítulo (en breve o detallado) o del libro entero. */
 data class SummaryTarget(val chapter: Chapter?, val detailed: Boolean = false) {
@@ -37,8 +41,14 @@ data class SummariesUiState(
 class SummaryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     repository: SummaryRepository,
-    private val generator: SummaryGenerator
+    private val generator: SummaryGenerator,
+    private val secrets: SecretStore,
+    usage: UsageRepository
 ) : ViewModel() {
+    /** Consumo de IA de hoy, para el anillo de la hoja ✦. */
+    val today: StateFlow<DailyUsage> =
+        usage.today.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DailyUsage())
+
     private val bookId = savedStateHandle.toRoute<ReaderRoute>().bookId
 
     val state: StateFlow<SummariesUiState> = combine(repository.observe(bookId), generator.jobs) { summaries, jobs ->
@@ -68,6 +78,14 @@ class SummaryViewModel @Inject constructor(
     }
 
     fun generateRecap(page: Int) = generator.recap(bookId, page)
+
+    /** Guarda la clave introducida desde el lector y, después, reintenta con [then]. */
+    fun saveApiKey(key: String, then: () -> Unit) {
+        viewModelScope.launch {
+            secrets.setApiKey(key)
+            then()
+        }
+    }
 
     fun generate(target: SummaryTarget) {
         val chapter = target.chapter

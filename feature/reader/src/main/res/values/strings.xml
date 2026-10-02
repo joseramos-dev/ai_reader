@@ -19,11 +19,14 @@
     <string name="reader_no_chapters">Los capítulos aparecerán cuando termine de prepararse el libro.</string>
     <string name="reader_text_preparing_title">Preparando el texto</string>
     <string name="reader_text_preparing_message">El modo texto estará disponible en cuanto se procese el libro (%1$d %%).</string>
+    <string name="reader_text_waiting_message">El libro está en cola para prepararse. Mientras, puedes leerlo en modo PDF.</string>
+    <string name="reader_text_failed_title">No se pudo extraer el texto</string>
+    <string name="reader_text_failed_message">Puede que el PDF sea una imagen escaneada o esté dañado. Puedes leerlo en modo PDF.</string>
     <string name="reader_scanned_page">Esta página es una imagen escaneada y no tiene texto.</string>
     <string name="reader_open_error">No se pudo abrir el PDF</string>
     <string name="reader_summary">Resumen</string>
     <string name="reader_voice_title">Descarga la voz</string>
-    <string name="reader_voice_message">Para escuchar el libro hace falta la voz en español (unos %1$d MB). Se descarga una sola vez y funciona sin conexión.</string>
+    <string name="reader_voice_message">Para escuchar este libro hace falta la %1$s (unos %2$d MB). Se descarga una sola vez y funciona sin conexión.</string>
     <string name="reader_voice_download">Descargar voz</string>
     <string name="reader_voice_retry">Reintentar</string>
     <string name="reader_voice_installing">Instalando…</string>
@@ -45,7 +48,7 @@
     <string name="ai_summarize_chapter">Resumir este capítulo</string>
     <string name="ai_summarize_book">Resumen del libro</string>
     <string name="ai_ask">Pregunta al libro</string>
-    <string name="ai_ask_subtitle">Respuestas con citas a la página</string>
+    <string name="ai_ask_subtitle">Un chat sobre este libro: responde con lo que dice el texto y cita la página</string>
     <string name="ai_brief">Breve</string>
     <string name="ai_detailed">Detallado</string>
     <string name="ai_generating">Generando el resumen…</string>

@@ -17,6 +17,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
+import dev.joseramos.aireader.core.designsystem.component.ApiKeySheet
 import dev.joseramos.aireader.feature.characters.CharacterSheet
 import dev.joseramos.aireader.feature.reader.summary.AiActionsSheet
 import dev.joseramos.aireader.feature.reader.summary.CatchUpSheet
@@ -29,27 +30,17 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class ReaderRoute(val bookId: String, val page: Int? = null)
 
-fun NavGraphBuilder.readerScreen(
-    onBack: () -> Unit,
-    onOpenChat: (String) -> Unit,
-    onOpenSettings: () -> Unit,
-    onOpenCharacters: (String) -> Unit
-) {
+fun NavGraphBuilder.readerScreen(onBack: () -> Unit, onOpenChat: (String) -> Unit, onOpenCharacters: (String) -> Unit) {
     composable<ReaderRoute>(
         enterTransition = { slideIntoContainer(SlideDirection.Start) },
         popExitTransition = { slideOutOfContainer(SlideDirection.End) }
     ) {
-        ReaderDestination(onBack, onOpenChat, onOpenSettings, onOpenCharacters)
+        ReaderDestination(onBack, onOpenChat, onOpenCharacters)
     }
 }
 
 @Composable
-private fun ReaderDestination(
-    onBack: () -> Unit,
-    onOpenChat: (String) -> Unit,
-    onOpenSettings: () -> Unit,
-    onOpenCharacters: (String) -> Unit
-) {
+private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, onOpenCharacters: (String) -> Unit) {
     val viewModel: ReaderViewModel = hiltViewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
     val extras by viewModel.extras.collectAsStateWithLifecycle()
@@ -58,6 +49,10 @@ private fun ReaderDestination(
     val context = LocalContext.current
     val summaryViewModel: SummaryViewModel = hiltViewModel()
     var aiSheet by remember { mutableStateOf(false) }
+    val aiUsage by summaryViewModel.today.collectAsStateWithLifecycle()
+
+    // Clave de API pedida desde una hoja de IA: al guardarla se reintenta lo que se estaba haciendo.
+    var retryAfterKey by remember { mutableStateOf<(() -> Unit)?>(null) }
     var summaryTarget by remember { mutableStateOf<SummaryTarget?>(null) }
     var catchUp by remember { mutableStateOf(false) }
     var characterId by remember { mutableStateOf<Long?>(null) }
@@ -116,6 +111,7 @@ private fun ReaderDestination(
         AiActionsSheet(
             currentChapter = state.currentChapter,
             currentPage = state.currentPage,
+            usage = aiUsage,
             onCatchUp = {
                 aiSheet = false
                 catchUp = true
@@ -152,10 +148,7 @@ private fun ReaderDestination(
                 catchUp = false
                 summaryTarget = SummaryTarget(it)
             },
-            onOpenSettings = {
-                catchUp = false
-                onOpenSettings()
-            },
+            onAddApiKey = { retryAfterKey = { summaryViewModel.generateRecap(state.currentPage) } },
             onDismiss = { catchUp = false }
         )
     }
@@ -177,17 +170,22 @@ private fun ReaderDestination(
             bookTitle = state.book?.title.orEmpty(),
             viewModel = summaryViewModel,
             onChangeTarget = { summaryTarget = it },
-            onOpenSettings = {
-                summaryTarget = null
-                onOpenSettings()
-            },
+            onAddApiKey = { retryAfterKey = { summaryViewModel.generate(target) } },
             onDismiss = { summaryTarget = null }
+        )
+    }
+
+    retryAfterKey?.let { retry ->
+        ApiKeySheet(
+            onSave = { key -> summaryViewModel.saveApiKey(key, retry) },
+            onDismiss = { retryAfterKey = null }
         )
     }
 
     playback.error?.let { error ->
         PlaybackProblemSheet(
             error = error,
+            voiceInfo = viewModel.missingVoice,
             voice = voice,
             onDownloadVoice = viewModel::downloadVoice,
             onVoiceReady = {

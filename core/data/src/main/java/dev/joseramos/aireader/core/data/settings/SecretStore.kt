@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /**
- * Secretos de la app (por ahora, la clave de API de Anthropic). Se guardan cifrados con
+ * Secretos de la app (por ahora, la clave de API de Gemini). Se guardan cifrados con
  * AES-256-GCM (Tink); la clave de cifrado vive en el Android Keystore y nunca sale de él.
  * Los valores no se registran nunca en logs.
  */
@@ -30,11 +30,17 @@ class SecretStore @Inject constructor(
     suspend fun setApiKey(value: String) {
         val trimmed = value.trim()
         require(trimmed.isNotEmpty()) { "La clave no puede estar vacía" }
-        dataStore.edit { it[API_KEY] = encrypt(trimmed) }
+        dataStore.edit {
+            it[API_KEY] = encrypt(trimmed)
+            it.remove(LEGACY_ANTHROPIC_KEY)
+        }
     }
 
     suspend fun clearApiKey() {
-        dataStore.edit { it.remove(API_KEY) }
+        dataStore.edit {
+            it.remove(API_KEY)
+            it.remove(LEGACY_ANTHROPIC_KEY)
+        }
     }
 
     private fun encrypt(plain: String): String =
@@ -45,9 +51,12 @@ class SecretStore @Inject constructor(
 
     companion object {
         const val SECRETS_STORE = "secrets"
-        private val API_KEY = stringPreferencesKey("anthropic_api_key")
+        private val API_KEY = stringPreferencesKey("gemini_api_key")
+
+        /** Clave de Claude de versiones anteriores: ya no se usa y se borra al guardar o quitar la nueva. */
+        private val LEGACY_ANTHROPIC_KEY = stringPreferencesKey("anthropic_api_key")
 
         /** Liga el texto cifrado a este uso: no se puede trasplantar a otra preferencia. */
-        private val ASSOCIATED_DATA = "aireader:anthropic_api_key".toByteArray()
+        private val ASSOCIATED_DATA = "aireader:gemini_api_key".toByteArray()
     }
 }

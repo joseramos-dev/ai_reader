@@ -142,7 +142,7 @@ private fun SettingsGallery() {
             GroupedSection(
                 header = "Inteligencia artificial",
                 dividerInset = GroupedSectionDefaults.IconDividerInset,
-                footer = "Las preguntas y los fragmentos del libro necesarios para responder se envían a Anthropic."
+                footer = "Las preguntas y los fragmentos del libro necesarios para responder se envían a Google."
             ) {
                 row {
                     Cell(
@@ -164,7 +164,7 @@ private fun SettingsGallery() {
                         iconBackground = Color(
                             0xFF30B0C7
                         ),
-                        value = "Sonnet 5.5",
+                        value = "Gemini 3.8 Flash",
                         showChevron = true,
                         onClick = {
                         }

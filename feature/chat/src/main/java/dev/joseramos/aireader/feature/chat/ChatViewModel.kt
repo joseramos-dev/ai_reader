@@ -19,7 +19,9 @@ import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.ChatMessage
 import dev.joseramos.aireader.core.data.book.ChatRepository
 import dev.joseramos.aireader.core.data.db.IndexStatus
+import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.data.settings.SecretStore
+import dev.joseramos.aireader.core.data.settings.UsageRepository
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -54,8 +56,11 @@ data class ChatUiState(
     val streaming: String? = null,
     val answering: Boolean = false,
     val error: String? = null,
-    val availability: ChatAvailability = ChatAvailability.Ready
+    val availability: ChatAvailability = ChatAvailability.Ready,
+    val usage: DailyUsage = DailyUsage()
 )
+
+private data class ChatInputs(val book: Book?, val hasKey: Boolean, val model: ModelState, val usage: DailyUsage)
 
 private data class Transient(val streaming: String? = null, val answering: Boolean = false, val error: String? = null)
 
@@ -64,11 +69,12 @@ private data class Transient(val streaming: String? = null, val answering: Boole
 class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     books: BookRepository,
-    secrets: SecretStore,
+    private val secrets: SecretStore,
     private val chat: ChatRepository,
     private val askBook: AskBook,
     private val retriever: HybridRetriever,
     private val models: ModelManager,
+    usage: UsageRepository,
     @ApplicationScope private val appScope: CoroutineScope
 ) : ViewModel() {
     val bookId = savedStateHandle.toRoute<ChatRoute>().bookId
@@ -80,20 +86,25 @@ class ChatViewModel @Inject constructor(
         chat.observeMessages(it)
     }.onStart { emit(emptyList()) }
 
-    val state: StateFlow<ChatUiState> = combine(
-        books.observeBook(bookId),
-        messages,
-        secrets.hasApiKey,
-        models.states,
-        transient
-    ) { book, messages, hasKey, modelStates, t ->
+    private val inputs = combine(books.observeBook(bookId), secrets.hasApiKey, models.states, usage.today) {
+            book,
+            hasKey,
+            modelStates,
+            today
+        ->
+        ChatInputs(book, hasKey, modelStates[ModelCatalog.e5Small.id] ?: ModelState.NotInstalled, today)
+    }
+
+    val state: StateFlow<ChatUiState> = combine(inputs, messages, transient) { input, messages, t ->
+        val book = input.book
         ChatUiState(
             book = book,
             messages = messages,
             streaming = t.streaming,
             answering = t.answering,
             error = t.error,
-            availability = availability(book, hasKey, modelStates[ModelCatalog.e5Small.id] ?: ModelState.NotInstalled)
+            availability = availability(book, input.hasKey, input.model),
+            usage = input.usage
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
 
@@ -138,6 +149,10 @@ class ChatViewModel @Inject constructor(
     }
 
     fun downloadModel() = models.download(ModelCatalog.e5Small.id)
+
+    fun saveApiKey(key: String) {
+        viewModelScope.launch { secrets.setApiKey(key) }
+    }
 
     override fun onCleared() {
         // El modelo de embeddings ocupa memoria: se libera al salir del chat.

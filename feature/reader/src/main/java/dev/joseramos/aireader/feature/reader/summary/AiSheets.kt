@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.joseramos.aireader.ai.llm.SummaryJob
 import dev.joseramos.aireader.core.data.book.Chapter
+import dev.joseramos.aireader.core.data.settings.DailyUsage
+import dev.joseramos.aireader.core.designsystem.component.AiUsageRow
 import dev.joseramos.aireader.core.designsystem.component.AppBottomSheet
 import dev.joseramos.aireader.core.designsystem.component.Cell
 import dev.joseramos.aireader.core.designsystem.component.GroupedSection
@@ -51,9 +53,18 @@ internal fun AiActionsSheet(
     onAsk: () -> Unit,
     onCatchUp: () -> Unit,
     onCharacters: (() -> Unit)?,
+    usage: DailyUsage,
     onDismiss: () -> Unit
 ) {
     AppBottomSheet(onDismissRequest = onDismiss, title = stringResource(R.string.ai_title)) {
+        AiUsageRow(
+            remaining = usage.remaining,
+            usedTokens = usage.tokens,
+            budgetTokens = usage.budget,
+            exhausted = usage.exhausted,
+            resetsAt = usage.resetsAt,
+            modifier = Modifier.padding(horizontal = Spacing.xs)
+        )
         GroupedSection(dividerInset = GroupedSectionDefaults.IconDividerInset) {
             if (currentChapter != null) {
                 row {
@@ -123,15 +134,17 @@ internal fun SummarySheet(
     bookTitle: String,
     viewModel: SummaryViewModel,
     onChangeTarget: (SummaryTarget) -> Unit,
-    onOpenSettings: () -> Unit,
+    onAddApiKey: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val summary = viewModel.summaryFor(state, target)
     val job = viewModel.jobFor(state, target)
+    // Si no hay resumen, se genera al abrir; también si un intento anterior falló (por ejemplo, por
+    // falta de clave), para que no se quede mostrando un error ya resuelto.
     LaunchedEffect(target) {
         if (viewModel.summaryFor(viewModel.state.value, target) == null &&
-            viewModel.jobFor(viewModel.state.value, target) == null
+            viewModel.jobFor(viewModel.state.value, target) !is SummaryJob.Running
         ) {
             viewModel.generate(target)
         }
@@ -175,7 +188,7 @@ internal fun SummarySheet(
                     if (job.needsApiKey) {
                         PrimaryButton(
                             stringResource(R.string.ai_open_settings),
-                            onOpenSettings,
+                            onAddApiKey,
                             Modifier.fillMaxWidth()
                         )
                     } else {

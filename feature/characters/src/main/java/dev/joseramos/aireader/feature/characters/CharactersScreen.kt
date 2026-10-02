@@ -27,6 +27,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import dev.joseramos.aireader.core.data.db.IndexStatus
+import dev.joseramos.aireader.core.designsystem.component.ApiKeySheet
 import dev.joseramos.aireader.core.designsystem.component.BarIconButton
 import dev.joseramos.aireader.core.designsystem.component.Cell
 import dev.joseramos.aireader.core.designsystem.component.EmptyState
@@ -49,8 +50,7 @@ data class RelationsGraphRoute(val bookId: String)
 fun NavGraphBuilder.charactersScreens(
     onBack: () -> Unit,
     onOpenPage: (bookId: String, page: Int) -> Unit,
-    onOpenGraph: (bookId: String) -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenGraph: (bookId: String) -> Unit
 ) {
     composable<CharactersRoute>(
         enterTransition = { slideIntoContainer(SlideDirection.Start) },
@@ -58,15 +58,17 @@ fun NavGraphBuilder.charactersScreens(
     ) {
         val viewModel: CharactersViewModel = hiltViewModel()
         val state by viewModel.state.collectAsStateWithLifecycle()
+        var askKey by rememberSaveable { mutableStateOf(false) }
         CharactersScreen(
             state = state,
             onBack = onBack,
             onOpenPage = { page -> state.book?.let { onOpenPage(it.id, page) } },
             onOpenGraph = { state.book?.let { onOpenGraph(it.id) } },
-            onOpenSettings = onOpenSettings,
+            onOpenSettings = { askKey = true },
             onSort = viewModel::setSort,
             onAnalyze = viewModel::analyze
         )
+        if (askKey) ApiKeySheet(onSave = viewModel::saveApiKeyAndAnalyze, onDismiss = { askKey = false })
     }
     composable<RelationsGraphRoute>(
         enterTransition = { slideIntoContainer(SlideDirection.Start) },
@@ -205,7 +207,7 @@ private fun AnalysisStatus(
     val colors = AppTheme.colors
     val progress = state.progress
     if (progress.complete) return
-    val indexed = indexStatus == IndexStatus.READY || indexStatus == IndexStatus.TEXT_READY
+    val indexed = indexStatus in setOf(IndexStatus.READY, IndexStatus.TEXT_READY, IndexStatus.EMBEDDING)
     Column(
         Modifier.fillMaxWidth().padding(horizontal = Spacing.xxl, vertical = Spacing.xs),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs)

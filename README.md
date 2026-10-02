@@ -4,7 +4,7 @@ Lector de PDF para Android con lectura en voz alta y funciones de IA sobre el do
 
 - App nativa en **Kotlin + Jetpack Compose**, sin servidor propio.
 - Voz (TTS), embeddings, índice y búsqueda se ejecutan **en el dispositivo**.
-- La generación de texto usa la **API de Claude** con la clave del propio usuario.
+- La generación de texto usa la **API de Gemini** (Google AI Studio) con la clave del propio usuario, que tiene nivel gratuito.
 
 > En desarrollo. El prototipo anterior (React + FastAPI) está en la etiqueta `prototipo-web` y en la rama `legacy/prototipo-web`.
 
@@ -50,7 +50,7 @@ text                 Limpieza del texto, frases, fragmentos, normalización para
 tts                  Voz Piper (sherpa-onnx), pipeline de audio y servicio de reproducción (Media3)
 indexing             Importación de PDFs e IndexWorker: texto, capítulos, tipo de documento y embeddings
 ai/models            Descarga, verificación e instalación de modelos (voz, embeddings)
-ai/llm               Cliente de Claude, prompts, resúmenes y repaso
+ai/llm               Cliente de Gemini (REST), prompts, resúmenes y repaso
 ai/embeddings        Embeddings en el dispositivo (multilingual-e5-small con ONNX Runtime)
 ai/rag               Búsqueda híbrida, respuestas con citas y evaluación de la búsqueda
 ai/characters        Personajes: extracción con IA, fusión de apodos y reglas sin spoilers
@@ -93,7 +93,7 @@ de preguntas si el chat encuentra la página de cada respuesta. Formato e instru
 
 ### App de pruebas técnicas (`:spikes`)
 
-Mide en un móvil real la voz en el dispositivo, los embeddings, el tokenizador, la extracción de texto de PDFs, el audio en segundo plano y el streaming de la API de Claude. Se instala aparte como «AI Reader · Spikes»:
+Mide en un móvil real la voz en el dispositivo, los embeddings, el tokenizador, la extracción de texto de PDFs, el audio en segundo plano y el streaming de la API de Gemini. Se instala aparte como «AI Reader · Spikes»:
 
 ```bash
 ./gradlew :spikes:installDebug

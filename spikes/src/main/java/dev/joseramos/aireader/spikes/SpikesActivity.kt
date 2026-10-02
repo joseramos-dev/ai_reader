@@ -29,9 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import dev.joseramos.aireader.spikes.claude.ClaudeSpikeScreen
 import dev.joseramos.aireader.spikes.common.SpikeLog
 import dev.joseramos.aireader.spikes.embeddings.EmbeddingSpikeScreen
+import dev.joseramos.aireader.spikes.gemini.GeminiSpikeScreen
 import dev.joseramos.aireader.spikes.pdf.PdfSpikeScreen
 import dev.joseramos.aireader.spikes.playback.PlaybackSpikeScreen
 import dev.joseramos.aireader.spikes.tokenizer.TokenizerSpikeScreen
@@ -43,7 +43,7 @@ private val spikes = listOf(
     "3 · Tokenizador en Kotlin",
     "4 · Extracción de texto con PdfBox",
     "5 · Audio en segundo plano (Media3)",
-    "6 · Streaming de la API de Claude"
+    "6 · Streaming de la API de Gemini"
 )
 
 class SpikesActivity : ComponentActivity() {
@@ -65,7 +65,7 @@ class SpikesActivity : ComponentActivity() {
                             2 -> TokenizerSpikeScreen()
                             3 -> PdfSpikeScreen()
                             4 -> PlaybackSpikeScreen()
-                            5 -> ClaudeSpikeScreen()
+                            5 -> GeminiSpikeScreen()
                             else -> Home(onOpen = { current = it })
                         }
                     }

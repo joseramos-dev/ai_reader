@@ -12,7 +12,7 @@ import kotlinx.serialization.json.Json
  * Detección de capítulos con IA para libros sin índice ni encabezados reconocibles: se le pasa
  * al modelo el principio de cada página y devuelve una lista JSON que se valida antes de usarla.
  */
-class ClaudeChapterDetection @Inject constructor(
+class AiChapterDetection @Inject constructor(
     private val llm: LlmClient,
     private val prompts: Prompts,
     private val settings: SettingsRepository
@@ -31,7 +31,8 @@ class ClaudeChapterDetection @Inject constructor(
                 LlmRequest(
                     model = settings.settings.first().summaryModel,
                     messages = listOf(LlmMessage(LlmRole.USER, prompt)),
-                    maxTokens = MAX_TOKENS
+                    maxTokens = MAX_TOKENS,
+                    jsonOutput = true
                 )
             ).text
             parse(answer, pageCount)?.let { return it }

@@ -48,7 +48,7 @@ internal fun CatchUpSheet(
     chapters: List<Chapter>,
     viewModel: SummaryViewModel,
     onOpenChapter: (Chapter) -> Unit,
-    onOpenSettings: () -> Unit,
+    onAddApiKey: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -63,7 +63,7 @@ internal fun CatchUpSheet(
     LaunchedEffect(page) {
         val now = viewModel.state.value
         if (hasSomething &&
-            viewModel.recapJob(now) == null &&
+            viewModel.recapJob(now) !is SummaryJob.Running &&
             !viewModel.recapIsCurrent(viewModel.recapFor(now), chapters, page)
         ) {
             viewModel.generateRecap(page)
@@ -109,7 +109,7 @@ internal fun CatchUpSheet(
                     if (job.needsApiKey) {
                         PrimaryButton(
                             stringResource(R.string.ai_open_settings),
-                            onOpenSettings,
+                            onAddApiKey,
                             Modifier.fillMaxWidth()
                         )
                     } else {

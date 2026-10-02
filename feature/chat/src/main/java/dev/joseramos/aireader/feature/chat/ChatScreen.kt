@@ -53,29 +53,29 @@ import dev.joseramos.aireader.ai.models.ModelCatalog
 import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.core.data.book.ChatMessage
 import dev.joseramos.aireader.core.data.db.ChatRole
+import dev.joseramos.aireader.core.designsystem.component.ApiKeySheet
 import dev.joseramos.aireader.core.designsystem.component.BarIconButton
 import dev.joseramos.aireader.core.designsystem.component.EmptyState
 import dev.joseramos.aireader.core.designsystem.component.PrimaryButton
+import dev.joseramos.aireader.core.designsystem.component.UsageRing
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.BarSize
 import dev.joseramos.aireader.core.designsystem.theme.Radius
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
+import kotlin.math.roundToInt
 import kotlinx.serialization.Serializable
 
 @Serializable
 data class ChatRoute(val bookId: String)
 
-fun NavGraphBuilder.chatScreen(
-    onBack: () -> Unit,
-    onOpenPage: (bookId: String, page: Int) -> Unit,
-    onOpenSettings: () -> Unit
-) {
+fun NavGraphBuilder.chatScreen(onBack: () -> Unit, onOpenPage: (bookId: String, page: Int) -> Unit) {
     composable<ChatRoute>(
         enterTransition = { slideIntoContainer(SlideDirection.Up) },
         popExitTransition = { slideOutOfContainer(SlideDirection.Down) }
     ) {
         val viewModel: ChatViewModel = hiltViewModel()
         val state by viewModel.state.collectAsStateWithLifecycle()
+        var askKey by rememberSaveable { mutableStateOf(false) }
         ChatScreen(
             state = state,
             onBack = onBack,
@@ -83,10 +83,12 @@ fun NavGraphBuilder.chatScreen(
             onStop = viewModel::stop,
             onNewConversation = viewModel::newConversation,
             onOpenPage = { onOpenPage(viewModel.bookId, it) },
-            onOpenSettings = onOpenSettings,
+            onOpenSettings = { askKey = true },
             onDownloadModel = viewModel::downloadModel,
             onDismissError = viewModel::dismissError
         )
+        // La clave se pide aquí mismo: al guardarla, el chat se habilita sin salir del libro.
+        if (askKey) ApiKeySheet(onSave = viewModel::saveApiKey, onDismiss = { askKey = false })
     }
 }
 
@@ -132,13 +134,22 @@ private fun ChatScreen(
                     )
                 }
             }
-            if (state.messages.isNotEmpty()) {
-                BarIconButton(
-                    Icons.Outlined.EditNote,
-                    stringResource(R.string.chat_new),
-                    onNewConversation,
-                    Modifier.align(Alignment.CenterEnd)
+            Row(
+                Modifier.align(Alignment.CenterEnd).padding(end = Spacing.xxs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Lo que queda del consumo de IA de hoy (lleno = sin usar, vacío = agotado).
+                UsageRing(
+                    remaining = state.usage.remaining,
+                    contentDescription = stringResource(
+                        R.string.chat_usage,
+                        (state.usage.remaining * PERCENT).roundToInt()
+                    ),
+                    size = 22.dp
                 )
+                if (state.messages.isNotEmpty()) {
+                    BarIconButton(Icons.Outlined.EditNote, stringResource(R.string.chat_new), onNewConversation)
+                }
             }
         }
 

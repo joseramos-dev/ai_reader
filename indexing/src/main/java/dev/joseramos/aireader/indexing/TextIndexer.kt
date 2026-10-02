@@ -25,9 +25,13 @@ class TextIndexer @Inject constructor(
     private val bookDao: BookDao,
     private val pageTextDao: PageTextDao
 ) {
+    /** El texto de todas las páginas está extraído y limpio con la versión actual del limpiador. */
+    suspend fun isComplete(book: BookEntity): Boolean =
+        pageTextDao.countUpToDate(book.id, TextCleaner.VERSION) == book.pageCount
+
     /** [onProgress] recibe 0..1. */
     suspend fun run(book: BookEntity, onProgress: suspend (Float) -> Unit) {
-        if (pageTextDao.countUpToDate(book.id, TextCleaner.VERSION) == book.pageCount) return
+        if (isComplete(book)) return
 
         PdfTextDocument.open(context, File(book.filePath)).use { pdf ->
             updateMetadata(book, pdf)

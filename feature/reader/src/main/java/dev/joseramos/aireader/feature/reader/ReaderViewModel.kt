@@ -11,6 +11,7 @@ import dev.joseramos.aireader.ai.characters.CharacterAnalysis
 import dev.joseramos.aireader.ai.characters.CharacterBrowser
 import dev.joseramos.aireader.ai.characters.CharactersSnapshot
 import dev.joseramos.aireader.ai.models.ModelCatalog
+import dev.joseramos.aireader.ai.models.ModelInfo
 import dev.joseramos.aireader.ai.models.ModelManager
 import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.core.common.ApplicationScope
@@ -176,11 +177,13 @@ class ReaderViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderPlayback())
 
-    val voice: StateFlow<ModelState> = modelManager.states.map {
-        it[ModelCatalog.piperVoice.id]
-            ?: ModelState.NotInstalled
-    }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ModelState.NotInstalled)
+    /** Estado de la voz que necesita este libro (en español o en inglés, según su idioma). */
+    val voice: StateFlow<ModelState> = combine(playbackController.state, modelManager.states) { playing, models ->
+        models[playing.voiceId] ?: ModelState.NotInstalled
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ModelState.NotInstalled)
+
+    /** Voz que falta para leer este libro. */
+    val missingVoice: ModelInfo get() = ModelCatalog.byId(playbackController.state.value.voiceId)
 
     fun listen(page: Int) {
         viewModelScope.launch { playbackController.play(bookId, page) }
@@ -194,7 +197,7 @@ class ReaderViewModel @Inject constructor(
 
     fun pause() = playbackController.pause()
 
-    fun downloadVoice() = modelManager.download(ModelCatalog.piperVoice.id)
+    fun downloadVoice() = modelManager.download(playbackController.state.value.voiceId)
 
     fun dismissPlaybackError() = playbackController.clearError()
 

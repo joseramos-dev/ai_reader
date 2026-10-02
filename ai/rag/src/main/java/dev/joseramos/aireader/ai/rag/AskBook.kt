@@ -7,6 +7,7 @@ import dev.joseramos.aireader.ai.llm.LlmRequest
 import dev.joseramos.aireader.ai.llm.LlmRole
 import dev.joseramos.aireader.ai.llm.Prompts
 import dev.joseramos.aireader.ai.llm.SystemBlock
+import dev.joseramos.aireader.ai.llm.Thinking
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Chapter
@@ -31,10 +32,11 @@ sealed interface AskEvent {
 
 /**
  * Responde una pregunta sobre un libro (RAG):
- * 1. Con historial, reformula la pregunta para que se entienda sola (Haiku).
+ * 1. Con historial, reformula la pregunta para que se entienda sola (modelo de resúmenes).
  * 2. Preguntas globales → resúmenes de capítulo; concretas → búsqueda híbrida (top 8).
- * 3. Prompt: instrucciones + contexto del libro (prefijo estable, en caché) + fragmentos numerados.
- * 4. Respuesta en streaming con el modelo del chat (Sonnet) y validación de las citas `[p. N]`.
+ * 3. Prompt: instrucciones + contexto del libro (prefijo estable, que aprovecha la caché implícita de
+ *    Gemini) + fragmentos numerados.
+ * 4. Respuesta en streaming con el modelo del chat (Gemini Flash) y validación de las citas `[p. N]`.
  */
 class AskBook @Inject constructor(
     private val llm: LlmClient,
@@ -58,7 +60,7 @@ class AskBook @Inject constructor(
             model = config.chatModel,
             system = listOf(
                 SystemBlock(prompts.render(R.raw.rag_system_v1)),
-                SystemBlock(bookContext(bookId, chapters), cache = true)
+                SystemBlock(bookContext(bookId, chapters))
             ),
             messages =
             history.map { LlmMessage(if (it.role == ChatRole.USER) LlmRole.USER else LlmRole.ASSISTANT, it.text) } +
@@ -70,8 +72,7 @@ class AskBook @Inject constructor(
                         "question" to question
                     )
                 ),
-            maxTokens = ANSWER_MAX_TOKENS,
-            effort = "low"
+            maxTokens = ANSWER_MAX_TOKENS
         )
 
         val answer = StringBuilder()
@@ -148,7 +149,8 @@ class AskBook @Inject constructor(
                         )
                     )
                 ),
-                maxTokens = REWRITE_MAX_TOKENS
+                maxTokens = REWRITE_MAX_TOKENS,
+                thinking = Thinking.MINIMAL
             )
         ).text.trim().ifEmpty { question }
     }.getOrDefault(question)

@@ -2,8 +2,9 @@ package dev.joseramos.aireader.text
 
 /**
  * Divide un párrafo en frases para la lectura en voz alta y el resaltado. Respeta las
- * abreviaturas habituales («Sr.», «pág.», «p. ej.») y las iniciales, y parte por comas o punto y
- * coma las frases que superan [maxChars] (Piper pierde naturalidad con frases muy largas).
+ * abreviaturas habituales en español e inglés («Sr.», «pág.», «p. ej.», «Mr.») y las iniciales,
+ * y parte por comas o punto y coma las frases que superan [maxChars] (Piper pierde naturalidad
+ * con frases muy largas).
  */
 object PhraseSplitter {
     const val DEFAULT_MAX_CHARS = 300
@@ -11,7 +12,9 @@ object PhraseSplitter {
     private val abbreviations = setOf(
         "sr", "sra", "srta", "dr", "dra", "d", "dña", "ud", "uds", "vd", "vds", "pág", "págs", "p", "pp",
         "cap", "caps", "vol", "vols", "fig", "figs", "núm", "nº", "art", "arts", "ed", "eds", "ej", "aprox",
-        "av", "avda", "c", "cf", "etc", "ibid", "op", "cit", "trad", "s", "ss", "a", "e", "i", "ee", "uu"
+        "av", "avda", "c", "cf", "etc", "ibid", "op", "cit", "trad", "s", "ss", "a", "e", "i", "ee", "uu",
+        // Inglés
+        "mr", "mrs", "ms", "jr", "st", "vs", "approx", "inc", "ltd", "mt"
     )
     private const val SENTENCE_STARTERS = "¿¡«\"“—('"
 

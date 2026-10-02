@@ -1,6 +1,7 @@
 package dev.joseramos.aireader.ai.characters
 
 import android.content.Context
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -20,6 +21,7 @@ import dev.joseramos.aireader.core.data.book.CharacterRepository
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.indexing.CharacterAnalysisTrigger
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -57,6 +59,7 @@ class CharacterAnalysis @Inject constructor(
         val request = OneTimeWorkRequestBuilder<CharacterScanWorker>()
             .setInputData(workDataOf(CharacterScanWorker.KEY_BOOK_ID to bookId))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, RETRY_DELAY_MINUTES, TimeUnit.MINUTES)
             .build()
         workManager.enqueueUniqueWork(workName(bookId), ExistingWorkPolicy.KEEP, request)
     }
@@ -73,7 +76,7 @@ class CharacterAnalysis @Inject constructor(
     /** Arranca el análisis si es una novela ya indexada, hay clave y quedan capítulos por analizar. */
     suspend fun startIfNeeded(bookId: String) {
         val book = books.getBook(bookId) ?: return
-        val indexed = book.indexStatus == IndexStatus.READY || book.indexStatus == IndexStatus.TEXT_READY
+        val indexed = book.indexStatus in setOf(IndexStatus.READY, IndexStatus.TEXT_READY, IndexStatus.EMBEDDING)
         if (!book.isLiterature || !indexed || !llm.hasApiKey()) return
         val progress = observe(bookId).first()
         if (!progress.complete && !progress.running) start(bookId)
@@ -94,6 +97,10 @@ class CharacterAnalysis @Inject constructor(
     }
 
     private fun workName(bookId: String) = "characters-$bookId"
+
+    private companion object {
+        const val RETRY_DELAY_MINUTES = 1L
+    }
 }
 
 /** Puente con la indexación, para que los módulos de pantalla no dependan de `:indexing`. */

@@ -10,10 +10,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Confirma el tipo de documento con el modelo de resúmenes (Haiku) cuando la heurística local no
- * es concluyente. Recibe título, capítulos y unas 3.000 palabras del principio.
+ * Confirma el tipo de documento con el modelo de resúmenes (Gemini Flash-Lite por defecto) cuando la
+ * heurística local no es concluyente. Recibe título, capítulos y unas 3.000 palabras del principio.
  */
-class ClaudeDocumentClassification @Inject constructor(
+class AiDocumentClassification @Inject constructor(
     private val llm: LlmClient,
     private val prompts: Prompts,
     private val settings: SettingsRepository
@@ -39,7 +39,9 @@ class ClaudeDocumentClassification @Inject constructor(
                         )
                     )
                 ),
-                maxTokens = MAX_TOKENS
+                maxTokens = MAX_TOKENS,
+                thinking = Thinking.MINIMAL,
+                jsonOutput = true
             )
         ).text
         val start = answer.indexOf('{')

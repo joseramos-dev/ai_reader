@@ -81,7 +81,7 @@ dependencies {
     implementation(libs.androidx.media3.common)
     implementation(libs.onnxruntime.android)
     implementation(libs.pdfbox.android)
-    implementation(libs.anthropic.java)
+    implementation(libs.okhttp)
     implementation(libs.commons.compress)
     implementation(libs.djl.tokenizers)
     runtimeOnly(libs.djl.tokenizer.native.android)

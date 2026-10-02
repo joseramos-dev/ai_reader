@@ -10,7 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import dev.joseramos.aireader.ai.models.ModelCatalog
+import dev.joseramos.aireader.ai.models.ModelInfo
 import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.core.designsystem.component.AppBottomSheet
 import dev.joseramos.aireader.core.designsystem.component.PlainButton
@@ -26,6 +26,7 @@ import dev.joseramos.aireader.tts.PlaybackError
 @Composable
 internal fun PlaybackProblemSheet(
     error: PlaybackError,
+    voiceInfo: ModelInfo,
     voice: ModelState,
     onDownloadVoice: () -> Unit,
     onVoiceReady: () -> Unit,
@@ -48,7 +49,8 @@ internal fun PlaybackProblemSheet(
             val message = if (error == PlaybackError.VOICE_MISSING) {
                 stringResource(
                     R.string.reader_voice_message,
-                    (ModelCatalog.piperVoice.sizeBytes / BYTES_PER_MB).toInt()
+                    voiceInfo.displayName.lowercase(),
+                    (voiceInfo.sizeBytes / BYTES_PER_MB).toInt()
                 )
             } else {
                 stringResource(R.string.reader_text_not_ready_message)

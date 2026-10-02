@@ -25,9 +25,14 @@ data class AppSettings(
     val autoCharacterAnalysis: Boolean = true
 ) {
     companion object {
-        // Decisión del 2026-10-02 (docs/02-diseno-tecnico.md §10): opción equilibrada.
-        const val DEFAULT_CHAT_MODEL = "claude-sonnet-5-5"
-        const val DEFAULT_SUMMARY_MODEL = "claude-haiku-4-5"
+        // Gemini en lugar de Claude (docs/02-diseno-tecnico.md §10): Flash para el chat y Flash-Lite,
+        // con más margen en el nivel gratuito, para resúmenes, personajes y tareas por volumen.
+        const val DEFAULT_CHAT_MODEL = "gemini-3.8-flash"
+        const val DEFAULT_SUMMARY_MODEL = "gemini-3.1-flash-lite"
+        private const val MODEL_PREFIX = "gemini-"
+
+        /** Los modelos de Claude que pudiera haber guardados de versiones anteriores ya no sirven. */
+        fun validModel(id: String?, default: String) = id?.takeIf { it.startsWith(MODEL_PREFIX) } ?: default
         const val MIN_SPEED = 0.75f
         const val MAX_SPEED = 2.0f
         const val MIN_TEXT_SCALE = 0.8f
@@ -41,8 +46,8 @@ class SettingsRepository @Inject constructor(@Named(SETTINGS_STORE) private val 
         AppSettings(
             themeMode = prefs[THEME]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
             readingSpeed = prefs[SPEED] ?: 1.0f,
-            chatModel = prefs[CHAT_MODEL] ?: AppSettings.DEFAULT_CHAT_MODEL,
-            summaryModel = prefs[SUMMARY_MODEL] ?: AppSettings.DEFAULT_SUMMARY_MODEL,
+            chatModel = AppSettings.validModel(prefs[CHAT_MODEL], AppSettings.DEFAULT_CHAT_MODEL),
+            summaryModel = AppSettings.validModel(prefs[SUMMARY_MODEL], AppSettings.DEFAULT_SUMMARY_MODEL),
             textScale = prefs[TEXT_SCALE] ?: 1.0f,
             autoCharacterAnalysis = prefs[AUTO_CHARACTERS] ?: true
         )
