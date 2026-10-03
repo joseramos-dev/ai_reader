@@ -20,7 +20,8 @@ import kotlin.math.roundToInt
 
 /**
  * Fila con el anillo de consumo de IA del día: lo que queda, lo gastado frente al límite diario y
- * cuándo se renueva la cuota.
+ * cuándo se renueva la cuota. [overBudget]: se ha superado el presupuesto elegido en Ajustes (solo
+ * es un aviso: la IA sigue funcionando); [exhausted]: es Gemini quien ha agotado la cuota del día.
  */
 @Composable
 fun AiUsageRow(
@@ -29,7 +30,8 @@ fun AiUsageRow(
     budgetTokens: Long,
     exhausted: Boolean,
     resetsAt: Long,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    overBudget: Boolean = false
 ) {
     val colors = AppTheme.colors
     val percent = (remaining * PERCENT).roundToInt()
@@ -47,13 +49,25 @@ fun AiUsageRow(
         )
         Column(Modifier.weight(1f)) {
             Text(
-                stringResource(if (exhausted) R.string.usage_exhausted_title else R.string.usage_title),
+                stringResource(
+                    when {
+                        exhausted -> R.string.usage_exhausted_title
+                        overBudget -> R.string.usage_over_budget_title
+                        else -> R.string.usage_title
+                    }
+                ),
                 style = AppTheme.typography.subheadline,
-                color = if (exhausted) colors.destructive else colors.label
+                color = if (exhausted || overBudget) colors.destructive else colors.label
             )
             Text(
                 if (exhausted) {
                     stringResource(R.string.usage_exhausted_detail, resetTime)
+                } else if (overBudget) {
+                    stringResource(
+                        R.string.usage_over_budget_detail,
+                        formatTokens(usedTokens),
+                        formatTokens(budgetTokens)
+                    )
                 } else {
                     stringResource(
                         R.string.usage_detail,

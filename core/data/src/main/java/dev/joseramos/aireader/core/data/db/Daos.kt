@@ -13,6 +13,10 @@ import kotlinx.coroutines.flow.Flow
  */
 data class BookWithPosition(@Embedded val book: BookEntity, val currentPage: Int?, val lastBookmarkPage: Int?)
 
+/** Libro y su estado de indexación. */
+data class BookIndexState(val id: String, val indexStatus: IndexStatus)
+
+@Suppress("TooManyFunctions") // Todas las consultas de la tabla de libros.
 @Dao
 interface BookDao {
     @Query(
@@ -44,6 +48,13 @@ interface BookDao {
         "SELECT id FROM books WHERE indexStatus = :status AND NOT EXISTS (SELECT 1 FROM chunks WHERE bookId = books.id)"
     )
     suspend fun idsWithStatusWithoutChunks(status: IndexStatus): List<String>
+
+    /** Libros cuya indexación no ha pasado aún por las etapas de IA con clave (sin contar los fallidos). */
+    @Query("SELECT id, indexStatus FROM books WHERE aiPrepared = 0 AND indexStatus != 'FAILED'")
+    suspend fun notAiPrepared(): List<BookIndexState>
+
+    @Query("UPDATE books SET aiPrepared = :prepared WHERE id = :id")
+    suspend fun setAiPrepared(id: String, prepared: Boolean)
 
     @Query("UPDATE books SET indexStatus = :status, indexProgress = :progress WHERE id = :id")
     suspend fun updateIndexState(id: String, status: IndexStatus, progress: Float)
@@ -114,6 +125,9 @@ interface PageLayoutDao {
 
     @Upsert
     suspend fun upsert(layout: PageLayoutEntity)
+
+    @Upsert
+    suspend fun upsertAll(layouts: List<PageLayoutEntity>)
 }
 
 @Dao
@@ -124,8 +138,15 @@ interface PageTextDao {
     @Query("SELECT * FROM page_texts WHERE bookId = :bookId ORDER BY page")
     suspend fun getByBook(bookId: String): List<PageTextEntity>
 
-    @Query("SELECT * FROM page_texts WHERE bookId = :bookId ORDER BY page")
-    fun observeByBook(bookId: String): Flow<List<PageTextEntity>>
+    /**
+     * Lo que necesita el lector de las páginas ya limpias, sin el texto crudo ni el limpio (lo que
+     * más pesa): se vuelve a leer cada vez que cambia la tabla, también al indexar otros libros.
+     */
+    @Query(
+        "SELECT page, paragraphsJson, levelsJson, isScanned FROM page_texts " +
+            "WHERE bookId = :bookId AND cleanerVersion > 0 ORDER BY page"
+    )
+    fun observeParagraphs(bookId: String): Flow<List<PageParagraphsRow>>
 
     @Query("SELECT * FROM page_texts WHERE bookId = :bookId AND page >= :fromPage ORDER BY page LIMIT :limit")
     suspend fun getFrom(bookId: String, fromPage: Int, limit: Int): List<PageTextEntity>
@@ -139,7 +160,13 @@ interface PageTextDao {
 
     @Upsert
     suspend fun upsert(page: PageTextEntity)
+
+    @Upsert
+    suspend fun upsertAll(pages: List<PageTextEntity>)
 }
+
+/** Párrafos de una página limpia, como los guarda [PageTextEntity]. */
+data class PageParagraphsRow(val page: Int, val paragraphsJson: String, val levelsJson: String, val isScanned: Boolean)
 
 /** Fragmento encontrado por la búsqueda léxica, con su puntuación (menor es mejor). */
 data class ChunkMatch(val chunkId: Long, val score: Double)

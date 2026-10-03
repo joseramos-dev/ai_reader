@@ -60,8 +60,11 @@ import dev.joseramos.aireader.ai.models.ModelCatalog
 import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.core.data.book.ChatMessage
 import dev.joseramos.aireader.core.data.db.ChatRole
+import dev.joseramos.aireader.core.data.settings.BudgetLevel
 import dev.joseramos.aireader.core.designsystem.component.ApiKeySheet
 import dev.joseramos.aireader.core.designsystem.component.BarIconButton
+import dev.joseramos.aireader.core.designsystem.component.BudgetAlertBanner
+import dev.joseramos.aireader.core.designsystem.component.BudgetAlertKind
 import dev.joseramos.aireader.core.designsystem.component.EmptyState
 import dev.joseramos.aireader.core.designsystem.component.PrimaryButton
 import dev.joseramos.aireader.core.designsystem.component.UsageRing
@@ -94,7 +97,8 @@ fun NavGraphBuilder.chatScreen(onBack: () -> Unit, onOpenPage: (bookId: String, 
             onDownloadModel = viewModel::downloadModel,
             onRetryIndexing = viewModel::retryIndexing,
             onSetAntiSpoilers = viewModel::setAntiSpoilers,
-            onDismissError = viewModel::dismissError
+            onDismissError = viewModel::dismissError,
+            onDismissBudgetAlert = viewModel::dismissBudgetAlert
         )
         // La clave se pide aquí mismo: al guardarla, el chat se habilita sin salir del libro.
         if (askKey) ApiKeySheet(onSave = viewModel::saveApiKey, onDismiss = { askKey = false })
@@ -113,7 +117,8 @@ private fun ChatScreen(
     onDownloadModel: () -> Unit,
     onRetryIndexing: () -> Unit,
     onSetAntiSpoilers: (Boolean) -> Unit,
-    onDismissError: () -> Unit
+    onDismissError: () -> Unit,
+    onDismissBudgetAlert: (BudgetLevel) -> Unit
 ) {
     val colors = AppTheme.colors
     val listState = rememberLazyListState()
@@ -194,6 +199,20 @@ private fun ChatScreen(
         Box(Modifier.navigationBarsPadding()) {
             when (val availability = state.availability) {
                 is ChatAvailability.Ready -> Column {
+                    state.usage.alert?.let { level ->
+                        BudgetAlertBanner(
+                            kind = when {
+                                state.usage.exhausted -> BudgetAlertKind.EXHAUSTED
+                                level == BudgetLevel.OVER -> BudgetAlertKind.OVER
+                                else -> BudgetAlertKind.NEAR
+                            },
+                            usedTokens = state.usage.tokens,
+                            budgetTokens = state.usage.budget,
+                            resetsAt = state.usage.resetsAt,
+                            onDismiss = { onDismissBudgetAlert(level) },
+                            modifier = Modifier.padding(horizontal = Spacing.m, vertical = Spacing.xs)
+                        )
+                    }
                     SearchNotice(availability.search, onDownloadModel, onRetryIndexing)
                     AntiSpoilersRow(state.antiSpoilers, state.spoilerLimit, onSetAntiSpoilers)
                     InputBar(state.answering, onSend, onStop)

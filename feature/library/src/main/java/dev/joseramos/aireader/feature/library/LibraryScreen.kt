@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoStories
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -35,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -195,7 +198,7 @@ internal fun LibraryScreen(
             book = book,
             onOpen = { page ->
                 selectedId = null
-                onOpenBook(book.id, page)
+                if (!book.isPreparing) onOpenBook(book.id, page)
             },
             onChangeType = {
                 selectedId = null
@@ -264,15 +267,27 @@ internal fun LibraryScreen(
     }
 }
 
+/**
+ * Se está extrayendo el texto: el libro aún no se puede abrir. Los capítulos y la búsqueda del chat
+ * siguen después en segundo plano, pero ya no impiden leer.
+ */
+private val Book.isPreparing: Boolean
+    get() = indexStatus == IndexStatus.PENDING || indexStatus == IndexStatus.EXTRACTING_TEXT
+
+/**
+ * Portada, título y estado. Mientras se prepara ([isPreparing]) la portada sale atenuada con un
+ * círculo de progreso y tocarla no abre el libro; la pulsación larga (información, borrar) sí funciona.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BookTile(book: Book, onOpen: () -> Unit, onLongPress: () -> Unit, modifier: Modifier) {
     val colors = AppTheme.colors
     val haptics = LocalHapticFeedback.current
+    val preparing = book.isPreparing
     Column(
         modifier.combinedClickable(
             role = Role.Button,
-            onClick = onOpen,
+            onClick = { if (!preparing) onOpen() },
             onLongClick = {
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                 onLongPress()
@@ -288,16 +303,23 @@ private fun BookTile(book: Book, onOpen: () -> Unit, onLongPress: () -> Unit, mo
                 .background(colors.accentFill),
             contentAlignment = Alignment.Center
         ) {
+            val coverAlpha = if (preparing) PREPARING_ALPHA else 1f
             if (book.coverPath != null) {
                 AsyncImage(
                     model = File(book.coverPath!!),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize().alpha(coverAlpha)
                 )
             } else {
-                Icon(Icons.Outlined.AutoStories, contentDescription = null, tint = colors.accentText)
+                Icon(
+                    Icons.Outlined.AutoStories,
+                    contentDescription = null,
+                    tint = colors.accentText,
+                    modifier = Modifier.alpha(coverAlpha)
+                )
             }
+            if (preparing) PreparingProgress((book.indexProgress * 2).coerceIn(0f, 1f))
         }
         Spacer(Modifier.height(6.dp))
         Text(
@@ -311,12 +333,36 @@ private fun BookTile(book: Book, onOpen: () -> Unit, onLongPress: () -> Unit, mo
     }
 }
 
+/** Círculo que se va llenando con el porcentaje de la extracción del texto en el centro. */
+@Composable
+private fun PreparingProgress(progress: Float) {
+    val colors = AppTheme.colors
+    // Fondo propio para que se lea sobre cualquier portada.
+    Box(
+        Modifier.size(64.dp).background(colors.background.copy(alpha = 0.9f), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        CircularProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.size(56.dp),
+            color = colors.accent,
+            trackColor = colors.fill,
+            strokeWidth = 4.dp
+        )
+        Text(
+            stringResource(R.string.library_percent, (progress * PERCENT).toInt()),
+            style = AppTheme.typography.caption,
+            color = colors.label
+        )
+    }
+}
+
 @Composable
 private fun TileStatus(book: Book) {
     val colors = AppTheme.colors
     // El texto es la primera mitad de la indexación; la segunda (capítulos y búsqueda del chat) ya
     // no impide leer, así que se muestra aparte y sin barra de «preparando».
-    val preparing = book.indexStatus in setOf(IndexStatus.PENDING, IndexStatus.EXTRACTING_TEXT)
+    val preparing = book.isPreparing
     val text = when {
         book.indexStatus == IndexStatus.FAILED -> stringResource(R.string.library_prepare_failed)
         preparing -> stringResource(R.string.library_preparing, (book.indexProgress * 2 * PERCENT).toInt())
@@ -415,6 +461,9 @@ private fun typeLabel(type: DocumentType) = when (type) {
 
 private const val COVER_RATIO = 0.7f
 private const val PERCENT = 100
+
+/** Opacidad de la portada mientras se extrae el texto. */
+private const val PREPARING_ALPHA = 0.35f
 
 /** Parte del progreso de indexación que corresponde al texto (ver IndexWorker). */
 private const val TEXT_SHARE = 0.5f

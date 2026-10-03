@@ -42,11 +42,15 @@ class ChapterDetector @Inject constructor(
     /**
      * [upgrade]: el texto se acaba de volver a procesar en un libro que ya tenía capítulos. Entonces
      * se añaden los apartados que falten sin perder los resúmenes ya generados de cada capítulo.
+     * [retryWithAi]: ahora hay clave de API y antes no; si el índice se quedó en bloques de páginas
+     * (sin IA), se vuelve a intentar con ella.
      */
-    suspend fun run(book: BookEntity, upgrade: Boolean = false) {
+    suspend fun run(book: BookEntity, upgrade: Boolean = false, retryWithAi: Boolean = false) {
         val existing = chapterDao.getContents(book.id)
-        if (existing.isNotEmpty() && (!upgrade || existing.any { it.level > 0 })) return
+        val redoBlocks = retryWithAi && existing.isNotEmpty() && existing.all { it.source == ChapterSource.BLOCKS }
+        if (existing.isNotEmpty() && !redoBlocks && (!upgrade || existing.any { it.level > 0 })) return
         val (detected, source) = detect(book)
+        if (redoBlocks && source == ChapterSource.BLOCKS) return
         val entries = normalize(detected)
         if (existing.isEmpty()) {
             chapterDao.insertAll(toEntities(book, entries, source))

@@ -7,6 +7,8 @@ import android.os.ParcelFileDescriptor
 import android.util.LruCache
 import android.util.Size
 import java.io.Closeable
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -20,7 +22,7 @@ import kotlinx.coroutines.withContext
  * admite una página abierta a la vez, así que todo el acceso pasa por un [Mutex]. Mantiene una
  * caché LRU acotada por memoria para no volver a renderizar las páginas vecinas.
  */
-class PdfPageRenderer(file: File) : Closeable {
+class PdfPageRenderer(private val file: File, private val sizesCache: File? = null) : Closeable {
     private val descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     private val renderer = PdfRenderer(descriptor)
     private val mutex = Mutex()
@@ -31,9 +33,41 @@ class PdfPageRenderer(file: File) : Closeable {
 
     val pageCount: Int = renderer.pageCount
 
-    /** Tamaño de cada página en puntos PDF, para reservar el hueco antes de renderizar. */
-    val pageSizes: List<Size> = List(pageCount) { index ->
+    /**
+     * Tamaño de cada página en puntos PDF, para reservar el hueco antes de renderizar. Medirlas obliga
+     * a abrir todas las páginas (casi un segundo en un libro de 500), así que se calcula solo si se
+     * pide y, con [sizesCache], se guarda la primera vez. Hay que pedirlo fuera del hilo principal.
+     */
+    val pageSizes: List<Size> by lazy { readSizes() ?: measureSizes().also(::writeSizes) }
+
+    private fun measureSizes(): List<Size> = List(pageCount) { index ->
         renderer.openPage(index).use { Size(it.width, it.height) }
+    }
+
+    /** Los tamaños guardados, si son de este mismo fichero (tamaño, fecha y número de páginas). */
+    private fun readSizes(): List<Size>? = runCatching {
+        val cache = sizesCache?.takeIf { it.exists() } ?: return null
+        DataInputStream(cache.inputStream().buffered()).use { input ->
+            if (input.readLong() != file.length() || input.readLong() != file.lastModified()) return null
+            if (input.readInt() != pageCount) return null
+            List(pageCount) { Size(input.readInt(), input.readInt()) }
+        }
+    }.getOrNull()
+
+    private fun writeSizes(sizes: List<Size>) {
+        val cache = sizesCache ?: return
+        runCatching {
+            cache.parentFile?.mkdirs()
+            DataOutputStream(cache.outputStream().buffered()).use { output ->
+                output.writeLong(file.length())
+                output.writeLong(file.lastModified())
+                output.writeInt(sizes.size)
+                sizes.forEach {
+                    output.writeInt(it.width)
+                    output.writeInt(it.height)
+                }
+            }
+        }
     }
 
     /** Página [index] (base 0) renderizada a [widthPx] de ancho, manteniendo la proporción. */

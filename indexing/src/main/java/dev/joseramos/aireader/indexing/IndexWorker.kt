@@ -16,8 +16,10 @@ import dagger.assisted.AssistedInject
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.IndexStatus
+import dev.joseramos.aireader.core.data.settings.SecretStore
 import java.util.Optional
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 
 /**
  * Etapa opcional del chat (F7): fragmentos y embeddings. La aporta el módulo de RAG; mientras no
@@ -44,7 +46,9 @@ interface CharacterAnalysisTrigger {
 
 /**
  * Indexa un libro en segundo plano: texto → capítulos → tipo de documento → embeddings. Cada etapa guarda su
- * progreso en Room, así que si Android detiene el trabajo, WorkManager lo relanza y continúa.
+ * progreso en Room, así que si Android detiene el trabajo, WorkManager lo relanza y continúa. Si el
+ * libro se indexó sin clave de API y ahora la hay, repasa las etapas que usan la IA
+ * ([BookEntity.aiPrepared]).
  */
 @HiltWorker
 class IndexWorker @AssistedInject constructor(
@@ -56,7 +60,8 @@ class IndexWorker @AssistedInject constructor(
     private val documentTypeDetector: DocumentTypeDetector,
     private val embeddingStage: Optional<EmbeddingStage>,
     private val characterAnalysis: Optional<CharacterAnalysisTrigger>,
-    private val crashGuard: StageCrashGuard
+    private val crashGuard: StageCrashGuard,
+    private val secrets: SecretStore
 ) : CoroutineWorker(context, params) {
 
     @Suppress("TooGenericExceptionCaught")
@@ -70,9 +75,15 @@ class IndexWorker @AssistedInject constructor(
 
         return try {
             val upgraded = text(book)
-            if (!upgraded) bookDao.updateIndexState(bookId, IndexStatus.EMBEDDING, TEXT_SHARE)
-            chapterDetector.run(book, upgrade = upgraded)
-            documentTypeDetector.run(book)
+            // Un libro ya listo que solo se repasa (por ejemplo, al introducir la clave) no vuelve a «preparando».
+            if (!upgraded && book.indexStatus != IndexStatus.READY) {
+                bookDao.updateIndexState(bookId, IndexStatus.EMBEDDING, TEXT_SHARE)
+            }
+            // La clave se mira tras el texto, que es lo largo: así cuenta aunque se haya introducido mientras.
+            val withAi = secrets.hasApiKey.first()
+            val retryWithAi = withAi && !book.aiPrepared
+            chapterDetector.run(book, upgrade = upgraded, retryWithAi = retryWithAi)
+            documentTypeDetector.run(book, retryWithAi = retryWithAi)
 
             val embedded = searchIndex(bookId)
             // Si los embeddings faltan o fallan, el libro ya se puede leer y escuchar, y el chat busca por palabras.
@@ -81,6 +92,7 @@ class IndexWorker @AssistedInject constructor(
                 if (embedded) IndexStatus.READY else IndexStatus.TEXT_READY,
                 if (embedded) 1f else TEXT_SHARE
             )
+            if (withAi) bookDao.setAiPrepared(bookId, true)
             characterAnalysis.orElse(null)?.let { runCatching { it.onBookIndexed(bookId) } }
             Result.success()
         } catch (e: CancellationException) {

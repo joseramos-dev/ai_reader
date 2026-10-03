@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.ai.rag
 
+import dev.joseramos.aireader.core.data.db.ChunkEntity
 import dev.joseramos.aireader.text.SpeechNormalizer
 import java.text.Normalizer
 
@@ -104,6 +105,24 @@ object QueryRouter {
         return if (globalPatterns.any { it in q }) QueryScope.GLOBAL else QueryScope.SPECIFIC
     }
 
+    /** Palabras que remiten a algo dicho antes en la conversación. */
+    private val referenceWords = setOf(
+        "él", "ella", "ellos", "ellas", "eso", "esto", "ese", "esa", "esos", "esas", "este", "esta",
+        "aquel", "aquella", "aquello", "su", "sus", "entonces", "luego", "después", "despues", "antes",
+        "mismo", "misma", "anterior", "otro", "otra", "ahí", "allí", "allá"
+    )
+    private val word = Regex("[\\p{L}\\p{N}]+")
+
+    /**
+     * Si la pregunta depende de la conversación anterior («¿y después?», «¿por qué lo hizo él?») y
+     * hay que reformularla antes de buscar. Si no, se busca con ella tal cual y se ahorra una llamada
+     * a la API. Ante la duda (preguntas muy cortas), se reformula.
+     */
+    fun needsContext(question: String): Boolean {
+        val words = word.findAll(question.lowercase()).map { it.value }.toList()
+        return words.size < MIN_STANDALONE_WORDS || words.first() == "y" || words.any { it in referenceWords }
+    }
+
     /** Si la pregunta pide resumir un capítulo concreto («resume este capítulo», «resumen del tema 3»). */
     fun chapterSummary(question: String): ChapterRef? {
         val q = question.lowercase()
@@ -111,6 +130,47 @@ object QueryRouter {
         if (currentChapter.containsMatchIn(q)) return ChapterRef.Current
         val number = numberedChapter.find(q)?.groupValues?.get(1) ?: return null
         return (number.toIntOrNull() ?: SpeechNormalizer.romanToInt(number.uppercase()))?.let { ChapterRef.Number(it) }
+    }
+}
+
+private const val MIN_STANDALONE_WORDS = 4
+
+/** Varios fragmentos seguidos del libro unidos en uno. */
+data class MergedChunk(val text: String, val startPage: Int, val endPage: Int, val chapterId: Long?)
+
+/**
+ * Une los fragmentos consecutivos del mismo capítulo, en orden de lectura, quitando la frase que el
+ * troceado repite al principio de cada uno (el solapamiento de `Chunker`): menos tokens repetidos
+ * y un contexto más seguido para el modelo.
+ */
+object ChunkMerger {
+    private const val MIN_OVERLAP_CHARS = 10
+    private const val MAX_OVERLAP_CHARS = 1_500
+
+    fun merge(chunks: List<ChunkEntity>): List<MergedChunk> {
+        val merged = mutableListOf<MergedChunk>()
+        var lastOrdinal = Int.MIN_VALUE
+        for (chunk in chunks.sortedBy { it.ordinal }) {
+            val previous = merged.lastOrNull()
+            if (previous != null && chunk.ordinal == lastOrdinal + 1 && chunk.chapterId == previous.chapterId) {
+                merged[merged.lastIndex] = previous.copy(
+                    text = join(previous.text, chunk.text),
+                    endPage = maxOf(previous.endPage, chunk.endPage)
+                )
+            } else {
+                merged += MergedChunk(chunk.text, chunk.startPage, chunk.endPage, chunk.chapterId)
+            }
+            lastOrdinal = chunk.ordinal
+        }
+        return merged
+    }
+
+    /** [b] a continuación de [a], sin repetir el final de [a] con el que empieza [b]. */
+    internal fun join(a: String, b: String): String {
+        for (length in minOf(a.length, b.length, MAX_OVERLAP_CHARS) downTo MIN_OVERLAP_CHARS) {
+            if (a.regionMatches(a.length - length, b, 0, length)) return a + b.substring(length)
+        }
+        return a + "\n\n" + b
     }
 }
 

@@ -53,7 +53,13 @@ data class BookEntity(
     val cleanerVersion: Int,
     /** `null` hasta que la indexación lo clasifica. */
     val documentType: DocumentType? = null,
-    @ColumnInfo(defaultValue = "AUTO") val documentTypeSource: DocumentTypeSource = DocumentTypeSource.AUTO
+    @ColumnInfo(defaultValue = "AUTO") val documentTypeSource: DocumentTypeSource = DocumentTypeSource.AUTO,
+    /**
+     * Si las etapas de la indexación que usan la IA (capítulos y tipo de documento cuando las
+     * heurísticas no bastan) ya se hicieron con clave de API. Un libro importado sin clave se
+     * vuelve a repasar al introducirla (ver `ApiKeyObserver`).
+     */
+    @ColumnInfo(defaultValue = "0") val aiPrepared: Boolean = false
 )
 
 /**

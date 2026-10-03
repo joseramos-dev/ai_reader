@@ -155,6 +155,21 @@ internal fun ReaderScreen(
         Box(Modifier.fillMaxSize().background(colors.groupedBackground))
         return
     }
+    // Mientras se extrae el texto el libro no se lee (la biblioteca tampoco deja abrirlo); se llega
+    // aquí, por ejemplo, al abrir un PDF desde otra app. Capítulos y chat no lo impiden.
+    val book = state.book
+    if (book != null && (book.indexStatus == IndexStatus.PENDING || book.indexStatus == IndexStatus.EXTRACTING_TEXT)) {
+        EmptyState(
+            Icons.Outlined.TextFields,
+            stringResource(R.string.reader_preparing_title),
+            stringResource(
+                R.string.reader_preparing_message,
+                (book.indexProgress * 2 * PERCENT).roundToInt().coerceIn(0, PERCENT)
+            ),
+            Modifier.statusBarsPadding()
+        )
+        return
+    }
 
     // Una lista por modo; ambas tienen un elemento por página, así que el índice es la página - 1.
     val listState = remember(state.mode) { LazyListState(state.startPage - 1) }

@@ -12,14 +12,18 @@ import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.book.Summary
 import dev.joseramos.aireader.core.data.book.SummaryRepository
 import dev.joseramos.aireader.core.data.db.SummaryKind
+import dev.joseramos.aireader.core.data.settings.BudgetLevel
+import dev.joseramos.aireader.core.data.settings.CostConfirmation
 import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.UsageRepository
 import dev.joseramos.aireader.feature.reader.ReaderRoute
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -39,11 +43,15 @@ class SummaryViewModel @Inject constructor(
     repository: SummaryRepository,
     private val generator: SummaryGenerator,
     private val secrets: SecretStore,
-    usage: UsageRepository
+    private val usage: UsageRepository
 ) : ViewModel() {
     /** Consumo de IA de hoy, para el anillo de la hoja ✦. */
     val today: StateFlow<DailyUsage> =
         usage.today.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DailyUsage())
+
+    /** Sin clave, la hoja ✦ muestra las acciones bloqueadas. Empieza en `true` para no mostrar el aviso de golpe. */
+    val hasApiKey: StateFlow<Boolean> =
+        secrets.hasApiKey.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
     private val bookId = savedStateHandle.toRoute<ReaderRoute>().bookId
 
@@ -73,7 +81,31 @@ class SummaryViewModel @Inject constructor(
         return chapterOf(page) - chapterOf(until) <= 1
     }
 
-    fun generateRecap(page: Int) = generator.recap(bookId, page)
+    private val _costConfirmation = MutableStateFlow<Pair<Int, CostConfirmation>?>(null)
+
+    /** Repaso (página y estimación) que no cabe en lo que queda del presupuesto de hoy: pendiente de confirmar. */
+    val costConfirmation: StateFlow<Pair<Int, CostConfirmation>?> = _costConfirmation
+
+    /** Genera el repaso hasta [page] o, si no cabe en lo que queda del presupuesto de hoy, pide confirmación. */
+    fun requestRecap(page: Int) {
+        viewModelScope.launch {
+            val confirmation = usage.today.first().confirmationFor(generator.estimateRecap(bookId, page).total)
+            if (confirmation == null) generator.recap(bookId, page) else _costConfirmation.value = page to confirmation
+        }
+    }
+
+    fun confirmRecap() {
+        _costConfirmation.value?.let { (page, _) -> generator.recap(bookId, page) }
+        _costConfirmation.value = null
+    }
+
+    fun cancelRecap() {
+        _costConfirmation.value = null
+    }
+
+    fun dismissBudgetAlert(level: BudgetLevel) {
+        viewModelScope.launch { usage.dismissAlert(level) }
+    }
 
     /** Guarda la clave introducida desde el lector y, después, reintenta con [then]. */
     fun saveApiKey(key: String, then: () -> Unit) {

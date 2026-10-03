@@ -117,4 +117,25 @@ class MigrationTest {
         }
         db.close()
     }
+
+    @Test
+    fun migrate4To5MarksExistingBooksAsNotPreparedWithAi() {
+        helper.createDatabase(4).apply {
+            execSQL(
+                """
+                INSERT INTO books (id, title, author, fileName, filePath, pageCount, coverPath, importedAt,
+                    lastOpenedAt, indexStatus, indexProgress, cleanerVersion, documentTypeSource)
+                VALUES ('a', 'Libro', NULL, 'a.pdf', '/a.pdf', 10, NULL, 1, NULL, 'READY', 1.0, 1, 'AUTO')
+                """.trimIndent()
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(5, emptyList())
+        db.prepare("SELECT aiPrepared FROM books WHERE id = 'a'").use {
+            assertTrue(it.step())
+            assertEquals(0, it.getInt(0))
+        }
+        db.close()
+    }
 }

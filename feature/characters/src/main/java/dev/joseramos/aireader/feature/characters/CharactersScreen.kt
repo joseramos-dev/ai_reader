@@ -30,6 +30,7 @@ import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.designsystem.component.ApiKeySheet
 import dev.joseramos.aireader.core.designsystem.component.BarIconButton
 import dev.joseramos.aireader.core.designsystem.component.Cell
+import dev.joseramos.aireader.core.designsystem.component.CostConfirmDialog
 import dev.joseramos.aireader.core.designsystem.component.EmptyState
 import dev.joseramos.aireader.core.designsystem.component.GroupedSection
 import dev.joseramos.aireader.core.designsystem.component.LargeTitleScaffold
@@ -69,6 +70,15 @@ fun NavGraphBuilder.charactersScreens(
             onAnalyze = viewModel::analyze
         )
         if (askKey) ApiKeySheet(onSave = viewModel::saveApiKeyAndAnalyze, onDismiss = { askKey = false })
+        val confirmation by viewModel.costConfirmation.collectAsStateWithLifecycle()
+        confirmation?.let {
+            CostConfirmDialog(
+                estimatedTokens = it.estimatedTokens,
+                remainingTokens = it.remainingTokens,
+                onConfirm = viewModel::confirmAnalysis,
+                onDismiss = viewModel::cancelAnalysis
+            )
+        }
     }
     composable<RelationsGraphRoute>(
         enterTransition = { slideIntoContainer(SlideDirection.Start) },

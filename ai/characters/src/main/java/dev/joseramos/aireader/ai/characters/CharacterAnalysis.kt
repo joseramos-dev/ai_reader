@@ -1,6 +1,7 @@
 package dev.joseramos.aireader.ai.characters
 
 import android.content.Context
+import android.util.Log
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
@@ -20,6 +21,7 @@ import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.CharacterRepository
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
+import dev.joseramos.aireader.core.data.settings.UsageRepository
 import dev.joseramos.aireader.indexing.CharacterAnalysisTrigger
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -50,7 +52,9 @@ class CharacterAnalysis @Inject constructor(
     private val content: BookContentRepository,
     private val characters: CharacterRepository,
     private val settings: SettingsRepository,
-    private val llm: LlmClient
+    private val llm: LlmClient,
+    private val extractor: CharacterExtractor,
+    private val usage: UsageRepository
 ) {
     private val workManager get() = WorkManager.getInstance(context)
 
@@ -73,14 +77,30 @@ class CharacterAnalysis @Inject constructor(
         if (settings.settings.first().autoCharacterAnalysis) startIfNeeded(bookId)
     }
 
-    /** Arranca el análisis si es una novela ya indexada, hay clave y quedan capítulos por analizar. */
+    /**
+     * Arranca el análisis si es una novela ya indexada, hay clave y quedan capítulos por analizar.
+     * Si no cabe en lo que queda del presupuesto de hoy, no arranca solo: queda el botón de la
+     * pantalla de personajes, que pide confirmación.
+     */
     suspend fun startIfNeeded(bookId: String) {
         val book = books.getBook(bookId) ?: return
         val indexed = book.indexStatus in setOf(IndexStatus.READY, IndexStatus.TEXT_READY, IndexStatus.EMBEDDING)
         if (!book.isLiterature || !indexed || !llm.hasApiKey()) return
         val progress = observe(bookId).first()
-        if (!progress.complete && !progress.running) start(bookId)
+        if (progress.complete || progress.running) return
+        val confirmation = usage.today.first().confirmationFor(estimateTokens(bookId))
+        if (confirmation != null) {
+            Log.i(
+                TAG,
+                "Análisis de $bookId sin arrancar: ~${confirmation.estimatedTokens} tokens no caben en el presupuesto"
+            )
+            return
+        }
+        start(bookId)
     }
+
+    /** Tokens que costaría analizar los capítulos que faltan (estimación local). */
+    suspend fun estimateTokens(bookId: String): Long = extractor.estimate(bookId).total
 
     fun observe(bookId: String): Flow<AnalysisProgress> = combine(
         characters.observe(bookId),
@@ -99,6 +119,7 @@ class CharacterAnalysis @Inject constructor(
     private fun workName(bookId: String) = "characters-$bookId"
 
     private companion object {
+        const val TAG = "CharacterAnalysis"
         const val RETRY_DELAY_MINUTES = 1L
     }
 }

@@ -50,6 +50,7 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
     val summaryViewModel: SummaryViewModel = hiltViewModel()
     var aiSheet by remember { mutableStateOf(false) }
     val aiUsage by summaryViewModel.today.collectAsStateWithLifecycle()
+    val hasApiKey by summaryViewModel.hasApiKey.collectAsStateWithLifecycle()
 
     // Clave de API pedida desde una hoja de IA: al guardarla se reintenta lo que se estaba haciendo.
     var retryAfterKey by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -118,7 +119,9 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
     if (aiSheet) {
         AiActionsSheet(
             currentPage = state.currentPage,
+            hasApiKey = hasApiKey,
             usage = aiUsage,
+            onDismissBudgetAlert = summaryViewModel::dismissBudgetAlert,
             onCatchUp = {
                 aiSheet = false
                 catchUp = true
@@ -135,6 +138,11 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
                 aiSheet = false
                 onOpenChat(viewModel.bookId)
             },
+            // Al guardar la clave se vuelve a abrir la hoja, ya desbloqueada.
+            onAddApiKey = {
+                aiSheet = false
+                retryAfterKey = { aiSheet = true }
+            },
             onDismiss = { aiSheet = false }
         )
     }
@@ -147,7 +155,7 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
                 catchUp = false
                 summaryTarget = SummaryTarget(it)
             },
-            onAddApiKey = { retryAfterKey = { summaryViewModel.generateRecap(state.currentPage) } },
+            onAddApiKey = { retryAfterKey = { summaryViewModel.requestRecap(state.currentPage) } },
             onDismiss = { catchUp = false }
         )
     }

@@ -23,6 +23,7 @@ import dev.joseramos.aireader.core.data.book.ChatMessage
 import dev.joseramos.aireader.core.data.book.ChatRepository
 import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
 import dev.joseramos.aireader.core.data.db.IndexStatus
+import dev.joseramos.aireader.core.data.settings.BudgetLevel
 import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
@@ -87,7 +88,7 @@ class ChatViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val positions: ReadingPositionRepository,
     private val models: ModelManager,
-    usage: UsageRepository,
+    private val usage: UsageRepository,
     @ApplicationScope private val appScope: CoroutineScope,
     @IoDispatcher private val io: CoroutineDispatcher
 ) : ViewModel() {
@@ -195,6 +196,10 @@ class ChatViewModel @Inject constructor(
     }
 
     fun dismissError() = transient.update { it.copy(error = null) }
+
+    fun dismissBudgetAlert(level: BudgetLevel) {
+        viewModelScope.launch { usage.dismissAlert(level) }
+    }
 
     fun newConversation() {
         stop()

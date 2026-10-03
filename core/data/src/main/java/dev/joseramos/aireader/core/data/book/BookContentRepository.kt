@@ -6,7 +6,10 @@ import dev.joseramos.aireader.core.data.db.PageTextDao
 import dev.joseramos.aireader.core.data.db.PageTextEntity
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 
@@ -53,8 +56,16 @@ class BookContentRepository @Inject constructor(
     fun observeContents(bookId: String): Flow<List<Chapter>> =
         chapterDao.observeContents(bookId).map { list -> list.map { it.toChapter() } }
 
-    fun observePages(bookId: String): Flow<List<PageText>> =
-        pageTextDao.observeByBook(bookId).map { list -> list.filter { it.cleanerVersion > 0 }.map { it.toPageText() } }
+    /**
+     * Páginas limpias del libro. Solo se decodifican (fuera del hilo principal) cuando cambian de
+     * verdad: Room vuelve a emitir con cualquier escritura en la tabla, aunque sea de otro libro.
+     */
+    fun observePages(bookId: String): Flow<List<PageText>> = pageTextDao.observeParagraphs(bookId)
+        .distinctUntilChanged()
+        .map { rows ->
+            rows.map { PageText(it.page, decode(it.paragraphsJson), it.isScanned, decode(it.levelsJson)) }
+        }
+        .flowOn(Dispatchers.Default)
 
     suspend fun pages(bookId: String): List<PageText> =
         pageTextDao.getByBook(bookId).filter { it.cleanerVersion > 0 }.map { it.toPageText() }
@@ -70,9 +81,7 @@ class BookContentRepository @Inject constructor(
 
 private fun ChapterEntity.toChapter() = Chapter(id, number, title, startPage, endPage, level)
 
-private fun PageTextEntity.toPageText() = PageText(
-    page = page,
-    paragraphs = runCatching { Json.decodeFromString<List<String>>(paragraphsJson) }.getOrDefault(emptyList()),
-    isScanned = isScanned,
-    levels = runCatching { Json.decodeFromString<List<Int>>(levelsJson) }.getOrDefault(emptyList())
-)
+private fun PageTextEntity.toPageText() = PageText(page, decode(paragraphsJson), isScanned, decode(levelsJson))
+
+private inline fun <reified T> decode(json: String): List<T> =
+    runCatching { Json.decodeFromString<List<T>>(json) }.getOrDefault(emptyList())

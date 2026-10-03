@@ -39,7 +39,7 @@
     <string name="settings_ai_footer">Las preguntas y los fragmentos del libro necesarios para responder se envían a Google (API de Gemini). Con una clave del nivel gratuito, Google puede usar ese contenido para mejorar sus productos. Tus PDFs y su índice no salen del móvil.</string>
 
     <string name="settings_ai_usage">Consumo de IA</string>
-    <string name="settings_ai_usage_footer">Gemini no dice cuánta cuota gratuita te queda, así que el anillo compara lo gastado hoy con el límite diario que elijas. Si Gemini responde que se ha agotado la cuota del día, se vacía. Se renueva a medianoche, hora del Pacífico.</string>
+    <string name="settings_ai_usage_footer">Gemini no dice cuánta cuota gratuita te queda, así que el anillo compara lo gastado hoy con el límite diario que elijas. Te avisa al llegar al 80 % y al superarlo, y pide confirmación antes de tareas grandes que no quepan, pero nunca bloquea la IA. Si Gemini responde que se ha agotado la cuota del día, se vacía. Se renueva a medianoche, hora del Pacífico.</string>
     <string name="settings_daily_budget">Límite diario</string>
     <string name="settings_tokens">%1$s tokens</string>
     <string name="settings_about">Acerca de</string>

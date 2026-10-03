@@ -117,6 +117,61 @@ class SummaryGenerator @Inject constructor(
         }
     }
 
+    /**
+     * Estimación local (sin llamar a la API) de lo que gastaría [recap]: los resúmenes breves que
+     * faltan de los capítulos anteriores, el capítulo actual (por bloques si es largo) y la llamada final.
+     */
+    suspend fun estimateRecap(bookId: String, untilPage: Int): TokenEstimate {
+        val chapters = content.chapters(bookId)
+        val current = chapters.lastOrNull { untilPage >= it.startPage }
+        val previous = chapters.filter { it.endPage < (current?.startPage ?: 1) }
+        var estimate = TokenEstimate()
+        var previousTokens = 0L
+        for (chapter in previous) {
+            val saved = summaries.get(bookId, chapter.id, SummaryKind.CHAPTER_SHORT)?.text
+            if (saved != null) {
+                previousTokens += estimateTokens(saved)
+            } else {
+                // Un capítulo sin texto no llama a la API (se resume con un aviso fijo).
+                val text = content.text(bookId, chapter.startPage, chapter.endPage)
+                if (text.isNotBlank()) {
+                    estimate += chapterCost(estimateTokens(text).toLong())
+                    previousTokens += ESTIMATED_SUMMARY_TOKENS
+                }
+            }
+        }
+        val currentTokens = estimateTokens(content.text(bookId, current?.startPage ?: 1, untilPage)).toLong()
+        val currentInPrompt = if (currentTokens <= SINGLE_CALL_TOKENS) {
+            currentTokens
+        } else {
+            val blocks = blocksFor(currentTokens)
+            estimate += mapCost(currentTokens, blocks)
+            blocks * ESTIMATED_SUMMARY_TOKENS
+        }
+        return estimate + TokenEstimate(
+            TokenEstimate.PROMPT_OVERHEAD_TOKENS + previousTokens + currentInPrompt,
+            ESTIMATED_SUMMARY_TOKENS
+        )
+    }
+
+    /** Resumen breve de un capítulo de [tokens]: una llamada o, si es largo, bloques y combinación. */
+    private fun chapterCost(tokens: Long): TokenEstimate {
+        if (tokens <= SINGLE_CALL_TOKENS) {
+            return TokenEstimate(tokens + TokenEstimate.PROMPT_OVERHEAD_TOKENS, ESTIMATED_SUMMARY_TOKENS)
+        }
+        val blocks = blocksFor(tokens)
+        return mapCost(tokens, blocks) +
+            TokenEstimate(
+                blocks * ESTIMATED_SUMMARY_TOKENS + TokenEstimate.PROMPT_OVERHEAD_TOKENS,
+                ESTIMATED_SUMMARY_TOKENS
+            )
+    }
+
+    private fun mapCost(tokens: Long, blocks: Long) =
+        TokenEstimate(tokens + blocks * TokenEstimate.PROMPT_OVERHEAD_TOKENS, blocks * ESTIMATED_SUMMARY_TOKENS)
+
+    private fun blocksFor(tokens: Long): Long = (tokens + BLOCK_TOKENS - 1) / BLOCK_TOKENS
+
     /** Resumen breve de un capítulo: el guardado o uno nuevo. */
     private suspend fun shortSummary(bookId: String, chapter: Chapter): String =
         summaries.get(bookId, chapter.id, SummaryKind.CHAPTER_SHORT)?.text
@@ -199,7 +254,9 @@ class SummaryGenerator @Inject constructor(
             model = model,
             system = listOf(SystemBlock(prompts.summarySystem), SystemBlock(style(bookId))),
             messages = listOf(LlmMessage(LlmRole.USER, prompt)),
-            maxTokens = SUMMARY_MAX_TOKENS
+            maxTokens = SUMMARY_MAX_TOKENS,
+            // Resumir no necesita razonar: el razonamiento se cobra como salida en cada llamada.
+            thinking = Thinking.MINIMAL
         )
     ).text.trim()
 
@@ -252,6 +309,9 @@ class SummaryGenerator @Inject constructor(
         private const val SINGLE_CALL_TOKENS = 30_000
         private const val BLOCK_TOKENS = 8_000
         private const val SUMMARY_MAX_TOKENS = 2_000L
+
+        /** Longitud típica de un resumen, para las estimaciones (el máximo es [SUMMARY_MAX_TOKENS]). */
+        private const val ESTIMATED_SUMMARY_TOKENS = 500L
         private const val EMPTY_CHAPTER = "Este capítulo no tiene texto extraíble (puede ser una imagen escaneada)."
         private const val GENERIC_ERROR = "No se pudo generar el resumen. Inténtalo de nuevo."
 

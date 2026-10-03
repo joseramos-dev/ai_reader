@@ -227,4 +227,24 @@ class AppDatabaseTest {
         assertTrue(vectors.single { it.chunkId == ids[1] }.vector.all { it == 2.toByte() })
         assertTrue(db.chunkEmbeddingDao().getVectors("a", "gemma").isEmpty())
     }
+
+    @Test
+    fun readerSeesOnlyCleanedPagesOfItsBook() = runTest {
+        db.bookDao().upsert(book("a", importedAt = 1))
+        db.bookDao().upsert(book("b", importedAt = 2))
+        db.pageTextDao().upsertAll(
+            listOf(
+                PageTextEntity("a", 2, "crudo", "limpio", "[\"dos\"]", false, 1, "[1]"),
+                PageTextEntity("a", 1, "crudo", "limpio", "[\"uno\"]", false, 1),
+                // Aún sin limpiar (versión 0) o de otro libro: el lector no las ve.
+                PageTextEntity("a", 3, "crudo", "", "[]", false, 0),
+                PageTextEntity("b", 1, "crudo", "limpio", "[\"otro\"]", false, 1)
+            )
+        )
+
+        val rows = db.pageTextDao().observeParagraphs("a").first()
+        assertEquals(listOf(1, 2), rows.map { it.page })
+        assertEquals("[\"dos\"]", rows[1].paragraphsJson)
+        assertEquals("[1]", rows[1].levelsJson)
+    }
 }

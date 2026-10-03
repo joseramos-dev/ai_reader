@@ -19,6 +19,12 @@ import kotlinx.coroutines.flow.map
 data class ApiUsage(val inputTokens: Long = 0, val outputTokens: Long = 0, val cachedInputTokens: Long = 0)
 
 /**
+ * Cómo va el consumo del día frente al presupuesto: [NEAR] desde el 80 %, [OVER] al superarlo (o si
+ * Gemini ha agotado la cuota del día). El presupuesto solo avisa: nunca bloquea la IA.
+ */
+enum class BudgetLevel { OK, NEAR, OVER }
+
+/**
  * Consumo de IA del día frente al límite diario elegido en Ajustes. La API de Gemini no dice cuánta
  * cuota gratuita queda, así que el indicador se basa en lo gastado hoy; si Gemini responde que la
  * cuota del día se ha agotado, [exhausted] lo marca como vacío aunque no se haya llegado al límite.
@@ -29,17 +35,43 @@ data class DailyUsage(
     val budget: Long = DEFAULT_DAILY_BUDGET,
     val exhausted: Boolean = false,
     /** Momento (epoch ms) en que se renueva la cuota: medianoche en la hora del Pacífico. */
-    val resetsAt: Long = 0
+    val resetsAt: Long = 0,
+    /** Nivel de aviso que el usuario ya cerró hoy (cada aviso sale una vez al día). */
+    val dismissedLevel: BudgetLevel = BudgetLevel.OK
 ) {
     /** Lo que queda del día, de 1 (sin usar) a 0 (agotado). */
     val remaining: Float
         get() = if (exhausted) 0f else (1f - tokens.toFloat() / budget.coerceAtLeast(1)).coerceIn(0f, 1f)
 
+    /** Tokens que quedan del presupuesto de hoy. */
+    val remainingTokens: Long
+        get() = if (exhausted) 0 else (budget - tokens).coerceAtLeast(0)
+
+    val level: BudgetLevel
+        get() = when {
+            exhausted || tokens >= budget -> BudgetLevel.OVER
+            tokens * PERCENT >= budget * NEAR_PERCENT -> BudgetLevel.NEAR
+            else -> BudgetLevel.OK
+        }
+
+    /** Aviso pendiente de mostrar: el nivel actual, si es más grave que el ya cerrado hoy. */
+    val alert: BudgetLevel?
+        get() = level.takeIf { it > dismissedLevel }
+
+    /** Si una tarea de unos [estimatedTokens] no cabe en lo que queda hoy, lo que hay que confirmar. */
+    fun confirmationFor(estimatedTokens: Long): CostConfirmation? =
+        if (estimatedTokens > remainingTokens) CostConfirmation(estimatedTokens, remainingTokens) else null
+
     companion object {
+        private const val PERCENT = 100
+        private const val NEAR_PERCENT = 80
         const val DEFAULT_DAILY_BUDGET = 1_000_000L
         val BUDGET_OPTIONS = listOf(250_000L, 500_000L, 1_000_000L, 2_000_000L, 5_000_000L)
     }
 }
+
+/** Tarea de IA que no cabe en lo que queda del presupuesto de hoy: se pide confirmación antes de lanzarla. */
+data class CostConfirmation(val estimatedTokens: Long, val remainingTokens: Long)
 
 @Singleton
 class UsageRepository internal constructor(private val dataStore: DataStore<Preferences>, private val clock: Clock) {
@@ -60,7 +92,12 @@ class UsageRepository internal constructor(private val dataStore: DataStore<Pref
             requests = if (sameDay) prefs[DAY_REQUESTS] ?: 0 else 0,
             budget = prefs[DAILY_BUDGET] ?: DailyUsage.DEFAULT_DAILY_BUDGET,
             exhausted = prefs[EXHAUSTED_DAY] == day.toString(),
-            resetsAt = day.plusDays(1).atStartOfDay(QUOTA_ZONE).toInstant().toEpochMilli()
+            resetsAt = day.plusDays(1).atStartOfDay(QUOTA_ZONE).toInstant().toEpochMilli(),
+            dismissedLevel = prefs[ALERT_DISMISSED]
+                ?.split(ALERT_SEPARATOR)
+                ?.takeIf { it.size == 2 && it[0] == day.toString() }
+                ?.let { (_, level) -> BudgetLevel.entries.firstOrNull { it.name == level } }
+                ?: BudgetLevel.OK
         )
     }
 
@@ -87,6 +124,11 @@ class UsageRepository internal constructor(private val dataStore: DataStore<Pref
         dataStore.edit { it[EXHAUSTED_DAY] = quotaDay().toString() }
     }
 
+    /** El usuario cerró el aviso de [level]: no se vuelve a mostrar hasta que suba de nivel o cambie el día. */
+    suspend fun dismissAlert(level: BudgetLevel) {
+        dataStore.edit { it[ALERT_DISMISSED] = "${quotaDay()}$ALERT_SEPARATOR${level.name}" }
+    }
+
     suspend fun setDailyBudget(tokens: Long) {
         dataStore.edit { it[DAILY_BUDGET] = tokens.coerceAtLeast(1) }
     }
@@ -99,6 +141,7 @@ class UsageRepository internal constructor(private val dataStore: DataStore<Pref
             it.remove(DAY_TOKENS)
             it.remove(DAY_REQUESTS)
             it.remove(EXHAUSTED_DAY)
+            it.remove(ALERT_DISMISSED)
         }
     }
 
@@ -115,5 +158,9 @@ class UsageRepository internal constructor(private val dataStore: DataStore<Pref
         val DAY_REQUESTS = longPreferencesKey("usage_day_requests")
         val EXHAUSTED_DAY = stringPreferencesKey("usage_exhausted_day")
         val DAILY_BUDGET = longPreferencesKey("usage_daily_budget")
+
+        /** «día/NIVEL» del último aviso cerrado. */
+        val ALERT_DISMISSED = stringPreferencesKey("usage_alert_dismissed")
+        const val ALERT_SEPARATOR = "/"
     }
 }

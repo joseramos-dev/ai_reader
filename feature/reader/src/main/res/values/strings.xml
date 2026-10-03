@@ -16,6 +16,8 @@
     <string name="reader_cancel">Cancelar</string>
     <string name="reader_page_short">p. %1$d</string>
     <string name="reader_no_chapters">Los capítulos aparecerán cuando termine de prepararse el libro.</string>
+    <string name="reader_preparing_title">Preparando el libro</string>
+    <string name="reader_preparing_message">Podrás leerlo en cuanto termine de procesarse el texto (%1$d %%).</string>
     <string name="reader_text_preparing_title">Preparando el texto</string>
     <string name="reader_text_preparing_message">El modo texto estará disponible en cuanto se procese el libro (%1$d %%).</string>
     <string name="reader_text_waiting_message">El libro está en cola para prepararse. Mientras, puedes leerlo en modo PDF.</string>
@@ -55,6 +57,8 @@
     <string name="ai_retry">Reintentar</string>
     <string name="ai_regenerate">Volver a generar</string>
     <string name="ai_open_settings">Añadir clave de API</string>
+    <string name="recap_generate">Generar el repaso</string>
+    <string name="ai_locked_message">Para usar la IA (ponerte al día, personajes y preguntas al libro), introduce tu clave de API de Gemini.</string>
     <string name="ai_disclaimer">Generado con IA a partir del texto del libro. Puede contener errores.</string>
     <string name="ai_catch_up">Ponerme al día</string>
     <string name="ai_catch_up_subtitle">Lo leído hasta la página %1$d, sin adelantar nada</string>

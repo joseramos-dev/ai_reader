@@ -12,12 +12,15 @@ import dev.joseramos.aireader.ai.characters.CharactersSnapshot
 import dev.joseramos.aireader.ai.characters.VisibleCharacter
 import dev.joseramos.aireader.core.data.book.Book
 import dev.joseramos.aireader.core.data.book.BookRepository
+import dev.joseramos.aireader.core.data.settings.CostConfirmation
 import dev.joseramos.aireader.core.data.settings.SecretStore
+import dev.joseramos.aireader.core.data.settings.UsageRepository
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -44,10 +47,16 @@ class CharactersViewModel @Inject constructor(
     books: BookRepository,
     browser: CharacterBrowser,
     private val secrets: SecretStore,
-    private val analysis: CharacterAnalysis
+    private val analysis: CharacterAnalysis,
+    private val usage: UsageRepository
 ) : ViewModel() {
     private val bookId = savedStateHandle.toRoute<CharactersRoute>().bookId
     private val sort = MutableStateFlow(CharacterSort.APPEARANCE)
+
+    private val _costConfirmation = MutableStateFlow<CostConfirmation?>(null)
+
+    /** Análisis que no cabe en lo que queda del presupuesto de hoy: pendiente de confirmar. */
+    val costConfirmation: StateFlow<CostConfirmation?> = _costConfirmation
 
     val state: StateFlow<CharactersUiState> = combine(
         books.observeBook(bookId),
@@ -63,13 +72,30 @@ class CharactersViewModel @Inject constructor(
         sort.value = mode
     }
 
-    fun analyze() = analysis.start(bookId)
+    fun analyze() {
+        viewModelScope.launch { requestAnalysis() }
+    }
 
     /** Guarda la clave introducida desde esta pantalla y arranca el análisis. */
     fun saveApiKeyAndAnalyze(key: String) {
         viewModelScope.launch {
             secrets.setApiKey(key)
-            analysis.start(bookId)
+            requestAnalysis()
         }
+    }
+
+    fun confirmAnalysis() {
+        _costConfirmation.value = null
+        analysis.start(bookId)
+    }
+
+    fun cancelAnalysis() {
+        _costConfirmation.value = null
+    }
+
+    /** Arranca el análisis o, si no cabe en lo que queda del presupuesto de hoy, pide confirmación. */
+    private suspend fun requestAnalysis() {
+        val confirmation = usage.today.first().confirmationFor(analysis.estimateTokens(bookId))
+        if (confirmation == null) analysis.start(bookId) else _costConfirmation.value = confirmation
     }
 }

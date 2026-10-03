@@ -95,7 +95,12 @@ class AskBook @Inject constructor(
         val visibleChapters = if (limit == null) chapters else chapters.filter { it.startPage <= limit }
         val book = books.getBook(bookId)
 
-        val standalone = if (history.isEmpty()) question else rewrite(history, question, config.summaryModel)
+        // Reformular cuesta una llamada: solo se hace si la pregunta depende de la conversación.
+        val standalone = if (history.isEmpty() || !QueryRouter.needsContext(question)) {
+            question
+        } else {
+            rewrite(history, question, config.summaryModel)
+        }
         val fragments = fragmentsFor(bookId, standalone, chapters, reading)
         val system = buildList {
             add(SystemBlock(prompts.render(R.raw.rag_system_v1)))
@@ -111,8 +116,16 @@ class AskBook @Inject constructor(
         val request = LlmRequest(
             model = config.chatModel,
             system = system,
+            // Las respuestas anteriores van recortadas: para seguir la conversación basta su principio,
+            // y se reenvían en cada pregunta.
             messages =
-            history.map { LlmMessage(if (it.role == ChatRole.USER) LlmRole.USER else LlmRole.ASSISTANT, it.text) } +
+            history.map { message ->
+                if (message.role == ChatRole.USER) {
+                    LlmMessage(LlmRole.USER, message.text)
+                } else {
+                    LlmMessage(LlmRole.ASSISTANT, message.text.shortened(HISTORY_ANSWER_CHARS))
+                }
+            } +
                 LlmMessage(
                     LlmRole.USER,
                     prompts.render(
@@ -184,15 +197,19 @@ class AskBook @Inject constructor(
         return retriever.spread(bookId, chapter.startPage, end, CHAPTER_K).toFragments(listOf(chapter))
     }
 
-    private fun List<ChunkEntity>.toFragments(chapters: List<Chapter>) = mapIndexed { i, chunk ->
-        Fragment(
-            i + 1,
-            chunk.text,
-            chunk.startPage,
-            chunk.endPage,
-            chapters.firstOrNull { it.id == chunk.chapterId || chunk.startPage in it }?.title
-        )
-    }
+    /** Fragmentos para el modelo: los trozos seguidos del libro se unen en uno ([ChunkMerger]). */
+    private fun List<ChunkEntity>.toFragments(chapters: List<Chapter>) =
+        ChunkMerger.merge(this).mapIndexed { i, chunk ->
+            Fragment(
+                i + 1,
+                chunk.text,
+                chunk.startPage,
+                chunk.endPage,
+                chapters.firstOrNull { it.id == chunk.chapterId || chunk.startPage in it }?.title
+            )
+        }
+
+    private fun String.shortened(max: Int) = if (length <= max) this else take(max).trimEnd() + "…"
 
     private fun position(reading: ReadingContext, chapters: List<Chapter>): String {
         val chapter = chapters.lastOrNull { reading.currentPage >= it.startPage }
@@ -252,5 +269,6 @@ class AskBook @Inject constructor(
         const val REWRITE_CONTEXT = 4
         const val REWRITE_CHARS = 600
         const val REWRITE_MAX_TOKENS = 300L
+        const val HISTORY_ANSWER_CHARS = 1_200
     }
 }

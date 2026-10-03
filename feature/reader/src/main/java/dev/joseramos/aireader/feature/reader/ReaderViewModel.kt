@@ -1,12 +1,16 @@
 package dev.joseramos.aireader.feature.reader
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.os.SystemClock
+import android.util.Log
 import android.util.Size
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.joseramos.aireader.ai.characters.CharacterAnalysis
 import dev.joseramos.aireader.ai.characters.CharacterBrowser
 import dev.joseramos.aireader.ai.characters.CharactersSnapshot
@@ -106,6 +110,7 @@ private data class OpeningPrompts(val bookmarkSuggestion: Int? = null, val offer
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
     private val bookRepository: BookRepository,
     contentRepository: BookContentRepository,
@@ -242,10 +247,17 @@ class ReaderViewModel @Inject constructor(
         val saved = positions.get(bookId)
         bookRepository.markOpened(bookId)
         try {
-            val opened = withContext(io) { PdfPageRenderer(File(book.filePath)) }
+            val started = SystemClock.elapsedRealtime()
+            // Los tamaños de página se guardan en caché: medirlos abre todas las páginas del PDF.
+            val (opened, sizes) = withContext(io) {
+                PdfPageRenderer(File(book.filePath), File(context.cacheDir, "page_sizes/$bookId")).let {
+                    it to it.pageSizes
+                }
+            }
+            Log.d(TAG, "PDF de ${opened.pageCount} páginas abierto en ${SystemClock.elapsedRealtime() - started} ms")
             renderer = opened
             val start = (route.page ?: saved?.page ?: 1).coerceIn(1, opened.pageCount)
-            meta.update { it.copy(opened = true, pageSizes = opened.pageSizes, startPage = start, currentPage = start) }
+            meta.update { it.copy(opened = true, pageSizes = sizes, startPage = start, currentPage = start) }
 
             val lastBookmark = bookmarks.observe(bookId).first().maxByOrNull { it.createdAt }
             val longBreak = book.lastOpenedAt?.let { System.currentTimeMillis() - it > RECAP_AFTER_MS } == true
@@ -302,6 +314,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "Reader"
         const val KEY_MODE = "mode"
         const val SAVE_DEBOUNCE_MS = 800L
         const val READ_DWELL_MS = 4_000L

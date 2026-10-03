@@ -15,5 +15,10 @@ dependencies {
     implementation(project(":indexing"))
     implementation(project(":text"))
     implementation(libs.okhttp)
+    implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.serialization.json)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.room.runtime)
+    testImplementation(libs.androidx.datastore.preferences)
 }

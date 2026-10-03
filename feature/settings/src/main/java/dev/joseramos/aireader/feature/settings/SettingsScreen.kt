@@ -45,6 +45,7 @@ import androidx.navigation.compose.composable
 import dev.joseramos.aireader.ai.models.ModelCatalog
 import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.core.data.settings.AppSettings
+import dev.joseramos.aireader.core.data.settings.BudgetLevel
 import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.data.settings.ThemeMode
 import dev.joseramos.aireader.core.designsystem.component.AiUsageRow
@@ -218,7 +219,8 @@ private fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel)
                         budgetTokens = state.today.budget,
                         exhausted = state.today.exhausted,
                         resetsAt = state.today.resetsAt,
-                        modifier = Modifier.padding(vertical = Spacing.xxs)
+                        modifier = Modifier.padding(vertical = Spacing.xxs),
+                        overBudget = state.today.level == BudgetLevel.OVER
                     )
                 }
                 row {

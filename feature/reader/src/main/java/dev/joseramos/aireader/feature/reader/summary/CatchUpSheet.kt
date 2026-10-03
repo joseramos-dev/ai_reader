@@ -31,6 +31,7 @@ import dev.joseramos.aireader.ai.llm.SummaryJob
 import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.db.SummaryKind
 import dev.joseramos.aireader.core.designsystem.component.AppBottomSheet
+import dev.joseramos.aireader.core.designsystem.component.CostConfirmDialog
 import dev.joseramos.aireader.core.designsystem.component.PlainButton
 import dev.joseramos.aireader.core.designsystem.component.PrimaryButton
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
@@ -66,8 +67,17 @@ internal fun CatchUpSheet(
             viewModel.recapJob(now) !is SummaryJob.Running &&
             !viewModel.recapIsCurrent(viewModel.recapFor(now), chapters, page)
         ) {
-            viewModel.generateRecap(page)
+            viewModel.requestRecap(page)
         }
+    }
+    val confirmation by viewModel.costConfirmation.collectAsStateWithLifecycle()
+    confirmation?.let { (_, cost) ->
+        CostConfirmDialog(
+            estimatedTokens = cost.estimatedTokens,
+            remainingTokens = cost.remainingTokens,
+            onConfirm = viewModel::confirmRecap,
+            onDismiss = viewModel::cancelRecap
+        )
     }
     val colors = AppTheme.colors
     AppBottomSheet(
@@ -114,7 +124,7 @@ internal fun CatchUpSheet(
                         )
                     } else {
                         PrimaryButton(stringResource(R.string.ai_retry), {
-                            viewModel.generateRecap(page)
+                            viewModel.requestRecap(page)
                         }, Modifier.fillMaxWidth())
                     }
                 }
@@ -130,10 +140,14 @@ internal fun CatchUpSheet(
                             )
                         }
                         PlainButton(stringResource(R.string.ai_regenerate), {
-                            viewModel.generateRecap(page)
+                            viewModel.requestRecap(page)
                         }, icon = Icons.Outlined.Refresh)
                     }
                 }
+                // Sin repaso al día (por ejemplo, se canceló por el presupuesto): se puede pedir.
+                else -> PrimaryButton(stringResource(R.string.recap_generate), {
+                    viewModel.requestRecap(page)
+                }, Modifier.fillMaxWidth())
             }
             if (previous.isNotEmpty()) {
                 Text(

@@ -7,6 +7,8 @@ import dev.joseramos.aireader.ai.llm.LlmException
 import dev.joseramos.aireader.ai.llm.LlmMessage
 import dev.joseramos.aireader.ai.llm.LlmRequest
 import dev.joseramos.aireader.ai.llm.LlmRole
+import dev.joseramos.aireader.ai.llm.SummaryGenerator
+import dev.joseramos.aireader.ai.llm.TokenEstimate
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.book.PageText
@@ -50,6 +52,27 @@ class CharacterExtractor @Inject constructor(
             extract(prompt, model)?.let { merger.merge(bookId, chapter, it) }
         }
         dao.upsertScan(CharacterScanEntity(bookId, chapter.id, model, System.currentTimeMillis()))
+    }
+
+    /**
+     * Estimación local (sin llamar a la API) de lo que costaría analizar los capítulos que faltan:
+     * los mismos bloques que [scan], cada uno con la plantilla y los personajes ya conocidos.
+     */
+    suspend fun estimate(bookId: String): TokenEstimate {
+        val done = dao.scannedChapterIds(bookId).toSet()
+        val overhead = (
+            SummaryGenerator.estimateTokens(
+                template
+            ) + SummaryGenerator.estimateTokens(known(bookId))
+            ).toLong()
+        var estimate = TokenEstimate()
+        for (chapter in content.chapters(bookId).filter { it.id !in done }) {
+            val pages = content.pagesFrom(bookId, chapter.startPage, chapter.endPage - chapter.startPage + 1)
+            for (block in blocks(pages)) {
+                estimate += TokenEstimate(SummaryGenerator.estimateTokens(block) + overhead, ESTIMATED_OUTPUT_TOKENS)
+            }
+        }
+        return estimate
     }
 
     /** Pide la extracción; si la respuesta no es JSON válido, lo intenta una vez más. */
@@ -111,6 +134,9 @@ class CharacterExtractor @Inject constructor(
         const val ATTEMPTS = 2
         const val RETRY_DELAY_MS = 500L
         const val MAX_TOKENS = 8_000L
+
+        /** Respuesta típica de una extracción, para las estimaciones (el máximo es [MAX_TOKENS]). */
+        const val ESTIMATED_OUTPUT_TOKENS = 1_500L
 
         /** ≈20 k tokens de texto por petición (≈4 caracteres por token). */
         const val BLOCK_CHARS = 80_000

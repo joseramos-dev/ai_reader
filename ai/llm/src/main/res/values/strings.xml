@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="budget_channel">Consumo de IA</string>
+    <string name="budget_notification_near">Llevas el 80 % de tu presupuesto de IA de hoy</string>
+    <string name="budget_notification_over">Has superado tu presupuesto de IA de hoy</string>
+    <string name="budget_notification_text">%1$s de %2$s tokens. La IA sigue funcionando; el contador se renueva a las %3$s.</string>
+</resources>

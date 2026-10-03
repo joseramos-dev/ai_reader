@@ -49,9 +49,21 @@ class TextIndexer @Inject constructor(
     /** [onProgress] recibe 0..1. Devuelve `true` si ha tenido que (re)hacer el texto. */
     suspend fun run(book: BookEntity, onProgress: suspend (Float) -> Unit): Boolean {
         if (isComplete(book)) return false
-        extract(book, onProgress)
-        clean(book, onProgress)
+        val report = throttled(onProgress)
+        extract(book, report)
+        clean(book, report)
         return true
+    }
+
+    /** Solo avisa cuando el progreso sube al menos un 1 %: cada aviso es una escritura en Room. */
+    private fun throttled(onProgress: suspend (Float) -> Unit): suspend (Float) -> Unit {
+        var last = -1f
+        return { value ->
+            if (value - last >= PROGRESS_STEP || value >= 1f) {
+                last = value
+                onProgress(value)
+            }
+        }
     }
 
     private suspend fun extract(book: BookEntity, onProgress: suspend (Float) -> Unit) {
@@ -61,6 +73,17 @@ class TextIndexer @Inject constructor(
         // páginas nuevas (versión 0) con geometría ya están extraídas: así se reanuda donde se quedó.
         val outdated = pages.filter { it.cleanerVersion in 1 until TextCleaner.VERSION }.map { it.page }.toSet()
         val layouts = pageLayoutDao.pages(book.id).toSet()
+        // Se escribe por lotes: una transacción (y un aviso a quien observa las tablas) cada
+        // [BATCH_PAGES] páginas en vez de dos por página.
+        val pendingTexts = mutableListOf<PageTextEntity>()
+        val pendingLayouts = mutableListOf<PageLayoutEntity>()
+        suspend fun flush() {
+            // Primero el texto: la geometría guardada es la que marca una página como ya extraída.
+            if (pendingTexts.isNotEmpty()) pageTextDao.upsertAll(pendingTexts)
+            if (pendingLayouts.isNotEmpty()) pageLayoutDao.upsertAll(pendingLayouts)
+            pendingTexts.clear()
+            pendingLayouts.clear()
+        }
         PdfTextDocument.open(context, File(book.filePath)).use { pdf ->
             updateMetadata(book, pdf)
             for (page in 1..book.pageCount) {
@@ -73,16 +96,16 @@ class TextIndexer @Inject constructor(
                     val lines = content?.lines.orEmpty().map {
                         it.copy(text = TextCleaner.normalizeCharacters(it.text))
                     }
-                    pageLayoutDao.upsert(PageLayoutEntity(book.id, page, json.encodeToString(lines)))
+                    pendingLayouts += PageLayoutEntity(book.id, page, json.encodeToString(lines))
                     // Si ya había texto limpio (de una versión anterior), se conserva para seguir leyendo.
                     if (page !in texts) {
-                        pageTextDao.upsert(
-                            PageTextEntity(book.id, page, raw, "", "[]", raw.isBlank(), cleanerVersion = 0)
-                        )
+                        pendingTexts += PageTextEntity(book.id, page, raw, "", "[]", raw.isBlank(), cleanerVersion = 0)
                     }
+                    if (pendingLayouts.size >= BATCH_PAGES) flush()
                 }
                 onProgress(page.toFloat() / book.pageCount * EXTRACTION_SHARE)
             }
+            flush()
         }
     }
 
@@ -106,19 +129,22 @@ class TextIndexer @Inject constructor(
             }
         }
         blocks = mergeHyphensAcrossPages(blocks)
+        val pending = mutableListOf<PageTextEntity>()
         raw.forEachIndexed { index, page ->
             coroutineContext.ensureActive()
             val clean = blocks[index]
             val paragraphs = clean.map { it.text }
-            pageTextDao.upsert(
-                page.copy(
-                    cleanText = paragraphs.joinToString("\n\n"),
-                    paragraphsJson = json.encodeToString(paragraphs),
-                    levelsJson = json.encodeToString(clean.map { it.level }),
-                    isScanned = page.rawText.trim().length < SCANNED_THRESHOLD,
-                    cleanerVersion = TextCleaner.VERSION
-                )
+            pending += page.copy(
+                cleanText = paragraphs.joinToString("\n\n"),
+                paragraphsJson = json.encodeToString(paragraphs),
+                levelsJson = json.encodeToString(clean.map { it.level }),
+                isScanned = page.rawText.trim().length < SCANNED_THRESHOLD,
+                cleanerVersion = TextCleaner.VERSION
             )
+            if (pending.size >= BATCH_PAGES || index == raw.lastIndex) {
+                pageTextDao.upsertAll(pending)
+                pending.clear()
+            }
             onProgress(EXTRACTION_SHARE + (index + 1f) / raw.size * (1 - EXTRACTION_SHARE))
         }
     }
@@ -145,6 +171,12 @@ class TextIndexer @Inject constructor(
         private const val TAG = "TextIndexer"
         private const val EXTRACTION_SHARE = 0.85f
         private const val SCANNED_THRESHOLD = 20
+
+        /** Páginas que se guardan juntas, en una sola transacción. */
+        private const val BATCH_PAGES = 25
+
+        /** Subida mínima del progreso para escribirlo en Room (1 %). */
+        private const val PROGRESS_STEP = 0.01f
         private val json = Json { ignoreUnknownKeys = true }
     }
 }

@@ -108,6 +108,38 @@ class SettingsAndSecretsTest {
     }
 
     @Test
+    fun budgetAlertsOncePerLevelAndDay() = runTest {
+        val dataStore = store("settings")
+        val clock = Clock.fixed(Instant.parse("2026-10-02T20:00:00Z"), ZoneOffset.UTC)
+        val usage = UsageRepository(dataStore, clock)
+        usage.setDailyBudget(1_000)
+
+        usage.add(input = 790, output = 0, cachedInput = 0)
+        assertEquals(BudgetLevel.OK, usage.today.first().level)
+        assertNull(usage.today.first().alert)
+
+        usage.add(input = 10, output = 0, cachedInput = 0)
+        assertEquals(BudgetLevel.NEAR, usage.today.first().alert)
+        assertEquals(200L, usage.today.first().remainingTokens)
+        usage.dismissAlert(BudgetLevel.NEAR)
+        assertNull(usage.today.first().alert)
+
+        // Superar el presupuesto vuelve a avisar, aunque el de «cerca» ya se cerrara.
+        usage.add(input = 250, output = 0, cachedInput = 0)
+        assertEquals(BudgetLevel.OVER, usage.today.first().alert)
+        assertEquals(0L, usage.today.first().remainingTokens)
+        usage.dismissAlert(BudgetLevel.OVER)
+        assertNull(usage.today.first().alert)
+
+        // Al día siguiente lo cerrado ya no cuenta: con el contador a cero no hay nada que avisar,
+        // pero si vuelve a llegar al 80 % se avisa de nuevo.
+        val tomorrow = UsageRepository(dataStore, Clock.fixed(Instant.parse("2026-10-03T20:00:00Z"), ZoneOffset.UTC))
+        assertEquals(BudgetLevel.OK, tomorrow.today.first().dismissedLevel)
+        tomorrow.add(input = 900, output = 0, cachedInput = 0)
+        assertEquals(BudgetLevel.NEAR, tomorrow.today.first().alert)
+    }
+
+    @Test
     fun claudeModelsSavedByOlderVersionsFallBackToGemini() = runTest {
         val dataStore = store("settings")
         val repository = SettingsRepository(dataStore)

@@ -1,6 +1,5 @@
 package dev.joseramos.aireader.ai.embeddings
 
-import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
@@ -32,7 +31,7 @@ class E5Embedder @Inject constructor(
     private val mutex = Mutex()
     private var loaded: Loaded? = null
 
-    private class Loaded(val session: OrtSession, val tokenizer: HuggingFaceTokenizer)
+    private class Loaded(val session: OrtSession, val tokenizer: UnigramTokenizer)
 
     override suspend fun isAvailable(): Boolean = models.installedDir(modelId) != null
 
@@ -42,10 +41,7 @@ class E5Embedder @Inject constructor(
     override suspend fun embedQuery(text: String): FloatArray = run(listOf("query: $text")).single()
 
     override suspend fun release() = mutex.withLock {
-        loaded?.let {
-            it.session.close()
-            it.tokenizer.close()
-        }
+        loaded?.session?.close()
         loaded = null
     }
 
@@ -66,14 +62,9 @@ class E5Embedder @Inject constructor(
             setCPUArenaAllocator(false)
         }
         val session = OrtEnvironment.getEnvironment().createSession(File(dir, "model.onnx").absolutePath, options)
-        // El tokenizador es nativo (DJL) y puede no cargar en algunos móviles: entonces no se deja la sesión abierta.
+        // Si el tokenizer.json no se puede leer, no se deja la sesión abierta.
         val tokenizer = runCatching {
-            HuggingFaceTokenizer.builder()
-                .optTokenizerPath(File(dir, "tokenizer.json").toPath())
-                .optMaxLength(MAX_TOKENS)
-                .optTruncation(true)
-                .optPadding(false)
-                .build()
+            UnigramTokenizer.load(File(dir, "tokenizer.json"), MAX_TOKENS)
         }.getOrElse {
             session.close()
             throw it
@@ -85,12 +76,12 @@ class E5Embedder @Inject constructor(
         val env = OrtEnvironment.getEnvironment()
         val encodings = texts.map { model.tokenizer.encode(it) }
         val batch = encodings.size
-        val length = encodings.maxOf { it.ids.size }
+        val length = encodings.maxOf { it.size }
         val ids = LongArray(batch * length)
         val mask = LongArray(batch * length)
         encodings.forEachIndexed { b, encoding ->
-            encoding.ids.copyInto(ids, b * length)
-            encoding.attentionMask.copyInto(mask, b * length)
+            encoding.copyInto(ids, b * length)
+            mask.fill(1L, b * length, b * length + encoding.size)
         }
         val shape = longArrayOf(batch.toLong(), length.toLong())
         val inputs = model.session.inputNames.associateWith { name ->

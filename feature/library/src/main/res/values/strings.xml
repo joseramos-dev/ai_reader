@@ -10,6 +10,7 @@
     <string name="library_importing">Importando…</string>
     <string name="library_pages">%1$d págs.</string>
     <string name="library_preparing">Preparando… %1$d %%</string>
+    <string name="library_percent">%1$d %%</string>
     <string name="library_prepare_failed">No se pudo preparar</string>
     <string name="library_preparing_chat">Listo para leer · chat %1$d %%</string>
     <string name="library_progress">%1$d %% leído</string>

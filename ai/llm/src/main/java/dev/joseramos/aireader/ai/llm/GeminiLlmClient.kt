@@ -14,6 +14,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -34,6 +35,7 @@ import okhttp3.Response
 class GeminiLlmClient @Inject constructor(
     private val secrets: SecretStore,
     private val usage: UsageRepository,
+    private val budgetNotifier: BudgetNotifier,
     @IoDispatcher private val io: CoroutineDispatcher
 ) : LlmClient {
     private val http = OkHttpClient.Builder()
@@ -193,7 +195,10 @@ class GeminiLlmClient @Inject constructor(
             outputTokens = meta.candidatesTokenCount + meta.thoughtsTokenCount,
             cacheReadTokens = meta.cachedContentTokenCount
         )
+        val before = usage.today.first()
         usage.add(tokens.inputTokens, tokens.outputTokens, tokens.cacheReadTokens)
+        runCatching { budgetNotifier.onUsageChanged(before, usage.today.first()) }
+            .onFailure { Log.w(TAG, "No se pudo avisar del consumo", it) }
         return tokens
     }
 
@@ -203,6 +208,7 @@ class GeminiLlmClient @Inject constructor(
         const val SSE_DATA = "data:"
         const val CONNECT_TIMEOUT_S = 30L
         const val READ_TIMEOUT_S = 180L
+
         // Un 503 de Gemini («El servicio está saturado») suele ser intermitente: merece la pena reintentar.
         const val MAX_ATTEMPTS = 3
         const val RETRY_DELAY_MS = 1_000L

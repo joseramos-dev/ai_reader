@@ -28,8 +28,10 @@ class DocumentTypeDetector @Inject constructor(
     private val pageTextDao: PageTextDao,
     private val llm: Optional<LlmDocumentClassification>
 ) {
-    suspend fun run(book: BookEntity) {
-        if (book.documentTypeSource == DocumentTypeSource.USER || book.documentType != null) return
+    /** [retryWithAi]: ahora hay clave de API y antes no; se recalcula por si la heurística dudaba. */
+    suspend fun run(book: BookEntity, retryWithAi: Boolean = false) {
+        if (book.documentTypeSource == DocumentTypeSource.USER) return
+        if (book.documentType != null && !retryWithAi) return
         val pages = pageTextDao.getByBook(book.id)
         val sampled = pages.take(LEADING_PAGES) +
             pages.drop(LEADING_PAGES).let { rest -> rest.filterIndexed { i, _ -> i % sampleStep(rest.size) == 0 } }
