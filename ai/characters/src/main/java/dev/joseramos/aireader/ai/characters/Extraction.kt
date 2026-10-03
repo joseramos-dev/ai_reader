@@ -1,5 +1,8 @@
 package dev.joseramos.aireader.ai.characters
 
+import dev.joseramos.aireader.ai.llm.ResponseSchema
+import dev.joseramos.aireader.core.data.db.NameKind
+import dev.joseramos.aireader.core.data.db.RelationType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -42,6 +45,42 @@ data class Extraction(
             coerceInputValues = true
             isLenient = true
         }
+
+        private val name = ResponseSchema.obj(
+            "name" to ResponseSchema.string(),
+            "kind" to ResponseSchema.string(NameKind.entries.map { it.name }),
+            "page" to ResponseSchema.integer
+        )
+
+        /** Esquema de la respuesta: con él Gemini siempre devuelve este formato (sin JSON inválido). */
+        val schema = ResponseSchema.obj(
+            "characters" to ResponseSchema.array(
+                ResponseSchema.obj(
+                    "ref" to ResponseSchema.string(),
+                    "names" to ResponseSchema.array(name),
+                    "renamedTo" to ResponseSchema.obj(
+                        "name" to ResponseSchema.string(),
+                        "kind" to ResponseSchema.string(NameKind.entries.map { it.name }),
+                        "page" to ResponseSchema.integer,
+                        nullable = true
+                    ),
+                    "facts" to ResponseSchema.array(
+                        ResponseSchema.obj("page" to ResponseSchema.integer, "text" to ResponseSchema.string())
+                    )
+                )
+            ),
+            "relations" to ResponseSchema.array(
+                ResponseSchema.obj(
+                    "from" to ResponseSchema.string(),
+                    "to" to ResponseSchema.string(),
+                    "type" to ResponseSchema.string(RelationType.entries.map { it.name }),
+                    "label" to ResponseSchema.string(),
+                    "page" to ResponseSchema.integer,
+                    "ended" to ResponseSchema.boolean
+                )
+            ),
+            "same" to ResponseSchema.array(ResponseSchema.array(ResponseSchema.string()))
+        )
 
         /** Extrae el objeto JSON de la respuesta (aunque venga con texto alrededor) o `null` si no es válido. */
         fun parse(answer: String): Extraction? {

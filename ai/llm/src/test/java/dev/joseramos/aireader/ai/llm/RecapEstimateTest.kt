@@ -100,6 +100,24 @@ class RecapEstimateTest {
         assertTrue(nothingMissing.input < missingOne.input)
     }
 
+    @Test
+    fun updatesThePreviousRecapWithWhatWasReadSince() = runTest {
+        val (generator, _) = generator()
+        // Sin resúmenes de capítulo: el repaso completo tendría que generar los de los capítulos 1 y 2.
+        val full = generator.estimateRecap("b", untilPage = 25)
+        assertEquals(3 * SUMMARY_TOKENS, full.output)
+
+        // Con un repaso hasta la página 22 se parte de él: solo se añaden las páginas 23-25, en una llamada.
+        summaries.save("b", null, SummaryKind.RECAP, "Hasta ahora…", "modelo", untilPage = 22)
+        val update = generator.estimateRecap("b", untilPage = 25)
+        assertEquals(SUMMARY_TOKENS, update.output)
+        assertTrue("Solo 3 páginas nuevas", update.input < 4 * PAGE_CHARS / 4 + 2_000)
+
+        // Pedirlo de nuevo en la misma página lo rehace entero.
+        val again = generator.estimateRecap("b", untilPage = 22)
+        assertEquals(full.output, again.output)
+    }
+
     private companion object {
         const val CHAPTERS = 3
         const val PAGES_PER_CHAPTER = 10

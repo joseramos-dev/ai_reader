@@ -2,6 +2,7 @@ package dev.joseramos.aireader.ai.llm
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 // Cuerpos JSON de la API REST de Gemini (`models.generateContent` y `streamGenerateContent`),
 // solo con los campos que usa la app: https://ai.google.dev/api/generate-content
@@ -21,7 +22,8 @@ internal data class GeminiThinkingConfig(val thinkingLevel: String)
 internal data class GeminiGenerationConfig(
     val maxOutputTokens: Long,
     val thinkingConfig: GeminiThinkingConfig? = null,
-    val responseMimeType: String? = null
+    val responseMimeType: String? = null,
+    val responseSchema: JsonObject? = null
 )
 
 @Serializable

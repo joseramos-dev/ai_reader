@@ -25,7 +25,8 @@ class AiChapterDetection @Inject constructor(
 
     override suspend fun detect(pageHeads: List<Pair<Int, String>>, pageCount: Int): List<DetectedChapter> {
         if (!llm.hasApiKey()) return emptyList()
-        val listing = pageHeads.joinToString("\n") { (page, head) -> "$page: $head" }.take(MAX_LISTING_CHARS)
+        val listing = candidateHeads(pageHeads).joinToString("\n") { (page, head) -> "$page: $head" }
+            .take(MAX_LISTING_CHARS)
         val prompt = prompts.render(R.raw.chapters_detect_v1, "pages" to pageCount, "text" to listing)
         repeat(ATTEMPTS) { attempt ->
             if (attempt > 0) delay(RETRY_DELAY_MS)
@@ -34,7 +35,7 @@ class AiChapterDetection @Inject constructor(
                     model = settings.settings.first().summaryModel,
                     messages = listOf(LlmMessage(LlmRole.USER, prompt)),
                     maxTokens = MAX_TOKENS,
-                    jsonOutput = true
+                    jsonSchema = SCHEMA
                 )
             ).text
             parse(answer, pageCount)?.let { return it }
@@ -57,7 +58,29 @@ class AiChapterDetection @Inject constructor(
         return valid.takeIf { it.size >= 2 }
     }
 
-    private companion object {
+    internal companion object {
+        /**
+         * Solo las páginas que pueden empezar un capítulo, para no gastar tokens en el resto: fuera las
+         * que empiezan a mitad de frase (en minúscula) y las cabeceras que se repiten en muchas páginas
+         * (el título del libro o del capítulo en lo alto de cada página). Cada línea, como mucho de
+         * [HEAD_CHARS] caracteres.
+         */
+        fun candidateHeads(heads: List<Pair<Int, String>>): List<Pair<Int, String>> {
+            val lines = heads.map { (page, head) -> page to head.trim().take(HEAD_CHARS) }
+                .filter { it.second.isNotEmpty() }
+            val repeated = lines.groupingBy { it.second.lowercase() }.eachCount()
+                .filterValues { it >= MIN_REPEATS && it > lines.size * RUNNING_HEADER_SHARE }.keys
+            return lines.filter { (_, head) -> !head.first().isLowerCase() && head.lowercase() !in repeated }
+        }
+
+        /** `[{"title": "…", "page": 7}]`: con el esquema, Gemini no devuelve JSON inválido. */
+        private val SCHEMA = ResponseSchema.array(
+            ResponseSchema.obj("title" to ResponseSchema.string(), "page" to ResponseSchema.integer)
+        )
+
+        private const val HEAD_CHARS = 80
+        private const val MIN_REPEATS = 3
+        private const val RUNNING_HEADER_SHARE = 0.3
         const val ATTEMPTS = 2
         const val RETRY_DELAY_MS = 500L
         const val MAX_TOKENS = 4_000L

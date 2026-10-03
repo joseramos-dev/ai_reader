@@ -168,7 +168,8 @@ class GeminiLlmClient @Inject constructor(
                 // En Gemini 3 el razonamiento cuenta dentro de maxOutputTokens: se le deja margen.
                 maxOutputTokens = request.maxTokens + request.thinking.margin,
                 thinkingConfig = GeminiThinkingConfig(request.thinking.name.lowercase()),
-                responseMimeType = if (request.jsonOutput) "application/json" else null
+                responseMimeType = if (request.jsonOutput || request.jsonSchema != null) "application/json" else null,
+                responseSchema = request.jsonSchema
             )
         )
         val method = if (stream) "streamGenerateContent?alt=sse" else "generateContent"

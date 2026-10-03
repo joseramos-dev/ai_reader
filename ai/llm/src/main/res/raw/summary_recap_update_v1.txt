@@ -1,0 +1,15 @@
+Estoy leyendo «{{book}}» y voy por la página {{page}}. Tenía un repaso de lo leído hasta la página {{since}}; actualízalo con lo que he leído desde entonces, para retomar la lectura después de unos días.
+
+Empieza por «Hasta ahora…» y usa entre 2 y 4 párrafos breves: condensa lo del repaso anterior para dejar sitio a lo nuevo y termina con lo último que he leído del capítulo actual, «{{chapter}}». Usa solo lo que aparece abajo: no adelantes, no insinúes ni supongas nada de lo que viene después de la página {{page}}.
+
+<repaso_anterior hasta_pagina="{{since}}">
+{{recap}}
+</repaso_anterior>
+
+<capitulos_terminados_desde_entonces>
+{{chapters}}
+</capitulos_terminados_desde_entonces>
+
+<capitulo_actual desde_pagina="{{from}}" hasta_pagina="{{page}}">
+{{current}}
+</capitulo_actual>

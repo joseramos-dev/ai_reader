@@ -5,6 +5,7 @@ import dev.joseramos.aireader.core.common.ApplicationScope
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Chapter
+import dev.joseramos.aireader.core.data.book.Summary
 import dev.joseramos.aireader.core.data.book.SummaryRepository
 import dev.joseramos.aireader.core.data.db.DocumentType
 import dev.joseramos.aireader.core.data.db.SummaryKind
@@ -79,21 +80,20 @@ class SummaryGenerator @Inject constructor(
     }
 
     /**
-     * Repaso de lo leído hasta [untilPage] (incluida): los capítulos anteriores, por sus resúmenes
-     * breves (generando los que falten), y el texto del capítulo actual hasta esa página.
+     * Repaso de lo leído hasta [untilPage] (incluida). Si ya hay un repaso de una página anterior, se
+     * actualiza con lo leído desde entonces (ver [recapPlan]); si no, se hace con los resúmenes breves
+     * de los capítulos anteriores (generando los que falten) y el texto del capítulo actual.
      */
     fun recap(bookId: String, untilPage: Int) {
         launchJob(SummaryKey(bookId, null, SummaryKind.RECAP)) {
             val title = bookTitle(bookId)
-            val chapters = content.chapters(bookId)
-            val current = chapters.lastOrNull { untilPage >= it.startPage }
-            val previous = chapters.filter { it.endPage < (current?.startPage ?: 1) }
-            val previousText = previous.map { chapter ->
+            val plan = recapPlan(bookId, untilPage)
+            val chaptersText = plan.chapters.map { chapter ->
                 "Capítulo ${chapter.number}. ${chapter.title}\n${shortSummary(bookId, chapter)}"
             }.joinToString("\n\n")
             val model = model()
-            val currentTitle = current?.title ?: title
-            val currentText = content.text(bookId, current?.startPage ?: 1, untilPage).let { text ->
+            val currentTitle = plan.current?.title ?: title
+            val currentText = content.text(bookId, plan.currentFrom, untilPage).let { text ->
                 if (estimateTokens(text) <= SINGLE_CALL_TOKENS) {
                     text
                 } else {
@@ -101,33 +101,69 @@ class SummaryGenerator @Inject constructor(
                     mapBlocks(bookId, model, title, currentTitle, text).joinToString("\n\n")
                 }
             }
-            val summary = ask(
-                bookId,
-                model,
+            val prompt = plan.previousRecap?.let { previous ->
                 prompts.render(
-                    R.raw.summary_recap_v1,
+                    R.raw.summary_recap_update_v1,
                     "book" to title,
                     "page" to untilPage,
+                    "since" to (previous.untilPage ?: 0),
+                    "from" to plan.currentFrom,
                     "chapter" to currentTitle,
-                    "previous" to previousText.ifEmpty { "(ninguno: estoy en el primer capítulo)" },
+                    "recap" to previous.text,
+                    "chapters" to chaptersText.ifEmpty { "(ninguno)" },
                     "current" to currentText
                 )
+            } ?: prompts.render(
+                R.raw.summary_recap_v1,
+                "book" to title,
+                "page" to untilPage,
+                "chapter" to currentTitle,
+                "previous" to chaptersText.ifEmpty { "(ninguno: estoy en el primer capítulo)" },
+                "current" to currentText
             )
+            val summary = ask(bookId, model, prompt)
             summaries.save(bookId, null, SummaryKind.RECAP, summary, model, untilPage)
         }
     }
 
     /**
-     * Estimación local (sin llamar a la API) de lo que gastaría [recap]: los resúmenes breves que
-     * faltan de los capítulos anteriores, el capítulo actual (por bloques si es largo) y la llamada final.
+     * Qué entra en un repaso hasta [untilPage]. Con un repaso guardado de una página anterior se parte
+     * de él y solo se añade lo leído desde entonces: los capítulos terminados después y el capítulo
+     * actual desde esa página. Así no se reenvían en cada repaso los resúmenes de todo el libro. Al
+     * pedirlo otra vez en la misma página (o más atrás) se rehace entero.
      */
-    suspend fun estimateRecap(bookId: String, untilPage: Int): TokenEstimate {
+    private suspend fun recapPlan(bookId: String, untilPage: Int): RecapPlan {
         val chapters = content.chapters(bookId)
         val current = chapters.lastOrNull { untilPage >= it.startPage }
-        val previous = chapters.filter { it.endPage < (current?.startPage ?: 1) }
+        val currentStart = current?.startPage ?: 1
+        val finished = chapters.filter { it.endPage < currentStart }
+        val previous = summaries.get(bookId, null, SummaryKind.RECAP)
+            ?.takeIf { (it.untilPage ?: 0) in 1 until untilPage }
+            ?: return RecapPlan(null, finished, current, currentStart)
+        val since = previous.untilPage ?: 0
+        return RecapPlan(previous, finished.filter { it.endPage > since }, current, maxOf(currentStart, since + 1))
+    }
+
+    /**
+     * [previousRecap]: el repaso del que se parte (o `null` si se hace entero); [chapters]: los
+     * capítulos terminados que entran por su resumen breve; el capítulo actual entra desde [currentFrom].
+     */
+    private data class RecapPlan(
+        val previousRecap: Summary?,
+        val chapters: List<Chapter>,
+        val current: Chapter?,
+        val currentFrom: Int
+    )
+
+    /**
+     * Estimación local (sin llamar a la API) de lo que gastaría [recap]: los resúmenes breves que
+     * faltan de los capítulos que entran, el capítulo actual (por bloques si es largo) y la llamada final.
+     */
+    suspend fun estimateRecap(bookId: String, untilPage: Int): TokenEstimate {
+        val plan = recapPlan(bookId, untilPage)
         var estimate = TokenEstimate()
-        var previousTokens = 0L
-        for (chapter in previous) {
+        var previousTokens = plan.previousRecap?.let { estimateTokens(it.text).toLong() } ?: 0L
+        for (chapter in plan.chapters) {
             val saved = summaries.get(bookId, chapter.id, SummaryKind.CHAPTER_SHORT)?.text
             if (saved != null) {
                 previousTokens += estimateTokens(saved)
@@ -140,7 +176,7 @@ class SummaryGenerator @Inject constructor(
                 }
             }
         }
-        val currentTokens = estimateTokens(content.text(bookId, current?.startPage ?: 1, untilPage)).toLong()
+        val currentTokens = estimateTokens(content.text(bookId, plan.currentFrom, untilPage)).toLong()
         val currentInPrompt = if (currentTokens <= SINGLE_CALL_TOKENS) {
             currentTokens
         } else {

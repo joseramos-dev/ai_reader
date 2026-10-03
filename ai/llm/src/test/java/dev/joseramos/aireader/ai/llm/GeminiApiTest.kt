@@ -1,5 +1,7 @@
 package dev.joseramos.aireader.ai.llm
 
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -19,6 +21,25 @@ class GeminiApiTest {
         assertEquals(
             """{"contents":[{"role":"user","parts":[{"text":"Hola"}]}],""" +
                 """"generationConfig":{"maxOutputTokens":100,"thinkingConfig":{"thinkingLevel":"low"}}}""",
+            json
+        )
+    }
+
+    @Test
+    fun responseSchemaGoesInTheGenerationConfig() {
+        val schema = buildJsonObject { put("type", "ARRAY") }
+        val request = GeminiRequest(
+            contents = emptyList(),
+            generationConfig = GeminiGenerationConfig(
+                maxOutputTokens = 100,
+                responseMimeType = "application/json",
+                responseSchema = schema
+            )
+        )
+        val json = geminiJson.encodeToString(GeminiRequest.serializer(), request)
+        assertEquals(
+            """{"contents":[],"generationConfig":{"maxOutputTokens":100,""" +
+                """"responseMimeType":"application/json","responseSchema":{"type":"ARRAY"}}}""",
             json
         )
     }

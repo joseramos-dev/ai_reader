@@ -46,7 +46,7 @@ class CharacterExtractor @Inject constructor(
                 "start" to chapter.startPage,
                 "end" to chapter.endPage,
                 "part" to part,
-                "known" to known(bookId),
+                "known" to known(bookId, block),
                 "text" to block
             )
             extract(prompt, model)?.let { merger.merge(bookId, chapter, it) }
@@ -60,22 +60,23 @@ class CharacterExtractor @Inject constructor(
      */
     suspend fun estimate(bookId: String): TokenEstimate {
         val done = dao.scannedChapterIds(bookId).toSet()
-        val overhead = (
-            SummaryGenerator.estimateTokens(
-                template
-            ) + SummaryGenerator.estimateTokens(known(bookId))
-            ).toLong()
+        val templateTokens = SummaryGenerator.estimateTokens(template)
         var estimate = TokenEstimate()
         for (chapter in content.chapters(bookId).filter { it.id !in done }) {
             val pages = content.pagesFrom(bookId, chapter.startPage, chapter.endPage - chapter.startPage + 1)
             for (block in blocks(pages)) {
-                estimate += TokenEstimate(SummaryGenerator.estimateTokens(block) + overhead, ESTIMATED_OUTPUT_TOKENS)
+                val input = templateTokens + SummaryGenerator.estimateTokens(block) +
+                    SummaryGenerator.estimateTokens(known(bookId, block))
+                estimate += TokenEstimate(input.toLong(), ESTIMATED_OUTPUT_TOKENS)
             }
         }
         return estimate
     }
 
-    /** Pide la extracción; si la respuesta no es JSON válido, lo intenta una vez más. */
+    /**
+     * Pide la extracción con el esquema de [Extraction], que obliga a Gemini a responder con JSON
+     * válido; si aun así no se puede leer, lo intenta una vez más.
+     */
     private suspend fun extract(prompt: String, model: String): Extraction? {
         repeat(ATTEMPTS) { attempt ->
             if (attempt > 0) delay(RETRY_DELAY_MS)
@@ -84,7 +85,7 @@ class CharacterExtractor @Inject constructor(
                     model = model,
                     messages = listOf(LlmMessage(LlmRole.USER, prompt)),
                     maxTokens = MAX_TOKENS,
-                    jsonOutput = true
+                    jsonSchema = Extraction.schema
                 )
             ).text
             Extraction.parse(answer)?.let { return it }
@@ -92,17 +93,17 @@ class CharacterExtractor @Inject constructor(
         return null
     }
 
-    /** «c12: Rodión Románovich Raskólnikov | Rodia | Rodka», uno por línea. */
-    private suspend fun known(bookId: String): String {
+    /**
+     * «c12: Rodión Románovich Raskólnikov | Rodia | Rodka», uno por línea: solo los personajes que
+     * hacen falta para [block] ([KnownCharacters]).
+     */
+    private suspend fun known(bookId: String, block: String): String {
         val names = dao.getNames(bookId).groupBy { it.characterId }
-        return dao.getCharacters(bookId)
-            .mapNotNull { character ->
-                names[character.id]?.map { it.name }?.distinct()?.take(MAX_NAMES_PER_CHARACTER)?.let {
-                    "c${character.id}: ${it.joinToString(" | ")}"
-                }
-            }
-            .takeLast(MAX_KNOWN)
-            .joinToString("\n")
+        val namesById = dao.getCharacters(bookId).mapNotNull { character ->
+            names[character.id]?.map { it.name }?.distinct()?.take(MAX_NAMES_PER_CHARACTER)?.let { character.id to it }
+        }.toMap()
+        return KnownCharacters.select(namesById, block)
+            .joinToString("\n") { id -> "c$id: ${namesById.getValue(id).joinToString(" | ")}" }
             .ifEmpty { "(ninguno todavía)" }
     }
 
@@ -140,7 +141,6 @@ class CharacterExtractor @Inject constructor(
 
         /** ≈20 k tokens de texto por petición (≈4 caracteres por token). */
         const val BLOCK_CHARS = 80_000
-        const val MAX_KNOWN = 150
         const val MAX_NAMES_PER_CHARACTER = 8
     }
 }

@@ -1,6 +1,7 @@
 package dev.joseramos.aireader.ai.llm
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.json.JsonObject
 
 enum class LlmRole { USER, ASSISTANT }
 
@@ -36,7 +37,12 @@ data class LlmRequest(
     val maxTokens: Long = DEFAULT_MAX_TOKENS,
     val thinking: Thinking = Thinking.LOW,
     /** Pide que la respuesta sea JSON válido (detección de capítulos, clasificación, personajes). */
-    val jsonOutput: Boolean = false
+    val jsonOutput: Boolean = false,
+    /**
+     * Esquema que debe cumplir la respuesta JSON (formato `Schema` de Gemini). Con él la respuesta sale
+     * siempre bien formada y no hace falta repetir la petición por un JSON inválido.
+     */
+    val jsonSchema: JsonObject? = null
 ) {
     companion object {
         const val DEFAULT_MAX_TOKENS = 8_000L

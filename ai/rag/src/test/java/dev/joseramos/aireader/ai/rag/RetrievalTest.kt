@@ -102,4 +102,28 @@ class RetrievalTest {
         val merged = ChunkMerger.merge(listOf(chunk(1, "Fin del uno.", 5, 1), chunk(2, "Empieza el dos.", 6, 2)))
         assertEquals(2, merged.size)
     }
+
+    @Test
+    fun weakMatchesAreDroppedButKeepTheStrongTextHits() {
+        val candidates = Candidates(
+            vector = listOf(1, 2, 3, 4, 5, 6),
+            text = listOf(7, 8, 9, 10),
+            vectorScores = listOf(0.90f, 0.88f, 0.85f, 0.83f, 0.70f, 0.60f)
+        )
+        val fused = reciprocalRankFusion(listOf(candidates.vector, candidates.text))
+
+        val kept = dropWeakMatches(fused, candidates)
+
+        // Por significado, solo los que están a menos de 0,08 del mejor; por palabras, los 3 primeros.
+        assertEquals(setOf(1L, 2L, 3L, 4L, 7L, 8L, 9L), kept.toSet())
+    }
+
+    @Test
+    fun withFewRelevantMatchesKeepsAMinimumAndWithoutVectorsKeepsEverything() {
+        val few = Candidates(listOf(1, 2, 3), emptyList(), listOf(0.9f, 0.5f, 0.4f))
+        assertEquals(listOf(1L, 2L, 3L), dropWeakMatches(listOf(1, 2, 3), few))
+
+        val wordsOnly = Candidates(emptyList(), listOf(7, 8, 9, 10, 11))
+        assertEquals(listOf(7L, 8L, 9L, 10L, 11L), dropWeakMatches(listOf(7, 8, 9, 10, 11), wordsOnly))
+    }
 }

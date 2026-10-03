@@ -13,7 +13,11 @@ class VectorIndex(private val ids: LongArray, private val vectors: FloatArray, p
     val size: Int get() = ids.size
 
     /** Los [k] fragmentos más parecidos a [query], de más a menos; solo entre [allowed] si se indica. */
-    fun search(query: FloatArray, k: Int, allowed: Set<Long>? = null): List<Long> {
+    fun search(query: FloatArray, k: Int, allowed: Set<Long>? = null): List<Long> =
+        searchScored(query, k, allowed).map { it.first }
+
+    /** Como [search], con la similitud (coseno) de cada fragmento. */
+    fun searchScored(query: FloatArray, k: Int, allowed: Set<Long>? = null): List<Pair<Long, Float>> {
         require(query.size == dimensions) { "Dimensión ${query.size}, se esperaba $dimensions" }
         val scores = FloatArray(ids.size) { row ->
             var dot = 0f
@@ -25,7 +29,7 @@ class VectorIndex(private val ids: LongArray, private val vectors: FloatArray, p
             .filter { allowed == null || ids[it] in allowed }
             .sortedByDescending { scores[it] }
             .take(k)
-            .map { ids[it] }
+            .map { ids[it] to scores[it] }
     }
 }
 
@@ -39,6 +43,35 @@ fun reciprocalRankFusion(rankings: List<List<Long>>, k: Int = 60): List<Long> {
         ranking.forEachIndexed { position, id -> scores[id] = (scores[id] ?: 0.0) + 1.0 / (k + position + 1) }
     }
     return scores.entries.sortedByDescending { it.value }.map { it.key }
+}
+
+/** Distancia al mejor fragmento por significado a partir de la cual uno se considera poco relevante. */
+private const val SEMANTIC_MARGIN = 0.08f
+
+/** Primeros resultados de la búsqueda por palabras que siempre se consideran relevantes. */
+private const val STRONG_TEXT_HITS = 3
+
+/** Fragmentos que se mandan como mínimo, aunque los demás parezcan poco relevantes. */
+private const val MIN_FRAGMENTS = 4
+
+/**
+ * Quita de [fused] los fragmentos poco relevantes, que gastan tokens sin ayudar a responder: los
+ * que la búsqueda por significado deja lejos del mejor y la de palabras no pone entre los primeros.
+ * Sin búsqueda por significado no se quita nada (no hay con qué medir). Si quedan menos de
+ * [MIN_FRAGMENTS], se completan con los siguientes de [fused].
+ */
+fun dropWeakMatches(fused: List<Long>, candidates: Candidates): List<Long> {
+    val best = candidates.vectorScores.firstOrNull() ?: return fused
+    val close = candidates.vector.filterIndexed { i, _ -> candidates.vectorScores[i] >= best - SEMANTIC_MARGIN }
+    val strong = (close + candidates.text.take(STRONG_TEXT_HITS)).toSet()
+    val kept = fused.filter { it in strong }
+    return if (kept.size >=
+        MIN_FRAGMENTS
+    ) {
+        kept
+    } else {
+        kept + fused.filterNot { it in strong }.take(MIN_FRAGMENTS - kept.size)
+    }
 }
 
 /**

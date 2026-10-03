@@ -13,8 +13,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Ids de fragmentos ordenados por la búsqueda vectorial y por la de texto completo. */
-data class Candidates(val vector: List<Long>, val text: List<Long>)
+/**
+ * Ids de fragmentos ordenados por la búsqueda vectorial y por la de texto completo, con la similitud
+ * de cada uno de [vector] en [vectorScores].
+ */
+data class Candidates(val vector: List<Long>, val text: List<Long>, val vectorScores: List<Float> = emptyList())
 
 /**
  * Búsqueda híbrida en un libro: los 20 fragmentos más parecidos por significado (embeddings) y
@@ -48,7 +51,8 @@ class HybridRetriever @Inject constructor(
         maxPage: Int? = null
     ): List<ChunkEntity> {
         val candidates = candidates(bookId, question, maxPage)
-        val ids = reciprocalRankFusion(listOf(candidates.vector, candidates.text)).take(k)
+        val fused = reciprocalRankFusion(listOf(candidates.vector, candidates.text))
+        val ids = dropWeakMatches(fused, candidates).take(k)
             .ifEmpty { evenlySpaced(allowedIds(bookId, maxPage), k) }
         return chunks(ids)
     }
@@ -71,7 +75,8 @@ class HybridRetriever @Inject constructor(
             }
             ?.map { it.chunkId }
             .orEmpty()
-        return Candidates(semantic(bookId, question, maxPage), textHits)
+        val semantic = semantic(bookId, question, maxPage)
+        return Candidates(semantic.map { it.first }, textHits, semantic.map { it.second })
     }
 
     /** Libera el modelo de la memoria al salir del chat. */
@@ -82,13 +87,13 @@ class HybridRetriever @Inject constructor(
 
     /** Búsqueda por significado, o nada si no hay vectores o el modelo falla. */
     @Suppress("TooGenericExceptionCaught") // Errores nativos (ONNX, tokenizador) o de memoria al cargar el modelo.
-    private suspend fun semantic(bookId: String, question: String, maxPage: Int?): List<Long> {
+    private suspend fun semantic(bookId: String, question: String, maxPage: Int?): List<Pair<Long, Float>> {
         if (semanticBroken) return emptyList()
         return try {
             // Sin vectores no se carga el modelo: es lo que tarda y lo que puede fallar.
             val index = index(bookId).takeIf { it.size > 0 && embedder.isAvailable() } ?: return emptyList()
             val allowed = maxPage?.let { allowedIds(bookId, it).toSet() }
-            index.search(embedder.embedQuery(question), CANDIDATES, allowed)
+            index.searchScored(embedder.embedQuery(question), CANDIDATES, allowed)
         } catch (e: CancellationException) {
             throw e
         } catch (e: LinkageError) {
