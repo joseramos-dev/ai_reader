@@ -11,7 +11,7 @@ import java.text.BreakIterator
  * corta y sustituye al grafema entero.
  */
 @Suppress("MagicNumber") // Desplazamientos y máscaras del formato binario del trie (Darts-clone).
-internal class PrecompiledCharsMap(blob: ByteArray) {
+internal class PrecompiledCharsMap(val blob: ByteArray) {
     private val trie: IntArray
     private val normalized: ByteArray
 

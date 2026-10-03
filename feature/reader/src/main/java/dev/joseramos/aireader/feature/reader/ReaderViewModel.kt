@@ -29,6 +29,7 @@ import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.book.PageText
 import dev.joseramos.aireader.core.data.book.ReadingPosition
 import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
+import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.pdf.PdfPageRenderer
 import dev.joseramos.aireader.tts.PlaybackController
@@ -137,8 +138,21 @@ class ReaderViewModel @Inject constructor(
     /** Saltos de página pedidos desde fuera de la lista (ficha de personaje, marcapáginas…). */
     val jumpRequests: Flow<Int> = jumps.receiveAsFlow()
 
+    /**
+     * El libro, sin el progreso de la indexación cuando ya no se está extrayendo el texto: el lector
+     * solo lo enseña mientras tanto, y así cada avance de los capítulos o de la búsqueda del chat (se
+     * escriben muchos) no vuelve a emitir el estado ni a recomponer el lector.
+     */
+    private val book = bookRepository.observeBook(bookId)
+        .map { book ->
+            val extracting =
+                book?.indexStatus == IndexStatus.PENDING || book?.indexStatus == IndexStatus.EXTRACTING_TEXT
+            if (book == null || extracting) book else book.copy(indexProgress = 0f)
+        }
+        .distinctUntilChanged()
+
     val state: StateFlow<ReaderUiState> = combine(
-        bookRepository.observeBook(bookId),
+        book,
         contentRepository.observeContents(bookId),
         contentRepository.observePages(bookId),
         settings.settings,
@@ -160,7 +174,7 @@ class ReaderViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderUiState())
 
     /** Personajes solo en novelas: en otros libros no se calcula nada. */
-    private val characters: Flow<CharactersSnapshot> = bookRepository.observeBook(bookId)
+    private val characters: Flow<CharactersSnapshot> = book
         .map { it?.isLiterature == true }
         .distinctUntilChanged()
         .flatMapLatest { literature ->

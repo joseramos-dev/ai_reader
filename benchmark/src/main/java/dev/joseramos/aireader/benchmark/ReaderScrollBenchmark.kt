@@ -62,6 +62,8 @@ class ReaderScrollBenchmark {
         const val ITERATIONS = 5
         const val FLINGS = 15
         const val SWIPE_STEPS = 8
-        const val TIMEOUT_MS = 15_000L
+
+        /** El lector se abre cuando termina de extraerse el texto del PDF recién importado. */
+        const val TIMEOUT_MS = 60_000L
     }
 }

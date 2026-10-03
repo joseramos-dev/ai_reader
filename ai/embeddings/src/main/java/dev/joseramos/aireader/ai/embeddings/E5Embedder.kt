@@ -64,7 +64,7 @@ class E5Embedder @Inject constructor(
         val session = OrtEnvironment.getEnvironment().createSession(File(dir, "model.onnx").absolutePath, options)
         // Si el tokenizer.json no se puede leer, no se deja la sesión abierta.
         val tokenizer = runCatching {
-            UnigramTokenizer.load(File(dir, "tokenizer.json"), MAX_TOKENS)
+            UnigramTokenizer.load(File(dir, "tokenizer.json"), MAX_TOKENS, cache = File(dir, "tokenizer.cache"))
         }.getOrElse {
             session.close()
             throw it

@@ -5,6 +5,7 @@ import java.io.File
 import kotlin.random.Random
 import org.junit.AfterClass
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
 import org.junit.Test
@@ -72,6 +73,23 @@ class UnigramTokenizerTest {
                 }
             }
             assertSame(text)
+        }
+    }
+
+    @Test
+    fun binaryCacheGivesTheSameTokens() {
+        val cache = File.createTempFile("tokenizer", ".cache").apply { delete() }
+        try {
+            UnigramTokenizer.load(tokenizerFile, MAX_TOKENS, cache)
+            assertTrue("Se guarda la caché la primera vez", cache.length() > 0)
+            val cached = UnigramTokenizer.load(tokenizerFile, MAX_TOKENS, cache)
+            listOf(
+                "passage: Hola, ¿qué tal? Él comió muchísimas croquetas en Logroño.",
+                "ligaduras ﬁ ﬂ y anchos ＡＢＣ１２３ con <s> especiales </s>",
+                "palabra ".repeat(800)
+            ).forEach { assertArrayEquals(it, tokenizer.encode(it), cached.encode(it)) }
+        } finally {
+            cache.delete()
         }
     }
 

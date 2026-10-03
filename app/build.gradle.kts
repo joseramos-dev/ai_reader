@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.aireader.android.application)
     alias(libs.plugins.aireader.android.compose)
     alias(libs.plugins.aireader.hilt)
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 // Modelos que vienen ya en el APK (ModelManager.installBundledModels): voces de Piper y el
@@ -132,6 +133,8 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.profileinstaller)
+    // Baseline Profile generado por :benchmark (./gradlew :app:generateBaselineProfile).
+    baselineProfile(project(":benchmark"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.navigation.compose)

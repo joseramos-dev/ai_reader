@@ -10,6 +10,7 @@ plugins {
     alias(libs.plugins.ktlint) apply false
     alias(libs.plugins.detekt) apply false
     alias(libs.plugins.roborazzi) apply false
+    alias(libs.plugins.androidx.baselineprofile) apply false
 }
 
 subprojects {

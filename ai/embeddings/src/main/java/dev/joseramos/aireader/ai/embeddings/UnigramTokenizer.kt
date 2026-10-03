@@ -32,13 +32,13 @@ import kotlinx.serialization.json.jsonPrimitive
  * de Unigram (con los desconocidos consecutivos fusionados) y `<s> … </s>` truncando por la cola.
  * Solo admite esa configuración: si el `tokenizer.json` trae otra, falla al cargar.
  */
-internal class UnigramTokenizer private constructor(
-    private val charsMap: PrecompiledCharsMap,
-    private val vocab: Vocab,
-    private val unkId: Int,
-    private val bosId: Int,
-    private val eosId: Int,
-    private val specialTokens: List<Pair<String, Int>>,
+internal class UnigramTokenizer(
+    val charsMap: PrecompiledCharsMap,
+    val vocab: Vocab,
+    val unkId: Int,
+    val bosId: Int,
+    val eosId: Int,
+    val specialTokens: List<Pair<String, Int>>,
     private val maxLength: Int
 ) {
     private val specialStarts = specialTokens.map { it.first[0] }.toSet()
@@ -161,8 +161,17 @@ internal class UnigramTokenizer private constructor(
         private const val METASPACE = '▁'
         private val json = Json { ignoreUnknownKeys = true }
 
+        /**
+         * Lee [file]. Con [cache], la primera vez guarda ahí una copia binaria y las siguientes la lee
+         * en lugar del JSON (17 MB que hay que recorrer entero): ver [TokenizerCache].
+         */
+        fun load(file: File, maxLength: Int, cache: File? = null): UnigramTokenizer {
+            cache?.let { TokenizerCache.read(it, file, maxLength) }?.let { return it }
+            return parse(file, maxLength).also { tokenizer -> cache?.let { TokenizerCache.write(it, file, tokenizer) } }
+        }
+
         @OptIn(ExperimentalSerializationApi::class)
-        fun load(file: File, maxLength: Int): UnigramTokenizer {
+        private fun parse(file: File, maxLength: Int): UnigramTokenizer {
             val config = file.inputStream().buffered().use { json.decodeFromStream<TokenizerConfig>(it) }
             checkPipeline(config)
             val charsMap = config.normalizer["normalizers"]!!.jsonArray[0].jsonObject
@@ -244,7 +253,7 @@ private class UnigramModel(
  * Las ~250.000 piezas del vocabulario en un solo `String` con una tabla hash de direccionamiento
  * abierto: unos pocos MB, frente a las decenas que ocuparían como `HashMap<String, Int>`.
  */
-internal class Vocab(private val chars: String, private val starts: IntArray, val scores: DoubleArray) {
+internal class Vocab(val chars: String, val starts: IntArray, val scores: DoubleArray) {
     val maxPieceLength: Int
     val unkScore: Double
     private val table: IntArray

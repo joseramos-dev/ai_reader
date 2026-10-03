@@ -2,10 +2,12 @@ import com.android.build.api.dsl.TestExtension
 
 plugins {
     alias(libs.plugins.android.test)
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 // Pruebas de rendimiento con Macrobenchmark contra la variante `benchmark` de `:app`. Se ejecutan en
 // un móvil conectado: ./gradlew :benchmark:connectedBenchmarkAndroidTest
+// También genera el Baseline Profile de la app (BaselineProfileGenerator): ./gradlew :app:generateBaselineProfile
 configure<TestExtension> {
     namespace = "dev.joseramos.aireader.benchmark"
     compileSdk = 37
@@ -29,8 +31,14 @@ configure<TestExtension> {
     experimentalProperties["android.experimental.self-instrumenting"] = true
 }
 
+// Solo la variante `benchmark` y las que crea el plugin de Baseline Profile (`nonMinifiedRelease`,
+// `benchmarkRelease`): las demás necesitarían su equivalente en `:app`.
 androidComponents {
-    beforeVariants { it.enable = it.buildType == "benchmark" }
+    beforeVariants { it.enable = it.buildType in setOf("benchmark", "nonMinifiedRelease", "benchmarkRelease") }
+}
+
+baselineProfile {
+    useConnectedDevices = true
 }
 
 dependencies {
