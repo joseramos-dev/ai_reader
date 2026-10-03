@@ -192,7 +192,9 @@ data class ReadingPositionEntity(
 @Entity(
     tableName = "bookmarks",
     foreignKeys = [ForeignKey(BookEntity::class, ["id"], ["bookId"], onDelete = CASCADE)],
-    indices = [Index("bookId")]
+    // El orden importa: cubre tanto los filtros por libro como, con createdAt, el ORDER BY DESC LIMIT 1
+    // de `BookDao.observeAll()` (el marcapáginas más reciente de cada libro).
+    indices = [Index(value = ["bookId", "createdAt"])]
 )
 data class BookmarkEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

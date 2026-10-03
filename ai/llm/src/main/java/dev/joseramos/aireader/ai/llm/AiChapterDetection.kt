@@ -4,6 +4,7 @@ import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.indexing.LlmChapterDetection
 import dev.joseramos.aireader.text.DetectedChapter
 import javax.inject.Inject
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -26,7 +27,8 @@ class AiChapterDetection @Inject constructor(
         if (!llm.hasApiKey()) return emptyList()
         val listing = pageHeads.joinToString("\n") { (page, head) -> "$page: $head" }.take(MAX_LISTING_CHARS)
         val prompt = prompts.render(R.raw.chapters_detect_v1, "pages" to pageCount, "text" to listing)
-        repeat(ATTEMPTS) {
+        repeat(ATTEMPTS) { attempt ->
+            if (attempt > 0) delay(RETRY_DELAY_MS)
             val answer = llm.complete(
                 LlmRequest(
                     model = settings.settings.first().summaryModel,
@@ -57,6 +59,7 @@ class AiChapterDetection @Inject constructor(
 
     private companion object {
         const val ATTEMPTS = 2
+        const val RETRY_DELAY_MS = 500L
         const val MAX_TOKENS = 4_000L
         const val MAX_LISTING_CHARS = 60_000
     }

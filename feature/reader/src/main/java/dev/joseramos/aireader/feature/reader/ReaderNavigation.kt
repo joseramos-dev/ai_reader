@@ -57,7 +57,7 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
     var catchUp by remember { mutableStateOf(false) }
     var characterId by remember { mutableStateOf<Long?>(null) }
     val literature = state.book?.isLiterature == true
-    val openCharacters = { onOpenCharacters(viewModel.bookId) }
+    val openCharacters = remember(viewModel, onOpenCharacters) { { onOpenCharacters(viewModel.bookId) } }
 
     // Media3 necesita el permiso de notificaciones (Android 13+) para mostrar los controles.
     var pendingListenPage by remember { mutableStateOf<Int?>(null) }
@@ -65,23 +65,25 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
         pendingListenPage?.let(viewModel::listen)
         pendingListenPage = null
     }
-    val listen: (Int) -> Unit = { page ->
-        val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
-        if (granted) {
-            viewModel.listen(page)
-        } else {
-            pendingListenPage = page
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    val listen: (Int) -> Unit = remember(viewModel, context, notificationPermission) {
+        { page ->
+            val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                viewModel.listen(page)
+            } else {
+                pendingListenPage = page
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
-    ReaderScreen(
-        state = state,
-        playback = playback,
-        render = viewModel::render,
-        actions = ReaderActions(
+    // ReaderActions no es un `data class`: sin recordarla, cada recomposición crea una instancia
+    // nueva (con lambdas nuevas) y ningún hijo que la reciba puede saltarse su recomposición, aunque
+    // nada relevante haya cambiado. Las claves son las variables que de verdad hacen falta dentro.
+    val actions = remember(viewModel, onBack, listen, openCharacters, literature) {
+        ReaderActions(
             onBack = onBack,
             onPageVisible = viewModel::onPageVisible,
             onSetMode = viewModel::setMode,
@@ -101,7 +103,14 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
                 catchUp = true
             },
             onDismissRecap = viewModel::dismissRecapOffer
-        ),
+        )
+    }
+
+    ReaderScreen(
+        state = state,
+        playback = playback,
+        render = viewModel::render,
+        actions = actions,
         extras = extras,
         jumpRequests = viewModel.jumpRequests
     )

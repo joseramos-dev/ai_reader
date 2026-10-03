@@ -13,6 +13,7 @@ import dev.joseramos.aireader.core.data.book.PageText
 import dev.joseramos.aireader.core.data.db.CharacterDao
 import dev.joseramos.aireader.core.data.db.CharacterScanEntity
 import javax.inject.Inject
+import kotlinx.coroutines.delay
 
 /**
  * Analiza un capítulo con el modelo de resúmenes (Gemini Flash-Lite por defecto): le pasa el texto,
@@ -53,7 +54,8 @@ class CharacterExtractor @Inject constructor(
 
     /** Pide la extracción; si la respuesta no es JSON válido, lo intenta una vez más. */
     private suspend fun extract(prompt: String, model: String): Extraction? {
-        repeat(ATTEMPTS) {
+        repeat(ATTEMPTS) { attempt ->
+            if (attempt > 0) delay(RETRY_DELAY_MS)
             val answer = llm.complete(
                 LlmRequest(
                     model = model,
@@ -97,11 +99,17 @@ class CharacterExtractor @Inject constructor(
         return blocks
     }
 
-    private fun render(vararg values: Pair<String, Any>): String =
-        values.fold(template) { text, (key, value) -> text.replace("{{$key}}", value.toString()) }.trim()
+    private fun render(vararg values: Pair<String, Any>): String {
+        val byKey = values.toMap()
+        return PLACEHOLDER.replace(template) { match -> byKey[match.groupValues[1]]?.toString() ?: match.value }.trim()
+    }
 
     private companion object {
+        // Una sola pasada sobre la plantilla original: si un valor insertado contiene literalmente
+        // "{{otraClave}}" (por ejemplo, texto del libro), no se vuelve a sustituir por error.
+        val PLACEHOLDER = Regex("\\{\\{(\\w+)\\}\\}")
         const val ATTEMPTS = 2
+        const val RETRY_DELAY_MS = 500L
         const val MAX_TOKENS = 8_000L
 
         /** ≈20 k tokens de texto por petición (≈4 caracteres por token). */

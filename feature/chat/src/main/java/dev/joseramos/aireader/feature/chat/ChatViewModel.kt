@@ -162,13 +162,15 @@ class ChatViewModel @Inject constructor(
                 }
                 transient.value = Transient()
             } catch (e: LlmException) {
+                // La causa lleva el código y el estado HTTP de Gemini (nunca la clave).
+                Log.w(TAG, "La IA no ha podido responder en el chat de $bookId", e)
                 transient.value = Transient(error = e.message)
             } catch (e: EmbeddingModelMissingException) {
                 transient.value = Transient(error = e.message)
             } catch (e: CancellationException) {
                 throw e
-            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-                // Cualquier otro fallo (base de datos, búsqueda…) se muestra en lugar de cerrar la app.
+            } catch (@Suppress("TooGenericExceptionCaught") e: Throwable) {
+                // Cualquier otro fallo (base de datos, búsqueda, un Error nativo…) se muestra en vez de cerrar la app.
                 Log.e(TAG, "Fallo respondiendo en el chat de $bookId", e)
                 transient.value = Transient(error = GENERIC_ERROR)
             }

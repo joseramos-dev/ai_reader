@@ -10,6 +10,7 @@ import java.io.Closeable
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -54,15 +55,19 @@ class PdfPageRenderer(file: File) : Closeable {
         }
     }
 
-    override fun close() {
+    /** Cierra esperando (bloqueando el hilo) a que termine un render en curso: ver [release]. */
+    override fun close() = runBlocking { mutex.withLock { closeLocked() } }
+
+    /** Cierra esperando a que termine el render en curso (cerrar a mitad de un render falla). */
+    suspend fun release() = mutex.withLock { closeLocked() }
+
+    private fun closeLocked() {
+        if (closed) return
         closed = true
         cache.evictAll()
         renderer.close()
         descriptor.close()
     }
-
-    /** Cierra esperando a que termine el render en curso (cerrar a mitad de un render falla). */
-    suspend fun release() = mutex.withLock { close() }
 
     private data class CacheKey(val index: Int, val width: Int)
 

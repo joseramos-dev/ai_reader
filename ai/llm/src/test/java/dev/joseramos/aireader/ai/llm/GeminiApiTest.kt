@@ -25,7 +25,7 @@ class GeminiApiTest {
 
     @Test
     fun responseTextSkipsThoughtsAndReadsUsage() {
-        val response = geminiJson.decodeFromString<GeminiResponse>(
+        val response = parseGeminiResponse(
             """
             {"candidates": [{"content": {"role": "model", "parts": [
                 {"text": "pensando…", "thought": true}, {"text": "Hola, "}, {"text": "mundo"}]},
@@ -41,10 +41,8 @@ class GeminiApiTest {
 
     @Test
     fun blockedPromptsAndAnswersAreDetected() {
-        val prompt = geminiJson.decodeFromString<GeminiResponse>("""{"promptFeedback": {"blockReason": "SAFETY"}}""")
-        val answer = geminiJson.decodeFromString<GeminiResponse>(
-            """{"candidates": [{"finishReason": "PROHIBITED_CONTENT"}]}"""
-        )
+        val prompt = parseGeminiResponse("""{"promptFeedback": {"blockReason": "SAFETY"}}""")
+        val answer = parseGeminiResponse("""{"candidates": [{"finishReason": "PROHIBITED_CONTENT"}]}""")
         assertTrue(prompt.blocked)
         assertTrue(answer.blocked)
         assertEquals("", answer.text)

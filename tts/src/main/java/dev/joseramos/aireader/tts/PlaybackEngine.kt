@@ -7,6 +7,7 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.PowerManager
+import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.joseramos.aireader.core.common.ApplicationScope
 import dev.joseramos.aireader.core.data.book.BookContentRepository
@@ -19,6 +20,7 @@ import dev.joseramos.aireader.text.LanguageDetector
 import dev.joseramos.aireader.text.SpeechNormalizer
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -286,9 +288,13 @@ class PlaybackEngine @Inject constructor(
         _state.update { it.copy(sleepTimer = applied) }
     }
 
-    /** Lee una frase de prueba (Ajustes) con la voz de [language] si no hay ninguna lectura en curso. */
-    suspend fun preview(text: String, language: Language = Language.SPANISH): Boolean {
-        if (_state.value.isPlaying || !voice.load(language.voice().id)) return false
+    /**
+     * Lee una frase de prueba (Ajustes) con la voz de [language] si no hay ninguna lectura en curso
+     * (ni sonando ni en pausa: cargar otra voz aquí sustituiría la del libro a medio escuchar).
+     * Pasa por la misma cola de órdenes que el resto de la sesión para que no se solape con ella.
+     */
+    suspend fun preview(text: String, language: Language = Language.SPANISH): Boolean = commands.withLock {
+        if (_state.value.isListening || !voice.load(language.voice().id)) return@withLock false
         val pcm = withContext(synthDispatcher) {
             voice.synthesize(SpeechNormalizer.normalize(text, language), _state.value.speed)
         }
@@ -302,7 +308,7 @@ class PlaybackEngine @Inject constructor(
                 track.release()
             }
         }
-        return true
+        true
     }
 
     /**
@@ -332,10 +338,20 @@ class PlaybackEngine @Inject constructor(
                 texts.close()
             }
             launch(synthDispatcher) {
-                for (phrase in texts) {
-                    audio.send(phrase to voice.synthesize(SpeechNormalizer.normalize(phrase.text, language), speed))
+                try {
+                    for (phrase in texts) {
+                        audio.send(
+                            phrase to voice.synthesize(SpeechNormalizer.normalize(phrase.text, language), speed)
+                        )
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                    // Un fallo del motor nativo no debe dejar la sesión colgada en "cargando" para siempre.
+                    Log.e(TAG, "Fallo sintetizando voz para $bookId", e)
+                } finally {
+                    audio.close()
                 }
-                audio.close()
             }
             withContext(Dispatchers.IO) {
                 val track = newTrack(voice.sampleRate)
@@ -449,6 +465,7 @@ class PlaybackEngine @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "PlaybackEngine"
         const val TEXT_BUFFER = 3
         const val LANGUAGE_SAMPLE_PAGES = 8
         const val AUDIO_BUFFER = 2

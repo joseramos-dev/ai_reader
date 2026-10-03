@@ -59,6 +59,11 @@ class E5Embedder @Inject constructor(
         val options = OrtSession.SessionOptions().apply {
             setIntraOpNumThreads(THREADS)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+            // El chat es lo único que carga este modelo: en un móvil pesa más la memoria que la
+            // latencia de unas pocas preguntas, así que se desactiva el arena allocator de ONNX
+            // Runtime (reserva memoria de más para ir rápido en ráfagas largas de inferencia).
+            setMemoryPatternOptimization(false)
+            setCPUArenaAllocator(false)
         }
         val session = OrtEnvironment.getEnvironment().createSession(File(dir, "model.onnx").absolutePath, options)
         // El tokenizador es nativo (DJL) y puede no cargar en algunos móviles: entonces no se deja la sesión abierta.

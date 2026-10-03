@@ -62,10 +62,15 @@ internal data class GeminiResponse(
     val blocked: Boolean
         get() = promptFeedback?.blockReason != null || candidates.firstOrNull()?.finishReason in BLOCKED_REASONS
 
-    private companion object {
-        val BLOCKED_REASONS = setOf("SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII")
-    }
+    /** Motivo del bloqueo (p. ej. «SAFETY»), solo para el registro: nunca se muestra al usuario. */
+    val blockReason: String?
+        get() = promptFeedback?.blockReason
+            ?: candidates.firstOrNull()?.finishReason?.takeIf { it in BLOCKED_REASONS }
 }
+
+// Fuera de la clase a propósito: en una clase @Serializable, un `private companion object` hace que
+// `decodeFromString<GeminiResponse>()` lance IllegalAccessError en Android (y cierre la app).
+private val BLOCKED_REASONS = setOf("SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII")
 
 @Serializable
 internal data class GeminiErrorBody(val error: GeminiError? = null)
@@ -77,3 +82,9 @@ internal val geminiJson = Json {
     ignoreUnknownKeys = true
     explicitNulls = false
 }
+
+/**
+ * Lee una respuesta de `generateContent` o un evento de `streamGenerateContent`. Los tests usan
+ * esta misma función: el compilador genera otro acceso al serializador desde los tests que desde la app.
+ */
+internal fun parseGeminiResponse(json: String): GeminiResponse = geminiJson.decodeFromString(json)

@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.ai.llm
 
+import android.util.Log
 import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.UsageRepository
@@ -10,19 +11,18 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
+import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-
-/** Error HTTP de la API de Gemini, como causa de las [LlmException] (nunca incluye la clave). */
-class GeminiApiException(val code: Int, val status: String, message: String) : IOException("$code $status: $message")
 
 /**
  * [LlmClient] sobre la API REST de Gemini (Google AI Studio) con OkHttp: `generateContent` y
@@ -45,73 +45,108 @@ class GeminiLlmClient @Inject constructor(
     override suspend fun hasApiKey(): Boolean = secrets.apiKey() != null
 
     override fun streamChat(request: LlmRequest): Flow<LlmEvent> = callbackFlow {
-        val call = http.newCall(httpRequest(request, apiKey(), stream = true))
+        var activeCall: Call? = null
         val job = launch(io) {
             try {
-                call.execute().use { response ->
-                    ensureSuccess(response)
-                    val (totals, blocked) = readEvents(response) { send(LlmEvent.Text(it)) }
-                    val tokens = record(totals)
-                    if (blocked) throw LlmException.Refused()
-                    send(LlmEvent.Done(tokens))
-                    close()
+                withOverloadRetry {
+                    val call = http.newCall(httpRequest(request, apiKey(), stream = true))
+                    activeCall = call
+                    call.execute().use { response ->
+                        ensureSuccess(response)
+                        val (totals, blocked, blockReason) = readEvents(response) { send(LlmEvent.Text(it)) }
+                        val tokens = record(totals)
+                        if (blocked) {
+                            Log.w(TAG, "Gemini bloqueó la respuesta del chat: $blockReason")
+                            throw LlmException.Refused()
+                        }
+                        send(LlmEvent.Done(tokens))
+                    }
                 }
+                close()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: LlmException) {
                 close(e)
             } catch (e: IOException) {
-                close(if (call.isCanceled()) CancellationException("Cancelado") else translate(e))
+                val cancelled = activeCall?.isCanceled() == true
+                close(if (cancelled) CancellationException("Cancelado") else translateGeminiError(e))
             } catch (e: SerializationException) {
                 close(LlmException.Failed("Respuesta inesperada de Gemini.", e))
             }
         }
         // Cancelar la llamada corta la conexión si quien escucha se va (por ejemplo, al salir del chat).
         awaitClose {
-            call.cancel()
+            activeCall?.cancel()
             job.cancel()
         }
     }
 
     override suspend fun complete(request: LlmRequest): LlmResponse = withContext(io) {
-        val call = http.newCall(httpRequest(request, apiKey(), stream = false))
-        val body = try {
-            call.execute().use { response ->
-                ensureSuccess(response)
-                response.body.string()
+        withOverloadRetry {
+            val call = http.newCall(httpRequest(request, apiKey(), stream = false))
+            val body = try {
+                call.execute().use { response ->
+                    ensureSuccess(response)
+                    response.body.string()
+                }
+            } catch (e: IOException) {
+                throw translateGeminiError(e)
             }
-        } catch (e: IOException) {
-            throw translate(e)
+            val parsed = try {
+                parseGeminiResponse(body)
+            } catch (e: SerializationException) {
+                throw LlmException.Failed("Respuesta inesperada de Gemini.", e)
+            }
+            val tokens = record(parsed.usageMetadata ?: GeminiUsage())
+            if (parsed.blocked && parsed.text.isBlank()) {
+                Log.w(TAG, "Gemini bloqueó la respuesta: ${parsed.blockReason}")
+                throw LlmException.Refused()
+            }
+            LlmResponse(parsed.text, tokens)
         }
-        val parsed = try {
-            geminiJson.decodeFromString<GeminiResponse>(body)
-        } catch (e: SerializationException) {
-            throw LlmException.Failed("Respuesta inesperada de Gemini.", e)
+    }
+
+    /**
+     * Reintenta [block] con una pequeña espera si Gemini responde que está saturado (503): es
+     * frecuente e intermitente en el nivel gratuito. Solo se reintenta antes de que [block] haya
+     * emitido nada (aquí, antes del primer fragmento de texto), para no duplicar una respuesta a medias.
+     */
+    private suspend fun <T> withOverloadRetry(block: suspend () -> T): T {
+        repeat(MAX_ATTEMPTS - 1) { attempt ->
+            try {
+                return block()
+            } catch (e: LlmException.Overloaded) {
+                Log.w(TAG, "Gemini saturado, reintentando (${attempt + 1}/${MAX_ATTEMPTS - 1})", e)
+                delay(RETRY_DELAY_MS * (attempt + 1))
+            }
         }
-        val tokens = record(parsed.usageMetadata ?: GeminiUsage())
-        if (parsed.blocked && parsed.text.isBlank()) throw LlmException.Refused()
-        LlmResponse(parsed.text, tokens)
+        return block()
     }
 
     /**
      * Lee los eventos SSE (`data: {...}`, uno por fragmento) y pasa el texto a [onText]. Devuelve el
-     * uso de tokens del último evento y si la respuesta se ha bloqueado.
+     * uso de tokens del último evento, si la respuesta se ha bloqueado y, si es así, el motivo.
      */
-    private suspend fun readEvents(response: Response, onText: suspend (String) -> Unit): Pair<GeminiUsage, Boolean> {
+    private suspend fun readEvents(
+        response: Response,
+        onText: suspend (String) -> Unit
+    ): Triple<GeminiUsage, Boolean, String?> {
         var totals = GeminiUsage()
         var blocked = false
+        var blockReason: String? = null
         val source = response.body.source()
         var line = source.readUtf8Line()
         while (line != null) {
             if (line.startsWith(SSE_DATA)) {
-                val chunk = geminiJson.decodeFromString<GeminiResponse>(line.removePrefix(SSE_DATA).trim())
+                val chunk = parseGeminiResponse(line.removePrefix(SSE_DATA).trim())
+                if (chunk.blocked && !blocked) blockReason = chunk.blockReason
                 blocked = blocked || chunk.blocked
                 if (chunk.text.isNotEmpty()) onText(chunk.text)
                 chunk.usageMetadata?.let { totals = it }
             }
             line = source.readUtf8Line()
         }
-        return totals to blocked
+        return Triple(totals, blocked, blockReason)
     }
 
     private suspend fun apiKey(): String = secrets.apiKey() ?: throw LlmException.NoApiKey()
@@ -148,20 +183,7 @@ class GeminiLlmClient @Inject constructor(
         val error = runCatching { geminiJson.decodeFromString<GeminiErrorBody>(body).error }.getOrNull()
         // El 429 de cuota diaria trae un `quotaId` con «PerDay» (los de por minuto, «PerMinute»).
         if (response.code == HTTP_TOO_MANY_REQUESTS && "PerDay" in body) usage.markDailyQuotaExhausted()
-        throw translate(GeminiApiException(response.code, error?.status.orEmpty(), error?.message.orEmpty()))
-    }
-
-    private fun translate(error: IOException): LlmException = when {
-        error !is GeminiApiException -> LlmException.Network(error)
-        error.code == HTTP_BAD_REQUEST && "API key" in error.message.orEmpty() -> LlmException.Unauthorized(error)
-        error.code == HTTP_UNAUTHORIZED || error.code == HTTP_FORBIDDEN -> LlmException.Unauthorized(error)
-        error.code == HTTP_TOO_MANY_REQUESTS -> LlmException.RateLimited(error)
-        error.code >= HTTP_SERVER_ERROR -> LlmException.Overloaded(error)
-        "location is not supported" in error.message.orEmpty() -> LlmException.Failed(
-            "La API de Gemini no está disponible en tu región con esta clave.",
-            error
-        )
-        else -> LlmException.Failed(error.message ?: "Error de la API de Gemini (${error.code})", error)
+        throw translateGeminiError(GeminiApiException(response.code, error?.status.orEmpty(), error?.message.orEmpty()))
     }
 
     private suspend fun record(meta: GeminiUsage): LlmUsage {
@@ -176,15 +198,14 @@ class GeminiLlmClient @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "GeminiLlmClient"
         const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
         const val SSE_DATA = "data:"
         const val CONNECT_TIMEOUT_S = 30L
         const val READ_TIMEOUT_S = 180L
-        const val HTTP_BAD_REQUEST = 400
-        const val HTTP_UNAUTHORIZED = 401
-        const val HTTP_FORBIDDEN = 403
-        const val HTTP_TOO_MANY_REQUESTS = 429
-        const val HTTP_SERVER_ERROR = 500
+        // Un 503 de Gemini («El servicio está saturado») suele ser intermitente: merece la pena reintentar.
+        const val MAX_ATTEMPTS = 3
+        const val RETRY_DELAY_MS = 1_000L
         val JSON = "application/json; charset=utf-8".toMediaType()
     }
 }

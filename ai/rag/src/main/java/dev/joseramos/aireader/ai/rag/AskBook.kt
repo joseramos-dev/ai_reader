@@ -19,7 +19,9 @@ import dev.joseramos.aireader.core.data.db.ChunkEntity
 import dev.joseramos.aireader.core.data.db.SummaryKind
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 
@@ -67,6 +69,25 @@ class AskBook @Inject constructor(
     ): Flow<AskEvent> = flow {
         val history = chat.messages(threadId).takeLast(MAX_HISTORY_MESSAGES)
         chat.add(threadId, ChatRole.USER, question)
+        try {
+            askAndRespond(bookId, threadId, question, history, reading)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            // Sin esto, la pregunta queda sin respuesta en el historial y se reenvía así a Gemini
+            // en la siguiente pregunta, ensuciando el contexto de la conversación.
+            chat.add(threadId, ChatRole.ASSISTANT, FAILED_ANSWER)
+            throw e
+        }
+    }
+
+    private suspend fun FlowCollector<AskEvent>.askAndRespond(
+        bookId: String,
+        threadId: Long,
+        question: String,
+        history: List<ChatMessage>,
+        reading: ReadingContext
+    ) {
         val config = settings.settings.first()
         val chapters = content.chapters(bookId)
         val limit = reading.spoilerLimit
@@ -222,6 +243,7 @@ class AskBook @Inject constructor(
     }.getOrDefault(question)
 
     private companion object {
+        const val FAILED_ANSWER = "No se ha podido responder a esta pregunta."
         const val MAX_HISTORY_MESSAGES = 6
         const val SPECIFIC_K = 8
         const val GLOBAL_K = 12

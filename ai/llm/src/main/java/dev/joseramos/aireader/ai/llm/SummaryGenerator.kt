@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.ai.llm
 
+import android.util.Log
 import dev.joseramos.aireader.core.common.ApplicationScope
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
@@ -10,6 +11,7 @@ import dev.joseramos.aireader.core.data.db.SummaryKind
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -206,15 +208,28 @@ class SummaryGenerator @Inject constructor(
         scope.launch { runCatching { runForKey(key) { block() } } }
     }
 
-    /** Ejecuta [block] marcando [key] como en curso y, si falla, guarda el error para la UI. */
+    /**
+     * Ejecuta [block] marcando [key] como en curso y, si falla, guarda el error para la UI. Antes
+     * solo se capturaba [LlmException]: cualquier otro fallo (BD, IO…) dejaba la clave "Running"
+     * para siempre y ese resumen no se podía volver a generar hasta reiniciar la app.
+     */
     private suspend fun <T> runForKey(key: SummaryKey, block: suspend () -> T): T {
         _jobs.update { it + (key to SummaryJob.Running) }
-        try {
-            return block().also { _jobs.update { jobs -> jobs - key } }
-        } catch (e: LlmException) {
-            _jobs.update { it + (key to SummaryJob.Failed(e.message.orEmpty(), e is LlmException.NoApiKey)) }
-            throw e
+        val result = runCatching { block() }
+        when (val error = result.exceptionOrNull()) {
+            null -> _jobs.update { it - key }
+            // Cancelado, no es un fallo: no se queda "Running" para siempre, pero tampoco es un error.
+            is CancellationException -> _jobs.update { it - key }
+            is LlmException -> {
+                val failed = SummaryJob.Failed(error.message.orEmpty(), error is LlmException.NoApiKey)
+                _jobs.update { it + (key to failed) }
+            }
+            else -> {
+                Log.e(TAG, "Fallo generando el resumen $key", error)
+                _jobs.update { it + (key to SummaryJob.Failed(GENERIC_ERROR, false)) }
+            }
         }
+        return result.getOrThrow()
     }
 
     /** Instrucciones de estilo según el tipo de documento. */
@@ -232,11 +247,13 @@ class SummaryGenerator @Inject constructor(
     private suspend fun bookTitle(bookId: String) = books.getBook(bookId)?.title.orEmpty()
 
     companion object {
+        private const val TAG = "SummaryGenerator"
         private const val CHARS_PER_TOKEN = 4
         private const val SINGLE_CALL_TOKENS = 30_000
         private const val BLOCK_TOKENS = 8_000
         private const val SUMMARY_MAX_TOKENS = 2_000L
         private const val EMPTY_CHAPTER = "Este capítulo no tiene texto extraíble (puede ser una imagen escaneada)."
+        private const val GENERIC_ERROR = "No se pudo generar el resumen. Inténtalo de nuevo."
 
         /** Estimación grosera (≈4 caracteres por token en español), suficiente para decidir el reparto. */
         fun estimateTokens(text: String) = text.length / CHARS_PER_TOKEN

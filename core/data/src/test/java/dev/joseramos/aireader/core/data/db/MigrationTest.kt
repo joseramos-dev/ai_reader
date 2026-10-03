@@ -89,4 +89,32 @@ class MigrationTest {
         }
         db.close()
     }
+
+    @Test
+    fun migrate3To4KeepsBookmarksAndAddsCompositeIndex() {
+        helper.createDatabase(3).apply {
+            execSQL(
+                """
+                INSERT INTO books (id, title, author, fileName, filePath, pageCount, coverPath, importedAt,
+                    lastOpenedAt, indexStatus, indexProgress, cleanerVersion, documentTypeSource)
+                VALUES ('a', 'Libro', NULL, 'a.pdf', '/a.pdf', 10, NULL, 1, NULL, 'READY', 1.0, 1, 'AUTO')
+                """.trimIndent()
+            )
+            execSQL(
+                "INSERT INTO bookmarks (id, bookId, page, note, createdAt) VALUES (1, 'a', 3, NULL, 100)"
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(4, emptyList())
+        db.prepare("SELECT page FROM bookmarks WHERE bookId = 'a'").use {
+            assertTrue(it.step())
+            assertEquals(3, it.getInt(0))
+        }
+        db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'bookmarks'").use { cursor ->
+            val names = generateSequence { if (cursor.step()) cursor.getText(0) else null }.toList()
+            assertTrue(names.any { it.contains("bookId") })
+        }
+        db.close()
+    }
 }

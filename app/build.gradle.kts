@@ -11,12 +11,17 @@ android {
         applicationId = "dev.joseramos.aireader"
         versionCode = 1
         versionName = "0.1.0"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     packaging {
         jniLibs {
-            // sherpa-onnx y onnxruntime-android traen cada uno su lib/x86/libonnxruntime.so; x86 de 32 bits no se usa.
-            excludes += "lib/x86/**"
+            useLegacyPackaging = true
+            // sherpa-onnx y onnxruntime-android traen cada uno su lib/x86/libonnxruntime.so; x86 32-bit y armeabi-v7a no se usan.
+            excludes += listOf("lib/x86/**", "lib/armeabi-v7a/**")
             // De fbjni solo se usa libc++_shared.so (para el tokenizador de DJL).
             excludes += "lib/*/libfbjni.so"
         }

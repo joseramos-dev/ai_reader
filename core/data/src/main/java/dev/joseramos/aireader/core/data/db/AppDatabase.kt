@@ -12,6 +12,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *
  * - v2: marcapáginas, `maxPage`, tipo de documento, repasos (`untilPage`) y personajes (F8–F11).
  * - v3: geometría de las líneas (`page_layouts`), nivel de cada párrafo y apartados en el índice.
+ * - v4: índice compuesto (bookId, createdAt) en `bookmarks` para el marcapáginas más reciente de
+ *   cada libro en la biblioteca (antes sin índice para ese orden).
  */
 @Database(
     entities = [
@@ -34,11 +36,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RelationEntity::class,
         CharacterScanEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2, spec = AppDatabase.Migration1To2::class),
-        AutoMigration(from = 2, to = 3)
+        AutoMigration(from = 2, to = 3),
+        AutoMigration(from = 3, to = 4)
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
