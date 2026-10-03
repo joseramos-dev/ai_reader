@@ -1,7 +1,74 @@
+import java.net.URI
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.aireader.android.application)
     alias(libs.plugins.aireader.android.compose)
     alias(libs.plugins.aireader.hilt)
+}
+
+// Modelos que vienen ya en el APK (ModelManager.installBundledModels): voces de Piper y el
+// embedder de RAG. Como el AAR de sherpa-onnx en settings.gradle.kts, se descargan una vez a
+// src/main/assets/bundled_models/ (gitignored, no se versionan) en vez de subirlos a git: pesan
+// ~177 MB en total y uno de ellos ya supera el límite de 100 MB por archivo de GitHub.
+// Los nombres, URLs y sha256 deben coincidir con ai/models/.../ModelCatalog.kt.
+data class BundledModelFile(val modelId: String, val fileName: String, val url: String, val sha256: String)
+
+val bundledModelFiles = listOf(
+    BundledModelFile(
+        "tts-piper-es_ES-davefx-medium-int8",
+        "voice.tar.bz2",
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/" +
+            "vits-piper-es_ES-davefx-medium-int8.tar.bz2",
+        "8bb8ac1cefb727caec9bd9c6c3185c673c8b42c53bd29bb25d5a7715dac37125"
+    ),
+    BundledModelFile(
+        "tts-piper-en_US-lessac-medium-int8",
+        "voice.tar.bz2",
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/" +
+            "vits-piper-en_US-lessac-medium-int8.tar.bz2",
+        "f1c6d0295cf16087b05f80fdca5b44daca5cd78e2c425d419a42ba34929805f9"
+    ),
+    BundledModelFile(
+        "emb-multilingual-e5-small-int8",
+        "model.onnx",
+        "https://huggingface.co/Xenova/multilingual-e5-small/resolve/" +
+            "761b726dd34fb83930e26aab4e9ac3899aa1fa78/onnx/model_quantized.onnx",
+        "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193"
+    ),
+    BundledModelFile(
+        "emb-multilingual-e5-small-int8",
+        "tokenizer.json",
+        "https://huggingface.co/Xenova/multilingual-e5-small/resolve/" +
+            "761b726dd34fb83930e26aab4e9ac3899aa1fa78/tokenizer.json",
+        "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+    )
+)
+
+fun sha256Of(file: File): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+        val buffer = ByteArray(256 * 1024)
+        var read = input.read(buffer)
+        while (read >= 0) {
+            digest.update(buffer, 0, read)
+            read = input.read(buffer)
+        }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
+}
+
+val bundledModelsDir = file("src/main/assets/bundled_models")
+bundledModelFiles.forEach { spec ->
+    val dest = File(bundledModelsDir, "${spec.modelId}/${spec.fileName}")
+    if (dest.exists() && sha256Of(dest) == spec.sha256) return@forEach
+    dest.parentFile.mkdirs()
+    logger.lifecycle("Descargando modelo empaquetado: ${spec.modelId}/${spec.fileName}")
+    URI(spec.url).toURL().openStream().use { input -> dest.outputStream().use { output -> input.copyTo(output) } }
+    val actual = sha256Of(dest)
+    check(actual == spec.sha256) {
+        "sha256 incorrecto para ${dest.name}: esperado ${spec.sha256}, obtenido $actual"
+    }
 }
 
 android {
@@ -24,6 +91,11 @@ android {
             excludes += listOf("lib/x86/**", "lib/armeabi-v7a/**")
             // De fbjni solo se usa libc++_shared.so (para el tokenizador de DJL).
             excludes += "lib/*/libfbjni.so"
+        }
+        resources {
+            // El tokenizador de DJL empaqueta sus binarios nativos de escritorio (macOS, Windows) como
+            // recursos sueltos, no bajo lib/<abi>/: en Android no se usan y solo abultan el APK (~25 MB).
+            excludes += "native/**"
         }
     }
 

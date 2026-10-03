@@ -11,6 +11,9 @@ local.properties
 spikes/libs/
 third-party/maven/
 
+# Modelos empaquetados en el APK, descargados por app/build.gradle.kts (ver ModelManager)
+app/src/main/assets/bundled_models/
+
 # Android Studio / IntelliJ
 .idea/
 *.iml

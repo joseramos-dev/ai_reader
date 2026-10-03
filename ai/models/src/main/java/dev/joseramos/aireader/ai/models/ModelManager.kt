@@ -1,6 +1,7 @@
 package dev.joseramos.aireader.ai.models
 
 import android.content.Context
+import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.joseramos.aireader.core.common.ApplicationScope
 import dev.joseramos.aireader.core.common.IoDispatcher
@@ -47,6 +48,7 @@ class ModelManager @Inject constructor(
     @IoDispatcher private val io: CoroutineDispatcher
 ) {
     private val modelsDir = File(context.filesDir, "models")
+    private val assets = context.assets
     private val transient = MutableStateFlow<Map<String, ModelState>>(emptyMap())
     private val jobs = ConcurrentHashMap<String, Job>()
 
@@ -95,9 +97,7 @@ class ModelManager @Inject constructor(
     suspend fun installedDir(id: String): File? = dao.get(id)?.let { File(it.path) }?.takeIf { it.exists() }
 
     private suspend fun install(model: ModelInfo) {
-        val installed = File(modelsDir, model.id)
-        // Los ficheros sueltos se descargan directamente a su sitio; un archivo, a una carpeta temporal.
-        val target = if (model.archive == ArchiveType.TAR_BZ2) File(modelsDir, "${model.id}.download") else installed
+        val (installed, target) = installDirs(model)
         var previous = 0L
         for (file in model.files) {
             downloader.download(file.url, File(target, file.name), file.sha256) { done, _ ->
@@ -106,6 +106,55 @@ class ModelManager @Inject constructor(
             }
             previous += file.sizeBytes
         }
+        finishInstall(model, installed, target)
+    }
+
+    /**
+     * Modelos que vienen ya en el APK (ver `app/src/main/assets/bundled_models/`): se "instalan"
+     * copiándolos la primera vez, sin red ni barra de progreso. Se llama una vez al arrancar la app;
+     * si alguno ya está instalado o no viene empaquetado, no se toca.
+     */
+    suspend fun installBundledModels() = withContext(io) {
+        for (model in ModelCatalog.all) {
+            if (dao.get(model.id) != null || !hasBundledAssets(model)) continue
+            runCatching { installFromAssets(model) }
+                .onFailure { Log.w(TAG, "No se pudo instalar el modelo empaquetado ${model.id}", it) }
+            setState(model.id, null)
+        }
+    }
+
+    private suspend fun installFromAssets(model: ModelInfo) {
+        val (installed, target) = installDirs(model)
+        for (file in model.files) {
+            val dest = File(target, file.name)
+            copyAsset(bundledAssetPath(model.id, file.name), dest)
+            val actual = ModelDownloader.sha256Of(dest)
+            if (!actual.equals(file.sha256, ignoreCase = true)) {
+                throw ChecksumMismatchException(file.sha256, actual)
+            }
+        }
+        finishInstall(model, installed, target)
+    }
+
+    private fun hasBundledAssets(model: ModelInfo): Boolean = model.files.all { file ->
+        runCatching { assets.open(bundledAssetPath(model.id, file.name)).close() }.isSuccess
+    }
+
+    private fun bundledAssetPath(modelId: String, fileName: String) = "bundled_models/$modelId/$fileName"
+
+    private fun copyAsset(assetPath: String, dest: File) {
+        dest.parentFile?.mkdirs()
+        assets.open(assetPath).use { input -> dest.outputStream().use { output -> input.copyTo(output) } }
+    }
+
+    /** Dónde van los ficheros sueltos (directo a su sitio) o el archivo a extraer (carpeta temporal). */
+    private fun installDirs(model: ModelInfo): Pair<File, File> {
+        val installed = File(modelsDir, model.id)
+        val target = if (model.archive == ArchiveType.TAR_BZ2) File(modelsDir, "${model.id}.download") else installed
+        return installed to target
+    }
+
+    private suspend fun finishInstall(model: ModelInfo, installed: File, target: File) {
         setState(model.id, ModelState.Installing)
         if (model.archive == ArchiveType.TAR_BZ2) {
             val archive = File(target, model.files.single().name)
@@ -127,5 +176,9 @@ class ModelManager @Inject constructor(
 
     private fun setState(id: String, state: ModelState?) {
         transient.update { if (state == null) it - id else it + (id to state) }
+    }
+
+    private companion object {
+        const val TAG = "ModelManager"
     }
 }
