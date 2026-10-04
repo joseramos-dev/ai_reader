@@ -166,4 +166,40 @@ class MigrationTest {
         }
         db.close()
     }
+
+    @Test
+    fun migrate6To7RebuildsFtsIndexIgnoringAccents() {
+        helper.createDatabase(6).apply {
+            execSQL(
+                """
+                INSERT INTO books (id, title, author, fileName, filePath, pageCount, coverPath, importedAt,
+                    lastOpenedAt, indexStatus, indexProgress, cleanerVersion, documentTypeSource, aiPrepared)
+                VALUES ('a', 'Libro', NULL, 'a.pdf', '/a.pdf', 10, NULL, 1, NULL, 'READY', 1.0, 1, 'AUTO', 0)
+                """.trimIndent()
+            )
+            execSQL(
+                "INSERT INTO chunks (id, bookId, chapterId, ordinal, text, startPage, endPage, charStart, charEnd, " +
+                    "tokenCount) VALUES (1, 'a', NULL, 0, 'Raskólnikov mató a la vieja', 1, 1, 0, 26, 6)"
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(7, listOf(MIGRATION_6_7))
+        for (query in listOf("mato", "mató", "raskolnikov*")) {
+            db.prepare("SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH '$query'").use {
+                assertTrue(query, it.step())
+                assertEquals(1, it.getInt(0))
+            }
+        }
+        // Los disparadores siguen sincronizando el índice con `chunks`.
+        db.execSQL(
+            "INSERT INTO chunks (id, bookId, chapterId, ordinal, text, startPage, endPage, charStart, charEnd, " +
+                "tokenCount) VALUES (2, 'a', NULL, 1, 'Último capítulo', 2, 2, 0, 15, 3)"
+        )
+        db.prepare("SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH 'ultimo'").use {
+            assertTrue(it.step())
+            assertEquals(2, it.getInt(0))
+        }
+        db.close()
+    }
 }

@@ -28,9 +28,7 @@ class RetrievalTest {
     @Test
     fun ftsQueryDropsStopWordsAndOperators() {
         val query = FtsQuery.from("¿Qué dice el autor sobre la \"memoria\" episódica OR NEAR?")!!
-        assertTrue("memoria*" in query)
-        assertTrue("episódica*" in query)
-        assertTrue("episodica*" in query)
+        assertEquals("memoria* OR episódica* OR near", query)
         assertTrue("autor" !in query.split(" "))
         assertTrue("\"" !in query)
     }
