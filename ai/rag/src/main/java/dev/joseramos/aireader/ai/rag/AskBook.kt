@@ -95,13 +95,16 @@ class AskBook @Inject constructor(
         val visibleChapters = if (limit == null) chapters else chapters.filter { it.startPage <= limit }
         val book = books.getBook(bookId)
 
+        // «El capítulo anterior» se resuelve con la página del lector, no con la conversación: se
+        // reconoce en la pregunta original, porque al reformularla podría perderse la referencia.
+        val chapterRef = QueryRouter.chapterSummary(question)
         // Reformular cuesta una llamada: solo se hace si la pregunta depende de la conversación.
-        val standalone = if (history.isEmpty() || !QueryRouter.needsContext(question)) {
+        val standalone = if (chapterRef != null || history.isEmpty() || !QueryRouter.needsContext(question)) {
             question
         } else {
             rewrite(history, question, config.summaryModel)
         }
-        val fragments = fragmentsFor(bookId, standalone, chapters, reading)
+        val fragments = fragmentsFor(bookId, standalone, chapterRef, chapters, reading)
         val system = buildList {
             add(SystemBlock(prompts.render(R.raw.rag_system_v1)))
             add(SystemBlock(bookContext(bookId, visibleChapters)))
@@ -153,15 +156,13 @@ class AskBook @Inject constructor(
     private suspend fun fragmentsFor(
         bookId: String,
         question: String,
+        chapterRef: ChapterRef?,
         chapters: List<Chapter>,
         reading: ReadingContext
     ): List<Fragment> {
         val limit = reading.spoilerLimit
-        QueryRouter.chapterSummary(question)?.let { ref ->
-            val chapter = when (ref) {
-                ChapterRef.Current -> chapters.lastOrNull { reading.currentPage >= it.startPage }
-                is ChapterRef.Number -> chapters.firstOrNull { it.number == ref.number }
-            }
+        (chapterRef ?: QueryRouter.chapterSummary(question))?.let { ref ->
+            val chapter = ChapterResolver.resolve(ref, chapters, reading.currentPage)
             if (chapter != null) return chapterFragments(bookId, chapter, limit)
         }
         if (QueryRouter.route(question) == QueryScope.GLOBAL) {
@@ -211,10 +212,24 @@ class AskBook @Inject constructor(
 
     private fun String.shortened(max: Int) = if (length <= max) this else take(max).trimEnd() + "…"
 
+    /**
+     * Dónde está el lector, con el capítulo actual y el anterior por su título (el número interno del
+     * índice no sirve: en los libros con partes, el capítulo 38 del índice es «Parte 6. Capítulo 6»).
+     */
     private fun position(reading: ReadingContext, chapters: List<Chapter>): String {
-        val chapter = chapters.lastOrNull { reading.currentPage >= it.startPage }
-        return "El lector está en la página ${reading.currentPage}" +
-            (chapter?.let { " (capítulo ${it.number}: «${it.title}», p. ${it.startPage}–${it.endPage})" } ?: "") + "."
+        val current = ChapterResolver.resolve(ChapterRef.Current, chapters, reading.currentPage)
+            ?: return "El lector está en la página ${reading.currentPage}."
+        val previous = ChapterResolver.resolve(ChapterRef.Previous, chapters, reading.currentPage)
+        return buildString {
+            append("El lector está en la página ${reading.currentPage}, en el capítulo ${describe(current, chapters)}.")
+            if (previous != null) append(" El capítulo anterior es ${describe(previous, chapters)}.")
+        }
+    }
+
+    private fun describe(chapter: Chapter, chapters: List<Chapter>): String {
+        val part = ChapterResolver.partOf(chapters, chapter)?.takeUnless { chapter.title.startsWith(it) }
+        val pages = " (p. ${chapter.startPage}–${chapter.endPage})"
+        return "«${chapter.title}»" + (part?.let { " de «$it»" } ?: "") + pages
     }
 
     private fun render(fragments: List<Fragment>): String = fragments.joinToString("\n") { f ->
@@ -225,7 +240,8 @@ class AskBook @Inject constructor(
 
     private suspend fun bookContext(bookId: String, chapters: List<Chapter>): String {
         val book = books.getBook(bookId)
-        val list = chapters.joinToString("\n") { "${it.number}. ${it.title} (p. ${it.startPage}–${it.endPage})" }
+        // Sin el número interno del índice: el modelo lo confundiría con el del título («Capítulo 6»).
+        val list = chapters.joinToString("\n") { "- ${it.title} (p. ${it.startPage}–${it.endPage})" }
         return prompts.render(
             R.raw.rag_book_context_v1,
             "title" to (book?.title ?: ""),

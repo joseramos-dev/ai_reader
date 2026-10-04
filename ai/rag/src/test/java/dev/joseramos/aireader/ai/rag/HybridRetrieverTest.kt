@@ -2,6 +2,7 @@ package dev.joseramos.aireader.ai.rag
 
 import dev.joseramos.aireader.ai.embeddings.Embedder
 import dev.joseramos.aireader.ai.embeddings.VectorCodec
+import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.db.BookVector
 import dev.joseramos.aireader.core.data.db.ChunkDao
 import dev.joseramos.aireader.core.data.db.ChunkEmbeddingDao
@@ -105,6 +106,39 @@ class HybridRetrieverTest {
         assertEquals(ChapterRef.Number(4), QueryRouter.chapterSummary("resumen del capítulo IV"))
         assertEquals(null, QueryRouter.chapterSummary("¿Quién mata al prestamista en el capítulo 3?"))
         assertEquals(null, QueryRouter.chapterSummary("Resume el libro"))
+        assertEquals(ChapterRef.Previous, QueryRouter.chapterSummary("Resúmeme el capítulo anterior"))
+        assertEquals(ChapterRef.Previous, QueryRouter.chapterSummary("¿Qué pasó en el anterior capítulo?"))
+        assertEquals(ChapterRef.Next, QueryRouter.chapterSummary("¿De qué trata el capítulo siguiente?"))
+        assertEquals(ChapterRef.Current, QueryRouter.chapterSummary("Cuéntame el capítulo en el que estoy"))
+    }
+
+    private val partedBook = listOf(
+        Chapter(1, 1, "PARTE 1. CAPÍTULO 1", 2, 8),
+        Chapter(2, 2, "CAPÍTULO 2", 9, 23),
+        Chapter(3, 3, "CAPÍTULO 3", 24, 34),
+        Chapter(4, 4, "PARTE 2", 35, 35),
+        Chapter(5, 5, "CAPÍTULO 1", 36, 50),
+        Chapter(6, 6, "CAPÍTULO 2", 51, 60),
+        Chapter(7, 7, "CAPÍTULO 3", 61, 70)
+    )
+
+    @Test
+    fun chaptersAreResolvedFromTheReadingPosition() {
+        assertEquals(6L, ChapterResolver.resolve(ChapterRef.Current, partedBook, 55)?.id)
+        assertEquals(5L, ChapterResolver.resolve(ChapterRef.Previous, partedBook, 55)?.id)
+        assertEquals(7L, ChapterResolver.resolve(ChapterRef.Next, partedBook, 55)?.id)
+        // Se salta la página suelta que solo anuncia la parte.
+        assertEquals(3L, ChapterResolver.resolve(ChapterRef.Previous, partedBook, 40)?.id)
+        assertEquals(null, ChapterResolver.resolve(ChapterRef.Previous, partedBook, 5))
+    }
+
+    @Test
+    fun numberedChaptersAreLookedUpInTheCurrentPart() {
+        assertEquals(7L, ChapterResolver.resolve(ChapterRef.Number(3), partedBook, 55)?.id)
+        assertEquals(3L, ChapterResolver.resolve(ChapterRef.Number(3), partedBook, 10)?.id)
+        assertEquals(1L, ChapterResolver.resolve(ChapterRef.Number(1), partedBook, 10)?.id)
+        assertEquals("PARTE 2", ChapterResolver.partOf(partedBook, partedBook[5]))
+        assertEquals(null, ChapterResolver.partOf(listOf(Chapter(1, 1, "Uno", 1, 5)), Chapter(1, 1, "Uno", 1, 5)))
     }
 
     @Test

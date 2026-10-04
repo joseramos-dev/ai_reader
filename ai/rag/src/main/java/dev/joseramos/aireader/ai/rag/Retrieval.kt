@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.ai.rag
 
+import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.db.ChunkEntity
 import dev.joseramos.aireader.text.SpeechNormalizer
 import java.text.Normalizer
@@ -127,9 +128,19 @@ object QueryRouter {
         "conclusión del libro", "conclusiones", "mensaje del libro", "estructura del libro"
     )
 
-    private val summaryWords = listOf("resum", "de qué trata", "de que trata", "de qué va", "de que va", "qué pasa en")
-    private val currentChapter =
-        Regex("\\b(este|esta|el actual|actual)\\s*(cap[ií]tulo|tema|parte)|(cap[ií]tulo|tema) actual")
+    private val summaryWords = listOf(
+        "resum", "resúm", "de qué trata", "de que trata", "de qué va", "de que va", "qué pasa", "que pasa", "qué pasó",
+        "que pasó", "que paso", "qué ocurr", "que ocurr", "qué sucede", "que sucede", "qué sucedió", "que sucedio",
+        "cuéntame", "cuentame"
+    )
+    private val currentChapter = Regex(
+        "\\b(este|esta|el actual|actual)\\s*(cap[ií]tulo|tema|parte)|(cap[ií]tulo|tema) actual|" +
+            "cap[ií]tulo (en el )?que (estoy|leo)"
+    )
+    private val previousChapter =
+        Regex("(cap[ií]tulo|tema)\\s+(anterior|pasado|previo)|anterior\\s+(cap[ií]tulo|tema)")
+    private val nextChapter =
+        Regex("(cap[ií]tulo|tema)\\s+(siguiente|pr[oó]ximo)|(siguiente|pr[oó]ximo)\\s+(cap[ií]tulo|tema)")
     private val numberedChapter = Regex("\\b(?:cap[ií]tulo|tema)\\s+(\\d{1,3}|[ivxlc]{1,7})\\b")
 
     /** Heurística barata: ante la duda, la pregunta se trata como concreta. */
@@ -156,14 +167,74 @@ object QueryRouter {
         return words.size < MIN_STANDALONE_WORDS || words.first() == "y" || words.any { it in referenceWords }
     }
 
-    /** Si la pregunta pide resumir un capítulo concreto («resume este capítulo», «resumen del tema 3»). */
+    /**
+     * Si la pregunta pide resumir un capítulo concreto («resume este capítulo», «¿qué pasó en el
+     * capítulo anterior?», «resumen del tema 3»).
+     */
     fun chapterSummary(question: String): ChapterRef? {
         val q = question.lowercase()
         if (summaryWords.none { it in q }) return null
+        if (previousChapter.containsMatchIn(q)) return ChapterRef.Previous
+        if (nextChapter.containsMatchIn(q)) return ChapterRef.Next
         if (currentChapter.containsMatchIn(q)) return ChapterRef.Current
         val number = numberedChapter.find(q)?.groupValues?.get(1) ?: return null
-        return (number.toIntOrNull() ?: SpeechNormalizer.romanToInt(number.uppercase()))?.let { ChapterRef.Number(it) }
+        return chapterNumber(number)?.let { ChapterRef.Number(it) }
     }
+
+    internal fun chapterNumber(text: String): Int? = text.toIntOrNull() ?: SpeechNormalizer.romanToInt(text.uppercase())
+}
+
+/**
+ * Encuentra en el índice el capítulo al que se refiere una pregunta, según la página que se está
+ * leyendo. Los libros divididos en partes reinician la numeración en cada una («Parte 2. Capítulo 1»):
+ * «el capítulo 3» es entonces el 3 de la parte que se lee, no el tercero del índice.
+ */
+object ChapterResolver {
+    private val partHeading = Regex("^\\s*(parte|libro|part|book)\\b", RegexOption.IGNORE_CASE)
+    private val bareHeading = Regex("^\\s*(parte|libro|part|book)\\s+\\S+\\s*$", RegexOption.IGNORE_CASE)
+    private val titledNumber =
+        Regex("\\b(?:cap[ií]tulo|tema|chapter)\\s+(\\d{1,3}|[ivxlc]{1,7})\\b", RegexOption.IGNORE_CASE)
+
+    /** Índice del capítulo que contiene [page] (el último que empieza antes, si cae entre dos). */
+    fun currentIndex(chapters: List<Chapter>, page: Int): Int = chapters.indexOfLast { page >= it.startPage }
+
+    fun resolve(ref: ChapterRef, chapters: List<Chapter>, page: Int): Chapter? {
+        val current = currentIndex(chapters, page)
+        return when (ref) {
+            ChapterRef.Current -> chapters.getOrNull(current)
+            ChapterRef.Previous -> if (current < 0) null else neighbour(chapters, current, -1)
+            ChapterRef.Next -> neighbour(chapters, current, 1)
+            is ChapterRef.Number -> byNumber(chapters, ref.number, current)
+        }
+    }
+
+    /** Parte a la que pertenece [chapter] («Parte 6»), si el libro está dividido en partes. */
+    fun partOf(chapters: List<Chapter>, chapter: Chapter): String? {
+        val index = chapters.indexOf(chapter)
+        if (index < 0) return null
+        val part = (index downTo 0).firstOrNull { partHeading.containsMatchIn(chapters[it].title) } ?: return null
+        return chapters[part].title.substringBefore('.').trim().takeIf { it.isNotEmpty() }
+    }
+
+    /** El capítulo de al lado, saltando las páginas sueltas que solo anuncian una parte («Parte 3»). */
+    private fun neighbour(chapters: List<Chapter>, from: Int, step: Int): Chapter? {
+        var i = from + step
+        while (i in chapters.indices && bareHeading.matches(chapters[i].title)) i += step
+        return chapters.getOrNull(i)
+    }
+
+    private fun byNumber(chapters: List<Chapter>, number: Int, current: Int): Chapter? {
+        val titled = chapters.indices.filter { i ->
+            titledNumber.find(chapters[i].title)?.groupValues?.get(1)?.let(QueryRouter::chapterNumber) == number
+        }
+        if (titled.isEmpty()) return chapters.firstOrNull { it.number == number }
+        val part = partStart(chapters, current)
+        val samePart = titled.firstOrNull { partStart(chapters, it) == part }
+        return chapters[samePart ?: titled.first()]
+    }
+
+    private fun partStart(chapters: List<Chapter>, index: Int): Int =
+        (index downTo 0).firstOrNull { it in chapters.indices && partHeading.containsMatchIn(chapters[it].title) } ?: -1
 }
 
 private const val MIN_STANDALONE_WORDS = 4
@@ -207,9 +278,13 @@ object ChunkMerger {
     }
 }
 
-/** Capítulo al que se refiere una pregunta: el que se está leyendo o uno por su número. */
+/** Capítulo al que se refiere una pregunta: el que se está leyendo, el anterior, el siguiente o uno por su número. */
 sealed interface ChapterRef {
     data object Current : ChapterRef
+
+    data object Previous : ChapterRef
+
+    data object Next : ChapterRef
 
     data class Number(val number: Int) : ChapterRef
 }
