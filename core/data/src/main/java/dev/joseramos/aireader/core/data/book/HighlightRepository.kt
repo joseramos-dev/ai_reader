@@ -21,10 +21,9 @@ data class Highlight(
 @Singleton
 class HighlightRepository @Inject constructor(private val dao: HighlightDao) {
     /** Subrayados del libro, por página y posición. */
-    fun observe(bookId: String): Flow<List<Highlight>> =
-        dao.observeByBook(bookId).map { list ->
-            list.map { Highlight(it.id, it.page, it.paragraph, it.startOffset, it.endOffset, it.note, it.createdAt) }
-        }
+    fun observe(bookId: String): Flow<List<Highlight>> = dao.observeByBook(bookId).map { list ->
+        list.map { Highlight(it.id, it.page, it.paragraph, it.startOffset, it.endOffset, it.note, it.createdAt) }
+    }
 
     suspend fun add(bookId: String, page: Int, paragraph: Int, range: IntRange, note: String? = null): Long =
         dao.upsert(

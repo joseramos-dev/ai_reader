@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ManageSearch
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.DataUsage
@@ -74,7 +73,11 @@ fun NavGraphBuilder.settingsScreen() {
 }
 
 private enum class Sheet {
-    THEME, SPEED, API_KEY, SUMMARY_MODEL, DAILY_BUDGET
+    THEME,
+    SPEED,
+    API_KEY,
+    SUMMARY_MODEL,
+    DAILY_BUDGET
 }
 
 /** Modelos de Gemini que se pueden elegir, con su nombre visible. */
