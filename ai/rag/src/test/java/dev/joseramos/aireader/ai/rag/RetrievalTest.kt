@@ -58,6 +58,56 @@ class RetrievalTest {
         assertEquals(listOf(42, 57), answer.pages)
     }
 
+    private val groupedFragments = listOf(
+        Fragment(1, "…", 223, 224, null),
+        Fragment(2, "…", 295, 296, null),
+        Fragment(3, "…", 298, 298, null)
+    )
+
+    @Test
+    fun singlePagesAndRangesStillWork() {
+        val fragments = listOf(Fragment(1, "…", 42, 43, null))
+        val single = CitationParser.validate("Dato [p. 42].", fragments)
+        assertEquals("Dato [p. 42].", single.text)
+        assertEquals(listOf(42), single.pages)
+
+        val range = CitationParser.validate("Dato [p. 42–43].", fragments)
+        assertEquals("Dato [p. 42–43].", range.text)
+        assertEquals(listOf(42), range.pages)
+    }
+
+    @Test
+    fun groupedCitationWithAllValidPagesIsKept() {
+        val answer = CitationParser.validate("Dato [p. 223–224, 295–296, 298] y más.", groupedFragments)
+        assertEquals("Dato [p. 223–224, 295–296, 298] y más.", answer.text)
+        assertEquals(listOf(223, 295, 298), answer.pages)
+
+        val semicolons = CitationParser.validate("Dato [p. 223; 298].", groupedFragments)
+        assertEquals("Dato [p. 223; 298].", semicolons.text)
+        assertEquals(listOf(223, 298), semicolons.pages)
+    }
+
+    @Test
+    fun groupedCitationDropsOnlyInventedItems() {
+        val answer = CitationParser.validate("Dato [p. 223, 999] y [p. 999, 295-296, 888].", groupedFragments)
+        assertEquals("Dato [p. 223] y [p. 295-296].", answer.text)
+        assertEquals(listOf(223, 295), answer.pages)
+    }
+
+    @Test
+    fun groupedCitationWithOnlyInventedPagesDisappears() {
+        val answer = CitationParser.validate("Dato [p. 999, 1000–1001] .", groupedFragments)
+        assertEquals("Dato.", answer.text)
+        assertEquals(emptyList<Int>(), answer.pages)
+    }
+
+    @Test
+    fun mixedRangesAndSinglePagesKeepOrderWithoutRepeats() {
+        val answer = CitationParser.validate("A [p. 298, 223–224, 298] B [p. 224, 223].", groupedFragments)
+        assertEquals("A [p. 298, 223–224, 298] B [p. 224, 223].", answer.text)
+        assertEquals(listOf(298, 223, 224), answer.pages)
+    }
+
     @Test
     fun onlyFollowUpQuestionsNeedTheConversation() {
         assertTrue(QueryRouter.needsContext("¿Y después?"))

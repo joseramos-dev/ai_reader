@@ -296,23 +296,33 @@ data class Fragment(val number: Int, val text: String, val startPage: Int, val e
 data class CitedAnswer(val text: String, val pages: List<Int>)
 
 object CitationParser {
-    private val citation = Regex("\\[p(?:ág)?\\.\\s*(\\d+)(?:\\s*[–-]\\s*(\\d+))?]")
+    private const val ITEM = "\\d+(?:\\s*[–-]\\s*\\d+)?"
+
+    // Un corchete con una o varias páginas o rangos separados por comas o punto y coma: [p. 223–224, 295, 298].
+    private val citation = Regex("\\[(p(?:ág)?\\.)\\s*($ITEM(?:\\s*[,;]\\s*$ITEM)*)\\s*]")
+    private val separator = Regex("\\s*[,;]\\s*")
+    private val dash = Regex("\\s*[–-]\\s*")
 
     /**
-     * Quita las citas a páginas que no estaban en ningún fragmento (serían inventadas) y devuelve
-     * las páginas válidas, en orden de aparición y sin repetir.
+     * Quita las citas a páginas que no estaban en ningún fragmento (serían inventadas), tanto sueltas
+     * como dentro de un corchete agrupado, y devuelve las páginas válidas, en orden de aparición y sin repetir.
      */
     fun validate(answer: String, fragments: List<Fragment>): CitedAnswer {
         val pages = mutableListOf<Int>()
         val cleaned = citation.replace(answer) { match ->
-            val start = match.groupValues[1].toInt()
-            val end = match.groupValues[2].toIntOrNull() ?: start
-            val valid = fragments.any { start <= it.endPage && end >= it.startPage }
-            if (valid) {
-                if (start !in pages) pages += start
-                match.value
-            } else {
-                ""
+            val items = match.groupValues[2].split(separator)
+            val kept = items.filter { item ->
+                val bounds = item.split(dash).map { it.toInt() }
+                val start = bounds.first()
+                val end = bounds.last()
+                val valid = fragments.any { start <= it.endPage && end >= it.startPage }
+                if (valid && start !in pages) pages += start
+                valid
+            }
+            when (kept.size) {
+                items.size -> match.value
+                0 -> ""
+                else -> "[${match.groupValues[1]} ${kept.joinToString(", ")}]"
             }
         }
         return CitedAnswer(cleaned.replace(Regex(" +([.,;:])"), "$1").replace(Regex(" {2,}"), " ").trim(), pages)
