@@ -115,14 +115,16 @@ class HybridRetriever @Inject constructor(
     }
 
     private suspend fun index(bookId: String): VectorIndex = mutex.withLock {
-        cached?.takeIf { it.first == bookId }?.let { return@withLock it.second }
+        // Mientras se indexa, los vectores siguen llegando con el chat abierto, en orden de lectura: si
+        // hay más que en la caché, se vuelven a leer, para buscar por significado en todo lo calculado
+        // (con anti-spoilers, lo ya leído suele estar listo en pocos segundos).
+        val count = embeddingDao.countVectors(bookId, embedder.modelId)
+        cached?.takeIf { it.first == bookId && it.second.size == count }?.let { return@withLock it.second }
         val rows = embeddingDao.getVectors(bookId, embedder.modelId)
         val dimensions = embedder.dimensions
         val vectors = FloatArray(rows.size * dimensions)
         rows.forEachIndexed { i, row -> VectorCodec.decodeInto(row.vector, vectors, i * dimensions) }
-        // Un índice vacío no se guarda: los vectores pueden llegar mientras el chat está abierto.
-        VectorIndex(LongArray(rows.size) { rows[it].chunkId }, vectors, dimensions)
-            .also { if (it.size > 0) cached = bookId to it }
+        VectorIndex(LongArray(rows.size) { rows[it].chunkId }, vectors, dimensions).also { cached = bookId to it }
     }
 
     private companion object {

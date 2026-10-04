@@ -62,6 +62,19 @@ class HybridRetrieverTest {
         assertEquals(9L, ids.first())
     }
 
+    /** La indexación sigue con el chat abierto: los vectores nuevos cuentan desde la siguiente pregunta. */
+    @Test
+    fun vectorsArrivingWhileTheChatIsOpenAreUsed() = runTest {
+        val vectors = mutableListOf(BookVector(2, VectorCodec.encode(floatArrayOf(0f, 1f))))
+        val retriever =
+            HybridRetriever(FakeChunkDao(chunks, textHits = emptyList()), FakeEmbeddingDao(vectors), FakeEmbedder())
+
+        assertEquals(2L, retriever.retrieve("libro", "Sonia y el hacha").first().id)
+
+        vectors += BookVector(9, VectorCodec.encode(floatArrayOf(1f, 0f)))
+        assertEquals(9L, retriever.retrieve("libro", "Sonia y el hacha").first().id)
+    }
+
     @Test
     fun whenNothingMatchesUsesFragmentsFromAcrossTheBook() = runTest {
         val retriever =
@@ -194,7 +207,9 @@ class HybridRetrieverTest {
     private class FakeEmbeddingDao(private val vectors: List<BookVector> = emptyList()) : ChunkEmbeddingDao {
         override suspend fun insertAll(embeddings: List<ChunkEmbeddingEntity>) = Unit
 
-        override suspend fun getVectors(bookId: String, modelId: String) = vectors
+        override suspend fun getVectors(bookId: String, modelId: String) = vectors.toList()
+
+        override suspend fun countVectors(bookId: String, modelId: String) = vectors.size
 
         override suspend fun embeddedChunkIds(bookId: String, modelId: String) = vectors.map { it.chunkId }
 

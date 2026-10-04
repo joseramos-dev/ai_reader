@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.ai.rag
 
+import android.util.Log
 import dev.joseramos.aireader.ai.embeddings.Embedder
 import dev.joseramos.aireader.ai.embeddings.VectorCodec
 import dev.joseramos.aireader.core.data.book.BookContentRepository
@@ -12,6 +13,7 @@ import dev.joseramos.aireader.text.Chunker
 import dev.joseramos.aireader.text.PageParagraph
 import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
+import kotlin.time.TimeSource
 import kotlinx.coroutines.ensureActive
 
 /**
@@ -38,19 +40,24 @@ class BookEmbeddingIndexer @Inject constructor(
         embeddingDao.deleteOtherModels(bookId, embedder.modelId)
         val done = embeddingDao.embeddedChunkIds(bookId, embedder.modelId).toSet()
         val pending = chunks.filter { it.id !in done }
+        val start = TimeSource.Monotonic.markNow()
         try {
-            pending.chunked(BATCH).forEachIndexed { i, batch ->
+            pending.chunked(GROUP).forEachIndexed { i, group ->
                 coroutineContext.ensureActive()
-                val vectors = embedder.embedDocuments(batch.map { it.text })
+                val vectors = embedder.embedDocuments(group.map { it.text })
                 embeddingDao.insertAll(
-                    batch.zip(vectors) { chunk, vector ->
+                    group.zip(vectors) { chunk, vector ->
                         ChunkEmbeddingEntity(chunk.id, embedder.modelId, vector.size, VectorCodec.encode(vector))
                     }
                 )
-                onProgress((done.size + (i + 1) * BATCH).coerceAtMost(chunks.size).toFloat() / chunks.size)
+                onProgress((done.size + (i + 1) * GROUP).coerceAtMost(chunks.size).toFloat() / chunks.size)
             }
         } finally {
             embedder.release()
+        }
+        if (pending.isNotEmpty()) {
+            val elapsed = start.elapsedNow().inWholeMilliseconds
+            Log.i(TAG, "Vectores de ${pending.size} fragmentos de $bookId en $elapsed ms")
         }
         return true
     }
@@ -83,6 +90,13 @@ class BookEmbeddingIndexer @Inject constructor(
     }
 
     private companion object {
-        const val BATCH = 16
+        const val TAG = "BookEmbeddingIndexer"
+
+        /**
+         * Fragmentos por llamada al modelo y por guardado. El modelo los reparte entre los núcleos y, al
+         * final de cada grupo, espera al más lento: con grupos de 16 se perdía un 15 % de velocidad en un
+         * Helio G99, y con 64, un 1 %.
+         */
+        const val GROUP = 64
     }
 }

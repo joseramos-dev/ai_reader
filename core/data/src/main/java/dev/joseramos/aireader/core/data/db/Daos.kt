@@ -256,6 +256,15 @@ interface ChunkEmbeddingDao {
     )
     suspend fun getVectors(bookId: String, modelId: String): List<BookVector>
 
+    /** Cuántos fragmentos del libro tienen ya vector de [modelId] (crece mientras se indexa). */
+    @Query(
+        """
+        SELECT COUNT(*) FROM chunk_embeddings e JOIN chunks c ON c.id = e.chunkId
+        WHERE c.bookId = :bookId AND e.modelId = :modelId
+        """
+    )
+    suspend fun countVectors(bookId: String, modelId: String): Int
+
     @Query(
         """
         SELECT e.chunkId FROM chunk_embeddings e JOIN chunks c ON c.id = e.chunkId

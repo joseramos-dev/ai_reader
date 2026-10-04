@@ -3,15 +3,24 @@ package dev.joseramos.aireader.ai.embeddings
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import android.os.Process
 import dev.joseramos.aireader.ai.models.ModelCatalog
 import dev.joseramos.aireader.ai.models.ModelManager
 import dev.joseramos.aireader.core.common.DefaultDispatcher
 import java.io.File
+import java.nio.FloatBuffer
 import java.nio.LongBuffer
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.ExecutorCoroutineDispatcher
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -19,6 +28,11 @@ import kotlinx.coroutines.withContext
 /**
  * multilingual-e5-small (int8, 384 dimensiones) con ONNX Runtime. e5 exige los prefijos
  * `query:` y `passage:`; el vector es la media de los tokens (mean pooling) normalizada.
+ *
+ * Cada inferencia usa un solo hilo, y [embedDocuments] reparte los textos de uno en uno entre tantos
+ * hilos como núcleos. En un Helio G99 (2 núcleos rápidos y 6 lentos) es 2,5 veces más rápido que una
+ * inferencia de 4 hilos con lotes de 16, y con la mitad de memoria: los núcleos rápidos no esperan a los
+ * lentos en cada operación, no se calcula relleno y trabajan todos los núcleos.
  */
 @Singleton
 class E5Embedder @Inject constructor(
@@ -31,33 +45,76 @@ class E5Embedder @Inject constructor(
     private val mutex = Mutex()
     private var loaded: Loaded? = null
 
-    private class Loaded(val session: OrtSession, val tokenizer: UnigramTokenizer)
+    /** Llamadas que están usando [loaded]: [release] espera a que terminen para cerrarlo. */
+    private var users = 0
+    private var releaseRequested = false
+
+    private class Loaded(
+        val session: OrtSession,
+        val tokenizer: UnigramTokenizer,
+        /** Hilos de [embedDocuments]; se crean al usarlos por primera vez. */
+        val workers: ExecutorCoroutineDispatcher
+    )
 
     override suspend fun isAvailable(): Boolean = models.installedDir(modelId) != null
 
-    override suspend fun embedDocuments(texts: List<String>): List<FloatArray> =
-        texts.chunked(BATCH).flatMap { batch -> run(batch.map { "passage: $it" }) }
-
-    override suspend fun embedQuery(text: String): FloatArray = run(listOf("query: $text")).single()
-
-    override suspend fun release() = mutex.withLock {
-        loaded?.session?.close()
-        loaded = null
+    override suspend fun embedDocuments(texts: List<String>): List<FloatArray> {
+        if (texts.isEmpty()) return emptyList()
+        return withModel { model ->
+            withContext(model.workers) { texts.map { async { embed(model, "passage: $it") } }.awaitAll() }
+        }
     }
 
-    private suspend fun run(texts: List<String>): List<FloatArray> = mutex.withLock {
-        withContext(dispatcher) { embed(load(), texts) }
+    // Una pregunta es corta: con un hilo tarda lo mismo que con cuatro (unos 30 ms en un Helio G99).
+    override suspend fun embedQuery(text: String): FloatArray =
+        withModel { model -> withContext(dispatcher) { embed(model, "query: $text") } }
+
+    override suspend fun release() = mutex.withLock {
+        if (users == 0) close() else releaseRequested = true
+    }
+
+    /**
+     * Ejecuta [block] con el modelo cargado. Varias llamadas pueden usarlo a la vez (una sesión de ONNX
+     * Runtime lo admite): así el chat puede preguntar mientras se indexa un libro sin esperar a que
+     * termine cada grupo de fragmentos.
+     */
+    private suspend fun <T> withModel(block: suspend (Loaded) -> T): T {
+        val model = mutex.withLock {
+            withContext(dispatcher) { load() }.also {
+                users++
+                releaseRequested = false
+            }
+        }
+        try {
+            return block(model)
+        } finally {
+            withContext(NonCancellable) {
+                mutex.withLock {
+                    users--
+                    if (users == 0 && releaseRequested) close()
+                }
+            }
+        }
+    }
+
+    private fun close() {
+        loaded?.let {
+            it.workers.close()
+            it.session.close()
+        }
+        loaded = null
+        releaseRequested = false
     }
 
     private suspend fun load(): Loaded {
         loaded?.let { return it }
         val dir = models.installedDir(modelId) ?: throw EmbeddingModelMissingException()
         val options = OrtSession.SessionOptions().apply {
-            setIntraOpNumThreads(THREADS)
+            // Un hilo por inferencia: el paralelismo lo dan varios textos a la vez (ver la clase).
+            setIntraOpNumThreads(1)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
-            // El chat es lo único que carga este modelo: en un móvil pesa más la memoria que la
-            // latencia de unas pocas preguntas, así que se desactiva el arena allocator de ONNX
-            // Runtime (reserva memoria de más para ir rápido en ráfagas largas de inferencia).
+            // Sin el arena allocator de ONNX Runtime: aquí no acelera (medido en un Helio G99) y
+            // reserva memoria de más.
             setMemoryPatternOptimization(false)
             setCPUArenaAllocator(false)
         }
@@ -69,50 +126,56 @@ class E5Embedder @Inject constructor(
             session.close()
             throw it
         }
-        return Loaded(session, tokenizer).also { loaded = it }
+        return Loaded(session, tokenizer, workerThreads()).also { loaded = it }
     }
 
-    private fun embed(model: Loaded, texts: List<String>): List<FloatArray> {
+    /**
+     * Un hilo por núcleo (como mucho [MAX_WORKERS], para acotar la memoria), con prioridad de segundo
+     * plano para que la lectura no dé tirones mientras se indexa. En las pruebas no restó velocidad.
+     */
+    private fun workerThreads(): ExecutorCoroutineDispatcher {
+        val count = Runtime.getRuntime().availableProcessors().coerceIn(1, MAX_WORKERS)
+        val number = AtomicInteger()
+        return Executors.newFixedThreadPool(count) { task ->
+            Thread(
+                {
+                    Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+                    task.run()
+                },
+                "e5-embedder-${number.incrementAndGet()}"
+            )
+        }.asCoroutineDispatcher()
+    }
+
+    /** Vector de [text]. Va solo en la inferencia, así que no hay relleno y cuentan todos sus tokens. */
+    private fun embed(model: Loaded, text: String): FloatArray {
+        val ids = model.tokenizer.encode(text)
+        val shape = longArrayOf(1, ids.size.toLong())
         val env = OrtEnvironment.getEnvironment()
-        val encodings = texts.map { model.tokenizer.encode(it) }
-        val batch = encodings.size
-        val length = encodings.maxOf { it.size }
-        val ids = LongArray(batch * length)
-        val mask = LongArray(batch * length)
-        encodings.forEachIndexed { b, encoding ->
-            encoding.copyInto(ids, b * length)
-            mask.fill(1L, b * length, b * length + encoding.size)
-        }
-        val shape = longArrayOf(batch.toLong(), length.toLong())
         val inputs = model.session.inputNames.associateWith { name ->
             val data = when (name) {
                 "input_ids" -> ids
-                "attention_mask" -> mask
-                else -> LongArray(batch * length) // token_type_ids
+                "attention_mask" -> LongArray(ids.size) { 1L }
+                else -> LongArray(ids.size) // token_type_ids
             }
             OnnxTensor.createTensor(env, LongBuffer.wrap(data), shape)
         }
         try {
             model.session.run(inputs).use { result ->
-                @Suppress("UNCHECKED_CAST")
-                val hidden = result.get(0).value as Array<Array<FloatArray>>
-                return hidden.mapIndexed { b, tokens -> normalize(meanPool(tokens, mask, b * length)) }
+                return normalize(meanPool((result.get(0) as OnnxTensor).floatBuffer, ids.size))
             }
         } finally {
             inputs.values.forEach { it.close() }
         }
     }
 
-    private fun meanPool(tokens: Array<FloatArray>, mask: LongArray, offset: Int): FloatArray {
-        val out = FloatArray(tokens.first().size)
-        var count = 0
-        tokens.forEachIndexed { t, vector ->
-            if (mask[offset + t] == 1L) {
-                count++
-                for (d in out.indices) out[d] += vector[d]
-            }
+    /** Media de los vectores de los [tokens] de [hidden], que tiene forma `[1, tokens, DIMENSIONS]`. */
+    private fun meanPool(hidden: FloatBuffer, tokens: Int): FloatArray {
+        val out = FloatArray(DIMENSIONS)
+        for (t in 0 until tokens) {
+            for (d in 0 until DIMENSIONS) out[d] += hidden.get(t * DIMENSIONS + d)
         }
-        if (count > 0) for (d in out.indices) out[d] /= count
+        for (d in out.indices) out[d] /= tokens
         return out
     }
 
@@ -123,8 +186,9 @@ class E5Embedder @Inject constructor(
 
     private companion object {
         const val DIMENSIONS = 384
-        const val BATCH = 16
         const val MAX_TOKENS = 512
-        const val THREADS = 4
+
+        /** Con 8 inferencias a la vez, el pico de memoria fue de unos 420 MB en un Helio G99. */
+        const val MAX_WORKERS = 8
     }
 }

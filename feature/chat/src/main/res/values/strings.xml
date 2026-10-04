@@ -23,7 +23,7 @@
     <string name="chat_index_failed">No se pudo preparar el libro. Prueba a reintentarlo o a importarlo de nuevo.</string>
     <string name="chat_unavailable">El libro se puede leer, pero no se pudo preparar la búsqueda para las preguntas.</string>
     <string name="chat_retry">Reintentar</string>
-    <string name="chat_search_improving">Mejorando la búsqueda… %1$d %%. Mientras tanto ya puedes preguntar: se busca por palabras del texto.</string>
+    <string name="chat_search_improving">Mejorando la búsqueda… %1$d %%. Mientras tanto ya puedes preguntar: en la parte que falta se busca solo por palabras del texto.</string>
     <string name="chat_search_unsupported">La búsqueda por significado no está disponible en este dispositivo, así que se busca solo por palabras del texto. Usa en tus preguntas términos que aparezcan en el libro.</string>
     <string name="chat_anti_spoilers">Anti-spoilers</string>
     <string name="chat_anti_spoilers_until">Nada después de la p. %1$d</string>
