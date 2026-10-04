@@ -3,7 +3,6 @@ package dev.joseramos.aireader.ai.rag
 import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.db.ChunkEntity
 import dev.joseramos.aireader.text.SpeechNormalizer
-import java.text.Normalizer
 
 /**
  * Vectores de un libro en memoria, en un único `FloatArray` contiguo. Para un libro (unos miles
@@ -107,15 +106,10 @@ object FtsQuery {
             .filter { it.length >= MIN_LENGTH && it !in stopWords }
             .distinct()
             .take(MAX_TERMS)
-            .flatMap { word ->
-                // El tokenizador de FTS4 no ignora tildes: se busca la palabra tal cual y sin tildes.
-                listOf(word, stripAccents(word)).distinct().map { if (it.length >= PREFIX_LENGTH) "$it*" else it }
-            }
+            // `chunks_fts` usa `unicode61` con `remove_diacritics`: con o sin tilde, la palabra casa igual.
+            .map { if (it.length >= PREFIX_LENGTH) "$it*" else it }
         return terms.takeIf { it.isNotEmpty() }?.joinToString(" OR ")
     }
-
-    private fun stripAccents(text: String) =
-        Normalizer.normalize(text, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
 }
 
 /** Tipo de pregunta: sobre el libro en conjunto (se responde con resúmenes) o sobre algo concreto. */

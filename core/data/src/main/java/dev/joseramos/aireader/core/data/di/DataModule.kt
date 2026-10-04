@@ -17,6 +17,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.joseramos.aireader.core.data.db.AppDatabase
+import dev.joseramos.aireader.core.data.db.MIGRATION_6_7
 import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import javax.inject.Named
@@ -28,7 +29,9 @@ object DataModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME).build()
+        Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
+            .addMigrations(MIGRATION_6_7)
+            .build()
 
     @Provides fun bookDao(db: AppDatabase) = db.bookDao()
 
