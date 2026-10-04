@@ -6,15 +6,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ManageSearch
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.DataUsage
+import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.People
@@ -39,15 +40,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import dev.joseramos.aireader.ai.models.ModelCatalog
+import dev.joseramos.aireader.core.designsystem.R as DesignSystemR
 import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.core.data.settings.AppSettings
 import dev.joseramos.aireader.core.data.settings.BudgetLevel
+import dev.joseramos.aireader.core.data.settings.CloudVoiceTier
 import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.data.settings.ThemeMode
+import dev.joseramos.aireader.core.data.settings.TtsEngineKind
 import dev.joseramos.aireader.core.designsystem.component.AiUsageRow
 import dev.joseramos.aireader.core.designsystem.component.ApiKeySheet
 import dev.joseramos.aireader.core.designsystem.component.AppBottomSheet
@@ -61,7 +66,8 @@ import dev.joseramos.aireader.core.designsystem.component.formatTokens
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
 import dev.joseramos.aireader.text.Language
-import dev.joseramos.aireader.tts.voice
+import dev.joseramos.aireader.tts.SystemVoiceSettings
+import dev.joseramos.aireader.tts.VoiceAvailability
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -72,12 +78,19 @@ fun NavGraphBuilder.settingsScreen() {
         val viewModel: SettingsViewModel = hiltViewModel()
         val state by viewModel.state.collectAsStateWithLifecycle()
         val ragEval by viewModel.ragEval.collectAsStateWithLifecycle()
+        // Al entrar y al volver de los ajustes del sistema (por ejemplo, tras instalar una voz).
+        LifecycleResumeEffect(Unit) {
+            viewModel.refreshVoices()
+            onPauseOrDispose {}
+        }
         SettingsScreen(state, viewModel)
         ragEval?.let { RagEvalSheet(it, viewModel::dismissRagEvaluation) }
     }
 }
 
-private enum class Sheet { THEME, SPEED, API_KEY, CHAT_MODEL, SUMMARY_MODEL, DAILY_BUDGET }
+private enum class Sheet {
+    THEME, SPEED, API_KEY, CHAT_MODEL, SUMMARY_MODEL, DAILY_BUDGET, TTS_ENGINE, CLOUD_VOICE_TIER, CLOUD_TTS_API_KEY
+}
 
 /** Modelos de Gemini que se pueden elegir, con su nombre visible. */
 private val geminiModels = listOf(
@@ -122,7 +135,9 @@ private fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel)
         item(key = "reading") {
             GroupedSection(
                 header = stringResource(R.string.settings_reading),
-                dividerInset = GroupedSectionDefaults.IconDividerInset
+                dividerInset = GroupedSectionDefaults.IconDividerInset,
+                footer = stringResource(R.string.settings_reading_footer)
+                    .takeIf { settings.ttsEngine == TtsEngineKind.GOOGLE_CLOUD }
             ) {
                 row {
                     Cell(
@@ -133,8 +148,48 @@ private fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel)
                         onClick = { sheet = Sheet.SPEED }
                     )
                 }
+                row {
+                    Cell(
+                        title = stringResource(R.string.settings_tts_engine),
+                        icon = Icons.Outlined.Cloud,
+                        iconBackground = Color(0xFF007AFF),
+                        value = ttsEngineLabel(settings.ttsEngine),
+                        showChevron = true,
+                        onClick = { sheet = Sheet.TTS_ENGINE }
+                    )
+                }
+                if (settings.ttsEngine == TtsEngineKind.GOOGLE_CLOUD) {
+                    row {
+                        Cell(
+                            title = stringResource(R.string.settings_cloud_voice_tier),
+                            icon = Icons.Outlined.GraphicEq,
+                            iconBackground = Color(0xFFFF9500),
+                            value = cloudVoiceTierLabel(settings.cloudVoiceTier),
+                            showChevron = true,
+                            onClick = { sheet = Sheet.CLOUD_VOICE_TIER }
+                        )
+                    }
+                    row {
+                        Cell(
+                            title = stringResource(R.string.settings_cloud_tts_api_key),
+                            icon = Icons.Outlined.Key,
+                            iconBackground = Color(0xFF8E8E93),
+                            value = stringResource(
+                                if (state.hasCloudTtsApiKey) {
+                                    R.string.settings_api_key_set
+                                } else {
+                                    R.string.settings_api_key_unset
+                                }
+                            ),
+                            showChevron = true,
+                            onClick = { sheet = Sheet.CLOUD_TTS_API_KEY }
+                        )
+                    }
+                }
                 Language.entries.forEach { language ->
-                    row { VoiceCell(language, state.voices[language] ?: ModelState.NotInstalled, viewModel) }
+                    row {
+                        VoiceCell(language, state.voices[language], viewModel) { sheet = Sheet.CLOUD_TTS_API_KEY }
+                    }
                 }
             }
         }
@@ -300,45 +355,76 @@ private fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel)
             onDismiss = { sheet = null },
             onRemove = if (state.hasApiKey) viewModel::removeApiKey else null
         )
+        Sheet.TTS_ENGINE -> OptionsSheet(
+            title = stringResource(R.string.settings_tts_engine),
+            options = TtsEngineKind.entries.map { it to ttsEngineLabel(it) },
+            selected = settings.ttsEngine,
+            onSelect = viewModel::setTtsEngine,
+            onDismiss = { sheet = null }
+        )
+        Sheet.CLOUD_VOICE_TIER -> OptionsSheet(
+            title = stringResource(R.string.settings_cloud_voice_tier),
+            options = CloudVoiceTier.entries.map { it to cloudVoiceTierLabel(it) },
+            selected = settings.cloudVoiceTier,
+            onSelect = viewModel::setCloudVoiceTier,
+            onDismiss = { sheet = null }
+        )
+        Sheet.CLOUD_TTS_API_KEY -> ApiKeySheet(
+            onSave = viewModel::saveCloudTtsApiKey,
+            onDismiss = { sheet = null },
+            onRemove = if (state.hasCloudTtsApiKey) viewModel::removeCloudTtsApiKey else null,
+            title = stringResource(DesignSystemR.string.cloud_tts_api_key_title),
+            hint = stringResource(DesignSystemR.string.cloud_tts_api_key_hint),
+            help = stringResource(DesignSystemR.string.cloud_tts_api_key_help)
+        )
         null -> Unit
     }
 }
 
+/** Voz del motor elegido para un idioma: si está lista se puede probar; si no, se arregla desde aquí. */
 @Composable
-private fun VoiceCell(language: Language, voice: ModelState, viewModel: SettingsViewModel) {
-    val info = language.voice()
-    val sizeMb = (info.sizeBytes / MB).toInt()
-    val subtitle = when (voice) {
-        ModelState.NotInstalled -> stringResource(R.string.settings_voice_not_installed, sizeMb)
-        is ModelState.Downloading -> stringResource(R.string.settings_voice_downloading, (voice.progress * 100).toInt())
-        ModelState.Installing -> stringResource(R.string.settings_voice_installing)
-        is ModelState.Installed -> stringResource(R.string.settings_voice_installed, (voice.sizeBytes / MB).toInt())
-        is ModelState.Failed -> stringResource(R.string.settings_voice_failed, voice.message)
-    }
+private fun VoiceCell(
+    language: Language,
+    voice: VoiceAvailability?,
+    viewModel: SettingsViewModel,
+    onConfigureApiKey: () -> Unit
+) {
+    val context = LocalContext.current
+    val subtitle = stringResource(
+        when (voice) {
+            null -> R.string.settings_voice_checking
+            VoiceAvailability.READY -> R.string.settings_voice_ready
+            VoiceAvailability.MISSING -> R.string.settings_voice_missing
+            VoiceAvailability.NO_ENGINE -> R.string.settings_voice_no_engine
+            VoiceAvailability.NEEDS_API_KEY -> R.string.settings_voice_needs_api_key
+        }
+    )
     Cell(
-        title = info.displayName,
+        title = stringResource(
+            if (language == Language.ENGLISH) R.string.settings_voice_english else R.string.settings_voice_spanish
+        ),
         subtitle = subtitle,
         icon = Icons.Outlined.RecordVoiceOver,
         iconBackground = Color(0xFFFF2D55),
         trailing = {
             when (voice) {
-                ModelState.NotInstalled -> PlainButton(
-                    stringResource(R.string.settings_download),
-                    { viewModel.downloadVoice(language) }
+                VoiceAvailability.READY -> PlainButton(
+                    stringResource(R.string.settings_preview),
+                    { viewModel.previewVoice(language) }
                 )
-                is ModelState.Failed -> PlainButton(
-                    stringResource(R.string.settings_retry),
-                    { viewModel.downloadVoice(language) }
+                VoiceAvailability.MISSING -> PlainButton(
+                    stringResource(R.string.settings_voice_install),
+                    { SystemVoiceSettings.installVoice(context) }
                 )
-                is ModelState.Downloading -> PlainButton(
-                    stringResource(R.string.settings_cancel),
-                    { viewModel.cancelVoiceDownload(language) }
+                VoiceAvailability.NO_ENGINE -> PlainButton(
+                    stringResource(R.string.settings_voice_open_settings),
+                    { SystemVoiceSettings.openSettings(context) }
                 )
-                is ModelState.Installed -> Row {
-                    PlainButton(stringResource(R.string.settings_preview), { viewModel.previewVoice(language) })
-                    PlainButton(stringResource(R.string.settings_delete), { viewModel.deleteVoice(language) })
-                }
-                ModelState.Installing -> Unit
+                VoiceAvailability.NEEDS_API_KEY -> PlainButton(
+                    stringResource(R.string.settings_voice_configure),
+                    onConfigureApiKey
+                )
+                null -> Unit
             }
         }
     )
@@ -447,6 +533,23 @@ private fun themeLabel(mode: ThemeMode) = stringResource(
         ThemeMode.SYSTEM -> R.string.settings_theme_system
         ThemeMode.LIGHT -> R.string.settings_theme_light
         ThemeMode.DARK -> R.string.settings_theme_dark
+    }
+)
+
+@Composable
+private fun ttsEngineLabel(engine: TtsEngineKind) = stringResource(
+    when (engine) {
+        TtsEngineKind.SYSTEM -> R.string.settings_tts_engine_system
+        TtsEngineKind.GOOGLE_CLOUD -> R.string.settings_tts_engine_google_cloud
+    }
+)
+
+@Composable
+private fun cloudVoiceTierLabel(tier: CloudVoiceTier) = stringResource(
+    when (tier) {
+        CloudVoiceTier.STANDARD -> R.string.settings_cloud_voice_tier_standard
+        CloudVoiceTier.WAVENET -> R.string.settings_cloud_voice_tier_wavenet
+        CloudVoiceTier.NEURAL2 -> R.string.settings_cloud_voice_tier_neural2
     }
 )
 

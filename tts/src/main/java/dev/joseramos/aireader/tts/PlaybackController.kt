@@ -81,10 +81,6 @@ class PlaybackController @Inject constructor(
 
     fun previous() = engine.previous()
 
-    fun nextPage() = engine.nextPage()
-
-    fun previousPage() = engine.previousPage()
-
     fun nextChapter() = engine.nextChapter()
 
     fun previousChapter() = engine.previousChapter()
@@ -95,6 +91,8 @@ class PlaybackController @Inject constructor(
     }
 
     fun setSleepTimer(timer: SleepTimer) = engine.setSleepTimer(timer)
+
+    suspend fun voiceAvailability(language: Language): VoiceAvailability = engine.availability(language)
 
     suspend fun preview(text: String, language: Language = Language.SPANISH): Boolean = engine.preview(text, language)
 

@@ -10,7 +10,6 @@ dependencies {
     implementation(project(":pdf"))
     implementation(project(":text"))
     implementation(project(":tts"))
-    implementation(project(":ai:models"))
     implementation(project(":ai:llm"))
     implementation(project(":ai:characters"))
     implementation(project(":feature:characters"))

@@ -24,12 +24,11 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
-      # El módulo :spikes (pruebas desechables de F1) solo pasa ktlint.
       - name: Lint (ktlint, detekt, Android Lint)
-        run: ./gradlew ktlintCheck detekt lintDebug -x :spikes:lintDebug
+        run: ./gradlew ktlintCheck detekt lintDebug
 
       - name: Pruebas unitarias (incluye Robolectric y capturas de Roborazzi)
-        run: ./gradlew testDebugUnitTest -x :spikes:testDebugUnitTest
+        run: ./gradlew testDebugUnitTest
 
       - name: Compilar APK de depuración
         run: ./gradlew :app:assembleDebug

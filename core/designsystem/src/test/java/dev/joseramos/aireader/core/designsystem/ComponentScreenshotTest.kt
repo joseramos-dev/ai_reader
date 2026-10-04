@@ -125,10 +125,10 @@ private fun SettingsGallery() {
                 row {
                     Cell(
                         "Voz en español",
-                        subtitle = "Piper · Descargada · 63 MB",
+                        subtitle = "Voz del sistema · se usa sola en los libros de ese idioma",
                         icon = Icons.Outlined.RecordVoiceOver,
                         iconBackground = Color(0xFFFF2D55),
-                        trailing = { PlainButton("Borrar", {}) }
+                        trailing = { PlainButton("Probar", {}) }
                     )
                 }
                 row {

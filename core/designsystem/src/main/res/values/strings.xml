@@ -6,6 +6,10 @@
     <string name="api_key_paste">Pegar</string>
     <string name="api_key_save">Guardar</string>
     <string name="api_key_remove">Eliminar clave</string>
+
+    <string name="cloud_tts_api_key_title">Clave de API de Google Cloud TTS</string>
+    <string name="cloud_tts_api_key_hint">AIza…</string>
+    <string name="cloud_tts_api_key_help">Créala en un proyecto de Google Cloud con la API de Text-to-Speech habilitada (console.cloud.google.com) y pégala aquí. Se guarda cifrada en este dispositivo y solo se usa para llamar a Google Cloud Text-to-Speech; no es la clave de Gemini.</string>
     <string name="usage_title">Consumo de IA de hoy</string>
     <string name="usage_detail">%1$s de %2$s tokens · se renueva a las %3$s</string>
     <string name="usage_exhausted_title">Cuota de IA de hoy agotada</string>

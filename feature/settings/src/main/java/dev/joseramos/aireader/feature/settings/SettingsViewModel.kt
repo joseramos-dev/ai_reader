@@ -15,14 +15,16 @@ import dev.joseramos.aireader.ai.rag.RagEvaluator
 import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.settings.ApiUsage
 import dev.joseramos.aireader.core.data.settings.AppSettings
+import dev.joseramos.aireader.core.data.settings.CloudVoiceTier
 import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.core.data.settings.ThemeMode
+import dev.joseramos.aireader.core.data.settings.TtsEngineKind
 import dev.joseramos.aireader.core.data.settings.UsageRepository
 import dev.joseramos.aireader.text.Language
 import dev.joseramos.aireader.tts.PlaybackController
-import dev.joseramos.aireader.tts.voice
+import dev.joseramos.aireader.tts.VoiceAvailability
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,8 +48,9 @@ sealed interface RagEvalState {
 data class SettingsUiState(
     val settings: AppSettings = AppSettings(),
     val hasApiKey: Boolean = false,
-    /** Estado de la voz de cada idioma. */
-    val voices: Map<Language, ModelState> = emptyMap(),
+    val hasCloudTtsApiKey: Boolean = false,
+    /** Si el motor de voz elegido tiene voz para cada idioma (`null` mientras se comprueba). */
+    val voices: Map<Language, VoiceAvailability> = emptyMap(),
     /** Modelo de embeddings para buscar en el libro (chat). */
     val searchModel: ModelState = ModelState.NotInstalled,
     val usage: ApiUsage = ApiUsage(),
@@ -55,6 +58,7 @@ data class SettingsUiState(
 )
 
 @HiltViewModel
+@Suppress("TooManyFunctions") // Agrupa las acciones de todas las secciones de Ajustes: no gana nada partiéndola.
 class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val ragEvaluator: RagEvaluator,
@@ -67,17 +71,20 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
     private val searchModelId = ModelCatalog.e5Small.id
 
+    private val voices = MutableStateFlow<Map<Language, VoiceAvailability>>(emptyMap())
+
     val state: StateFlow<SettingsUiState> = combine(
-        settingsRepository.settings,
-        secretStore.hasApiKey,
+        combine(settingsRepository.settings, secretStore.hasApiKey, secretStore.hasCloudTtsApiKey, ::Triple),
+        voices,
         modelManager.states,
         usageRepository.usage,
         usageRepository.today
-    ) { settings, hasKey, models, usage, today ->
+    ) { (settings, hasKey, hasCloudKey), voices, models, usage, today ->
         SettingsUiState(
             settings = settings,
             hasApiKey = hasKey,
-            voices = Language.entries.associateWith { models[it.voice().id] ?: ModelState.NotInstalled },
+            hasCloudTtsApiKey = hasCloudKey,
+            voices = voices,
             searchModel = models[searchModelId] ?: ModelState.NotInstalled,
             usage = usage,
             today = today
@@ -85,6 +92,23 @@ class SettingsViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     fun setTheme(mode: ThemeMode) = launch { settingsRepository.setThemeMode(mode) }
+
+    fun setTtsEngine(engine: TtsEngineKind) = launch {
+        settingsRepository.setTtsEngine(engine)
+        refreshVoices()
+    }
+
+    fun setCloudVoiceTier(tier: CloudVoiceTier) = launch { settingsRepository.setCloudVoiceTier(tier) }
+
+    fun saveCloudTtsApiKey(key: String) = launch {
+        if (key.isNotBlank()) secretStore.setCloudTtsApiKey(key)
+        refreshVoices()
+    }
+
+    fun removeCloudTtsApiKey() = launch {
+        secretStore.clearCloudTtsApiKey()
+        refreshVoices()
+    }
 
     fun setSpeed(speed: Float) = launch { settingsRepository.setReadingSpeed(speed) }
 
@@ -102,11 +126,10 @@ class SettingsViewModel @Inject constructor(
 
     fun resetUsage() = launch { usageRepository.reset() }
 
-    fun downloadVoice(language: Language) = modelManager.download(language.voice().id)
-
-    fun cancelVoiceDownload(language: Language) = modelManager.cancel(language.voice().id)
-
-    fun deleteVoice(language: Language) = launch { modelManager.delete(language.voice().id) }
+    /** Vuelve a mirar qué voces tiene el sistema (al entrar y al volver de instalar una). */
+    fun refreshVoices() = launch {
+        voices.value = Language.entries.associateWith { playback.voiceAvailability(it) }
+    }
 
     fun downloadSearchModel() = modelManager.download(searchModelId)
 

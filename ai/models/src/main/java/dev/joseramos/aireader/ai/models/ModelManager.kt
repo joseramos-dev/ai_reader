@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -97,16 +98,16 @@ class ModelManager @Inject constructor(
     suspend fun installedDir(id: String): File? = dao.get(id)?.let { File(it.path) }?.takeIf { it.exists() }
 
     private suspend fun install(model: ModelInfo) {
-        val (installed, target) = installDirs(model)
+        val installed = File(modelsDir, model.id)
         var previous = 0L
         for (file in model.files) {
-            downloader.download(file.url, File(target, file.name), file.sha256) { done, _ ->
+            downloader.download(file.url, File(installed, file.name), file.sha256) { done, _ ->
                 val progress = (previous + done).toFloat() / model.sizeBytes
                 setState(model.id, ModelState.Downloading(progress.coerceIn(0f, 1f)))
             }
             previous += file.sizeBytes
         }
-        finishInstall(model, installed, target)
+        finishInstall(model, installed)
     }
 
     /**
@@ -115,6 +116,7 @@ class ModelManager @Inject constructor(
      * si alguno ya está instalado o no viene empaquetado, no se toca.
      */
     suspend fun installBundledModels() = withContext(io) {
+        removeRetiredModels()
         for (model in ModelCatalog.all) {
             if (dao.get(model.id) != null || !hasBundledAssets(model)) continue
             runCatching { installFromAssets(model) }
@@ -123,17 +125,34 @@ class ModelManager @Inject constructor(
         }
     }
 
+    /**
+     * Borra los modelos instalados que ya no están en el catálogo (por ejemplo, las voces de Piper
+     * de versiones anteriores, que se sustituyeron por la voz del sistema): ficheros y registro.
+     */
+    private suspend fun removeRetiredModels() {
+        val known = ModelCatalog.all.map { it.id }.toSet()
+        for (record in dao.observeAll().first()) {
+            if (record.id in known) continue
+            Log.i(TAG, "Borrando el modelo retirado ${record.id}")
+            File(record.path).deleteRecursively()
+            dao.delete(record.id)
+        }
+        modelsDir.listFiles()?.filter { dir ->
+            known.none { dir.name.startsWith(it) }
+        }?.forEach { it.deleteRecursively() }
+    }
+
     private suspend fun installFromAssets(model: ModelInfo) {
-        val (installed, target) = installDirs(model)
+        val installed = File(modelsDir, model.id)
         for (file in model.files) {
-            val dest = File(target, file.name)
+            val dest = File(installed, file.name)
             copyAsset(bundledAssetPath(model.id, file.name), dest)
             val actual = ModelDownloader.sha256Of(dest)
             if (!actual.equals(file.sha256, ignoreCase = true)) {
                 throw ChecksumMismatchException(file.sha256, actual)
             }
         }
-        finishInstall(model, installed, target)
+        finishInstall(model, installed)
     }
 
     private fun hasBundledAssets(model: ModelInfo): Boolean = model.files.all { file ->
@@ -147,20 +166,8 @@ class ModelManager @Inject constructor(
         assets.open(assetPath).use { input -> dest.outputStream().use { output -> input.copyTo(output) } }
     }
 
-    /** Dónde van los ficheros sueltos (directo a su sitio) o el archivo a extraer (carpeta temporal). */
-    private fun installDirs(model: ModelInfo): Pair<File, File> {
-        val installed = File(modelsDir, model.id)
-        val target = if (model.archive == ArchiveType.TAR_BZ2) File(modelsDir, "${model.id}.download") else installed
-        return installed to target
-    }
-
-    private suspend fun finishInstall(model: ModelInfo, installed: File, target: File) {
+    private suspend fun finishInstall(model: ModelInfo, installed: File) {
         setState(model.id, ModelState.Installing)
-        if (model.archive == ArchiveType.TAR_BZ2) {
-            val archive = File(target, model.files.single().name)
-            ArchiveExtractor.extractTarBz2(archive, installed)
-            target.deleteRecursively()
-        }
         dao.upsert(
             DownloadedModelEntity(
                 id = model.id,

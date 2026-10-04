@@ -324,6 +324,21 @@ interface BookmarkDao {
     suspend fun delete(id: Long)
 }
 
+@Dao
+interface HighlightDao {
+    @Query("SELECT * FROM highlights WHERE bookId = :bookId ORDER BY page, paragraph, startOffset")
+    fun observeByBook(bookId: String): Flow<List<HighlightEntity>>
+
+    @Upsert
+    suspend fun upsert(highlight: HighlightEntity): Long
+
+    @Query("UPDATE highlights SET note = :note WHERE id = :id")
+    suspend fun setNote(id: Long, note: String?)
+
+    @Query("DELETE FROM highlights WHERE id = :id")
+    suspend fun delete(id: Long)
+}
+
 /** Todas las consultas de las tablas de personajes: el análisis las usa juntas en una transacción. */
 @Suppress("TooManyFunctions")
 @Dao

@@ -11,6 +11,5 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:data"))
     implementation(libs.okhttp)
-    implementation(libs.commons.compress)
     testImplementation(libs.okhttp.mockwebserver)
 }

@@ -38,14 +38,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.joseramos.aireader.ai.characters.CharactersSnapshot
 import dev.joseramos.aireader.core.data.book.Bookmark
 import dev.joseramos.aireader.core.data.book.Chapter
+import dev.joseramos.aireader.core.data.book.Highlight
 import dev.joseramos.aireader.core.data.book.PageText
 import dev.joseramos.aireader.core.designsystem.component.Cell
 import dev.joseramos.aireader.core.designsystem.component.PlainButton
@@ -160,6 +163,118 @@ internal fun BookmarksList(
                     subtitle = details,
                     value = stringResource(R.string.reader_page_short, bookmark.page),
                     onClick = { onSelect(bookmark) },
+                    modifier = Modifier.background(AppTheme.colors.surface)
+                )
+            }
+        }
+    }
+}
+
+/** Texto citado de un subrayado: el fragmento exacto, acotado por si el libro cambió de extracción. */
+internal fun quotedText(highlight: Highlight, pages: List<PageText>): String? {
+    val paragraph = pages.firstOrNull { it.page == highlight.page }?.paragraphs?.getOrNull(highlight.paragraph)
+        ?: return null
+    val start = highlight.startOffset.coerceIn(0, paragraph.length)
+    val end = highlight.endOffset.coerceIn(start, paragraph.length)
+    return paragraph.substring(start, end).takeIf { it.isNotEmpty() }
+}
+
+/**
+ * Hoja para guardar o editar un subrayado: muestra el texto citado, una nota opcional y, si ya
+ * existía, la opción de quitarlo.
+ */
+@Suppress("DEPRECATION") // LocalClipboard (nuevo) es suspendible; para copiar texto plano basta el clásico.
+@Composable
+internal fun HighlightSheet(
+    quotedText: String,
+    initialNote: String?,
+    onSave: (String?) -> Unit,
+    onRemove: (() -> Unit)?,
+    onDismiss: () -> Unit
+) {
+    var note by remember { mutableStateOf(initialNote.orEmpty()) }
+    val clipboard = LocalClipboardManager.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.highlight_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                Text(
+                    "«$quotedText»",
+                    style = AppTheme.typography.subheadline,
+                    color = AppTheme.colors.secondaryLabel
+                )
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it.take(MAX_NOTE) },
+                    placeholder = { Text(stringResource(R.string.bookmark_note_hint)) },
+                    maxLines = 4
+                )
+                PlainButton(
+                    stringResource(R.string.highlight_copy),
+                    { clipboard.setText(AnnotatedString(quotedText)) }
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(note) }) { Text(stringResource(R.string.bookmark_save)) } },
+        dismissButton = {
+            Row {
+                if (onRemove != null) {
+                    TextButton(onClick = onRemove) { Text(stringResource(R.string.highlight_remove)) }
+                }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.reader_cancel)) }
+            }
+        }
+    )
+}
+
+/** Lista de subrayados: texto citado o nota, capítulo y fecha. Deslizar para quitarlo. */
+@Composable
+internal fun HighlightsList(
+    highlights: List<Highlight>,
+    chapters: List<Chapter>,
+    pages: List<PageText>,
+    onSelect: (Highlight) -> Unit,
+    onDelete: (Highlight) -> Unit
+) {
+    if (highlights.isEmpty()) {
+        Text(
+            stringResource(R.string.highlights_empty),
+            style = AppTheme.typography.subheadline,
+            color = AppTheme.colors.secondaryLabel,
+            modifier = Modifier.padding(Spacing.l)
+        )
+        return
+    }
+    val dates = remember { DateFormat.getDateInstance(DateFormat.MEDIUM) }
+    LazyColumn(Modifier.heightIn(max = 560.dp)) {
+        items(highlights, key = { it.id }) { highlight ->
+            val dismiss = rememberSwipeToDismissBoxState()
+            SwipeToDismissBox(
+                state = dismiss,
+                enableDismissFromStartToEnd = false,
+                onDismiss = { if (it == SwipeToDismissBoxValue.EndToStart) onDelete(highlight) },
+                backgroundContent = {
+                    Box(
+                        Modifier.fillMaxSize().background(AppTheme.colors.destructive).padding(horizontal = Spacing.l),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        Icon(
+                            Icons.Outlined.Delete,
+                            stringResource(R.string.highlight_remove),
+                            tint = AppTheme.colors.surface
+                        )
+                    }
+                }
+            ) {
+                val chapter = chapters.lastOrNull { highlight.page >= it.startPage }
+                val details = listOfNotNull(chapter?.title, dates.format(Date(highlight.createdAt))).joinToString(" · ")
+                Cell(
+                    title = highlight.note ?: quotedText(highlight, pages)
+                        ?: stringResource(R.string.reader_page_short, highlight.page),
+                    subtitle = details,
+                    value = stringResource(R.string.reader_page_short, highlight.page),
+                    onClick = { onSelect(highlight) },
                     modifier = Modifier.background(AppTheme.colors.surface)
                 )
             }

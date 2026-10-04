@@ -54,6 +54,8 @@ object DataModule {
 
     @Provides fun characterDao(db: AppDatabase) = db.characterDao()
 
+    @Provides fun highlightDao(db: AppDatabase) = db.highlightDao()
+
     @Provides
     @Singleton
     @Named(SettingsRepository.SETTINGS_STORE)

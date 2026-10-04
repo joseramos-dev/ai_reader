@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.feature.reader
 
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,7 +21,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -36,6 +38,7 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import dev.joseramos.aireader.ai.characters.NameIndex
 import dev.joseramos.aireader.core.data.book.Chapter
+import dev.joseramos.aireader.core.data.book.Highlight
 import dev.joseramos.aireader.core.data.book.PageText
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
@@ -45,12 +48,22 @@ import dev.joseramos.aireader.text.PhraseSplitter
 /** Frase que está sonando: página (base 1), párrafo y frase dentro del párrafo. */
 data class PhraseLocation(val page: Int, val paragraph: Int, val phrase: Int)
 
+/** Posición de un párrafo dentro del libro: página (base 1) e índice del párrafo en ella. */
+private data class ParagraphRef(val page: Int, val paragraph: Int)
+
+/** Selección pendiente de resaltar: página, párrafo, rango de caracteres y el texto citado. */
+internal data class PendingHighlight(val page: Int, val paragraph: Int, val range: IntRange, val quotedText: String)
+
 /**
  * Modo lectura de texto: el texto limpio de cada página, con tipografía propia y tamaño ajustable.
  * Un elemento de la lista por página, para que el número de página coincida con el modo PDF; las
  * páginas se separan con una línea y su número. Los títulos salen en negrita y a un tamaño según su
  * nivel (el que tenían en el PDF), y se respetan los saltos de renglón del PDF (versos, listas).
- * En las novelas, los nombres de los personajes ya desbloqueados se subrayan y abren su ficha.
+ * En las novelas, los nombres de los personajes ya desbloqueados se subrayan y abren su ficha. Los
+ * subrayados guardados ([highlights]) se pintan y, al tocarlos, llaman a [onTapHighlight]. Para crear
+ * uno nuevo se mantiene pulsado un punto del párrafo y se arrastra para extender la selección (no hay
+ * selección nativa de Android: así el rango exacto se calcula directamente con las coordenadas del
+ * propio párrafo, sin depender de APIs internas de Compose); al soltar se llama a [onCreateHighlight].
  * Con [onTapPhrase] (mientras suena la voz), tocar una frase sigue la lectura desde ella.
  */
 @Composable
@@ -63,12 +76,16 @@ internal fun TextPages(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     names: NameIndex = NameIndex.EMPTY,
+    highlights: List<Highlight> = emptyList(),
     onTapCharacter: (Long) -> Unit = {},
     onTapPhrase: ((PhraseLocation) -> Unit)? = null,
+    onCreateHighlight: (PendingHighlight) -> Unit = {},
+    onTapHighlight: (Highlight) -> Unit = {},
     chapters: List<Chapter> = emptyList()
 ) {
     val byPage = remember(pages) { pages.associateBy { it.page } }
     val titlesByPage = remember(chapters) { chapters.groupBy({ it.startPage }, { it.title }) }
+    val highlightsByParagraph = remember(highlights) { highlights.groupBy { ParagraphRef(it.page, it.paragraph) } }
     val colors = AppTheme.colors
     val bodyStyle = AppTheme.typography.body.copy(
         fontSize = (BODY_SIZE * textScale).sp,
@@ -82,54 +99,106 @@ internal fun TextPages(
             lineHeight = HEADING_LINE_HEIGHT.em
         )
     }
-    SelectionContainer(modifier) {
-        LazyColumn(state = listState, contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
-            items(pageCount, key = { it }) { index ->
-                val page = byPage[index + 1]
-                val titles = titlesByPage[index + 1].orEmpty()
-                Column(
-                    Modifier.fillMaxWidth().padding(horizontal = Spacing.l).padding(bottom = PAGE_GAP),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.s)
-                ) {
-                    PageSeparator(index + 1)
-                    page?.paragraphs.orEmpty().forEachIndexed { p, paragraph ->
-                        // Nivel del PDF (por tamaño de letra); si no lo hay, se adivina por el texto.
-                        val guessed = remember(paragraph, titles) { HeadingDetector.isHeading(paragraph, titles) }
-                        val level = page?.levelOf(p)?.takeIf { it > 0 } ?: if (guessed) GUESSED_LEVEL else 0
-                        val heading = level > 0
-                        val phrase = highlight?.takeIf { it.page == index + 1 && it.paragraph == p }?.phrase
-                        val text = remember(paragraph, phrase, names, colors, onTapCharacter) {
-                            annotated(paragraph, phrase, colors.highlight, names, colors.accent, onTapCharacter)
-                        }
-                        var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
-                        val tap = if (onTapPhrase == null) {
-                            Modifier
-                        } else {
-                            Modifier.pointerInput(paragraph, onTapPhrase) {
-                                detectTapGestures { position ->
-                                    val offset = layout?.getOffsetForPosition(position) ?: return@detectTapGestures
-                                    onTapPhrase(PhraseLocation(index + 1, p, phraseAt(paragraph, offset)))
-                                }
-                            }
-                        }
-                        Text(
-                            text,
-                            style = if (heading) headingStyles[minOf(level, HEADING_SIZES.size) - 1] else bodyStyle,
-                            color = colors.label,
-                            onTextLayout = { layout = it },
-                            modifier = (
-                                if (heading) {
-                                    Modifier.padding(
-                                        top = Spacing.m,
-                                        bottom = Spacing.xxs
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                                )
-                                .then(tap)
+    val haptics = LocalHapticFeedback.current
+    // Selección en curso (mientras se arrastra, antes de soltar): a qué párrafo pertenece y su rango.
+    var dragSelection by remember { mutableStateOf<Pair<ParagraphRef, IntRange>?>(null) }
+
+    LazyColumn(
+        state = listState,
+        contentPadding = contentPadding,
+        modifier = modifier.fillMaxSize()
+    ) {
+        items(pageCount, key = { it }) { index ->
+            val page = byPage[index + 1]
+            val titles = titlesByPage[index + 1].orEmpty()
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = Spacing.l).padding(bottom = PAGE_GAP),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s)
+            ) {
+                PageSeparator(index + 1)
+                page?.paragraphs.orEmpty().forEachIndexed { p, paragraph ->
+                    val ref = ParagraphRef(index + 1, p)
+                    // Nivel del PDF (por tamaño de letra); si no lo hay, se adivina por el texto.
+                    val guessed = remember(paragraph, titles) { HeadingDetector.isHeading(paragraph, titles) }
+                    val level = page?.levelOf(p)?.takeIf { it > 0 } ?: if (guessed) GUESSED_LEVEL else 0
+                    val heading = level > 0
+                    val phrase = highlight?.takeIf { it.page == index + 1 && it.paragraph == p }?.phrase
+                    val saved = highlightsByParagraph[ref].orEmpty()
+                    val live = dragSelection?.takeIf { it.first == ref }?.second
+                    val textKeys =
+                        arrayOf(paragraph, phrase, names, colors, onTapCharacter, saved, onTapHighlight, live)
+                    val text = remember(*textKeys) {
+                        annotated(
+                            paragraph,
+                            phrase,
+                            colors.highlight,
+                            names,
+                            colors.accent,
+                            onTapCharacter,
+                            saved,
+                            colors.accent.copy(alpha = SAVED_HIGHLIGHT_ALPHA),
+                            onTapHighlight,
+                            live,
+                            colors.accent.copy(alpha = LIVE_SELECTION_ALPHA)
                         )
                     }
+                    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+                    val tap = if (onTapPhrase == null) {
+                        Modifier
+                    } else {
+                        Modifier.pointerInput(paragraph, onTapPhrase) {
+                            detectTapGestures { position ->
+                                val offset = layout?.getOffsetForPosition(position) ?: return@detectTapGestures
+                                onTapPhrase(PhraseLocation(index + 1, p, phraseAt(paragraph, offset)))
+                            }
+                        }
+                    }
+                    // Mantener pulsado empieza la selección (no interfiere con el scroll, que es un
+                    // arrastre sin pausa previa); arrastrar la extiende; soltar la confirma.
+                    val select = Modifier.pointerInput(paragraph) {
+                        var anchor = 0
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = start@{ position ->
+                                val offset = layout?.getOffsetForPosition(position) ?: return@start
+                                anchor = offset
+                                dragSelection = ref to (offset..offset)
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            },
+                            onDragEnd = {
+                                val range = dragSelection?.takeIf { it.first == ref }?.second
+                                dragSelection = null
+                                if (range != null) {
+                                    val start = range.first.coerceIn(0, paragraph.length)
+                                    val end = range.last.coerceIn(start, paragraph.length)
+                                    if (start < end) {
+                                        val quoted = paragraph.substring(start, end)
+                                        val span = start until end
+                                        onCreateHighlight(PendingHighlight(ref.page, ref.paragraph, span, quoted))
+                                    }
+                                }
+                            },
+                            onDragCancel = { dragSelection = null }
+                        ) drag@{ change, _ ->
+                            val offset = layout?.getOffsetForPosition(change.position) ?: return@drag
+                            dragSelection = ref to (minOf(anchor, offset)..maxOf(anchor, offset))
+                            change.consume()
+                        }
+                    }
+                    Text(
+                        text,
+                        style = if (heading) headingStyles[minOf(level, HEADING_SIZES.size) - 1] else bodyStyle,
+                        color = colors.label,
+                        onTextLayout = { layout = it },
+                        modifier = (
+                            if (heading) {
+                                Modifier.padding(top = Spacing.m, bottom = Spacing.xxs)
+                            } else {
+                                Modifier
+                            }
+                            )
+                            .then(tap)
+                            .then(select)
+                    )
                 }
             }
         }
@@ -152,23 +221,45 @@ private fun PageSeparator(page: Int) {
 }
 
 /**
- * Párrafo con la frase [phrase] resaltada (si no es `null`) y los nombres de personajes de [names]
- * subrayados y tocables.
+ * Párrafo con la frase [phrase] resaltada (si no es `null`), los nombres de personajes de [names]
+ * subrayados y tocables, los [savedHighlights] ya guardados (tocables para editarlos o quitarlos) y,
+ * mientras se arrastra, el rango [liveSelection] en curso.
  */
+@Suppress("LongParameterList") // Es la única función que pinta el párrafo: no gana nada partiéndola.
 private fun annotated(
     paragraph: String,
     phrase: Int?,
     highlight: Color,
     names: NameIndex,
     nameColor: Color,
-    onTapCharacter: (Long) -> Unit
+    onTapCharacter: (Long) -> Unit,
+    savedHighlights: List<Highlight>,
+    savedHighlightColor: Color,
+    onTapHighlight: (Highlight) -> Unit,
+    liveSelection: IntRange?,
+    liveSelectionColor: Color
 ): AnnotatedString {
     val range = phrase?.let { phraseRange(paragraph, it) }
     val hits = if (names.isEmpty) emptyList() else names.find(paragraph)
-    if (range == null && hits.isEmpty()) return AnnotatedString(paragraph)
+    if (range == null && hits.isEmpty() && savedHighlights.isEmpty() && liveSelection == null) {
+        return AnnotatedString(paragraph)
+    }
     return buildAnnotatedString {
         append(paragraph)
         range?.let { addStyle(SpanStyle(background = highlight), it.first, it.last + 1) }
+        savedHighlights.forEach { saved ->
+            val start = saved.startOffset.coerceIn(0, paragraph.length)
+            val end = saved.endOffset.coerceIn(start, paragraph.length)
+            if (start < end) {
+                addStyle(SpanStyle(background = savedHighlightColor), start, end)
+                addLink(LinkAnnotation.Clickable("highlight-${saved.id}") { onTapHighlight(saved) }, start, end)
+            }
+        }
+        liveSelection?.let {
+            val start = it.first.coerceIn(0, paragraph.length)
+            val end = (it.last + 1).coerceIn(start, paragraph.length)
+            if (start < end) addStyle(SpanStyle(background = liveSelectionColor), start, end)
+        }
         val style = TextLinkStyles(
             SpanStyle(
                 textDecoration = TextDecoration.Underline,
@@ -208,6 +299,8 @@ private fun phraseRange(paragraph: String, phrase: Int): IntRange? = phraseRange
 internal fun phraseAt(paragraph: String, offset: Int): Int =
     phraseRanges(paragraph).indexOfLast { it != null && it.first <= offset }.coerceAtLeast(0)
 
+private const val SAVED_HIGHLIGHT_ALPHA = 0.25f
+private const val LIVE_SELECTION_ALPHA = 0.35f
 private const val BODY_SIZE = 18
 
 /** Tamaño de los títulos por nivel (1 es el mayor); los niveles más profundos usan el último. */

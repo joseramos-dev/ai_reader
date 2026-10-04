@@ -25,6 +25,10 @@ enum class SummaryKind { CHAPTER_SHORT, CHAPTER_LONG, BOOK, RECAP }
 
 enum class ChatRole { USER, ASSISTANT }
 
+/**
+ * Tipo de modelo descargado. `TTS_VOICE` ya no se usa (las voces de Piper se sustituyeron por la
+ * voz del sistema), pero se conserva para poder leer los registros antiguos y borrarlos.
+ */
 enum class ModelKind { TTS_VOICE, EMBEDDING }
 
 /** Clase de documento: decide el estilo de los resúmenes y si hay personajes (docs/02 §6.4). */
@@ -206,6 +210,27 @@ data class BookmarkEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val bookId: String,
     val page: Int,
+    val note: String?,
+    val createdAt: Long
+)
+
+/**
+ * Subrayado de un fragmento exacto de texto (solo modo texto): [startOffset]/[endOffset] son
+ * caracteres dentro del string de [paragraph] en esa [page], la misma coordenada que ya usa la
+ * voz para la frase que suena.
+ */
+@Entity(
+    tableName = "highlights",
+    foreignKeys = [ForeignKey(BookEntity::class, ["id"], ["bookId"], onDelete = CASCADE)],
+    indices = [Index(value = ["bookId", "createdAt"])]
+)
+data class HighlightEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bookId: String,
+    val page: Int,
+    val paragraph: Int,
+    val startOffset: Int,
+    val endOffset: Int,
     val note: String?,
     val createdAt: Long
 )

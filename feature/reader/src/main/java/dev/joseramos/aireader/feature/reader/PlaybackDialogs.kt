@@ -4,90 +4,68 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import dev.joseramos.aireader.ai.models.ModelInfo
-import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.core.designsystem.component.AppBottomSheet
 import dev.joseramos.aireader.core.designsystem.component.PlainButton
 import dev.joseramos.aireader.core.designsystem.component.PrimaryButton
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
+import dev.joseramos.aireader.text.Language
 import dev.joseramos.aireader.tts.PlaybackError
+import dev.joseramos.aireader.tts.SystemVoiceSettings
 
 /**
- * Hoja que aparece si no se puede empezar a leer: falta descargar la voz o el texto del libro
- * aún no está listo. Al terminar de descargarse la voz, empieza a leer sola.
+ * Hoja que aparece si no se puede empezar a leer: al móvil le falta la voz del idioma del libro (o
+ * no tiene motor de voz), o el texto del libro aún no está listo. La voz se instala desde el
+ * sistema; al volver, «Reintentar» empieza a leer.
  */
 @Composable
 internal fun PlaybackProblemSheet(
     error: PlaybackError,
-    voiceInfo: ModelInfo,
-    voice: ModelState,
-    onDownloadVoice: () -> Unit,
-    onVoiceReady: () -> Unit,
+    language: Language,
+    onRetry: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    LaunchedEffect(voice) {
-        if (error == PlaybackError.VOICE_MISSING && voice is ModelState.Installed) onVoiceReady()
-    }
-    val title = stringResource(
-        if (error ==
-            PlaybackError.VOICE_MISSING
-        ) {
-            R.string.reader_voice_title
-        } else {
-            R.string.reader_text_not_ready_title
-        }
+    val context = LocalContext.current
+    val languageName = stringResource(
+        if (language == Language.ENGLISH) R.string.reader_language_english else R.string.reader_language_spanish
     )
+    val (title, message) = when (error) {
+        PlaybackError.VOICE_MISSING ->
+            stringResource(R.string.reader_voice_title) to stringResource(R.string.reader_voice_message, languageName)
+        PlaybackError.NO_ENGINE ->
+            stringResource(R.string.reader_no_engine_title) to stringResource(R.string.reader_no_engine_message)
+        PlaybackError.TEXT_NOT_READY ->
+            stringResource(R.string.reader_text_not_ready_title) to
+                stringResource(R.string.reader_text_not_ready_message)
+        PlaybackError.NEEDS_API_KEY ->
+            stringResource(R.string.reader_cloud_tts_key_title) to
+                stringResource(R.string.reader_cloud_tts_key_message)
+    }
     AppBottomSheet(onDismissRequest = onDismiss, title = title) {
         Column(Modifier.padding(horizontal = Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-            val message = if (error == PlaybackError.VOICE_MISSING) {
-                stringResource(
-                    R.string.reader_voice_message,
-                    voiceInfo.displayName.lowercase(),
-                    (voiceInfo.sizeBytes / BYTES_PER_MB).toInt()
-                )
-            } else {
-                stringResource(R.string.reader_text_not_ready_message)
-            }
             Text(message, style = AppTheme.typography.subheadline, color = AppTheme.colors.secondaryLabel)
-            if (error == PlaybackError.VOICE_MISSING) {
-                when (voice) {
-                    is ModelState.Downloading -> {
-                        LinearProgressIndicator(
-                            progress = { voice.progress },
-                            modifier = Modifier.fillMaxWidth(),
-                            color = AppTheme.colors.accent,
-                            trackColor = AppTheme.colors.fill
-                        )
-                    }
-                    ModelState.Installing -> Text(
-                        stringResource(R.string.reader_voice_installing),
-                        style = AppTheme.typography.footnote
-                    )
-                    is ModelState.Failed -> {
-                        Text(voice.message, style = AppTheme.typography.footnote, color = AppTheme.colors.destructive)
-                        PrimaryButton(
-                            stringResource(R.string.reader_voice_retry),
-                            onDownloadVoice,
-                            Modifier.fillMaxWidth()
-                        )
-                    }
-                    else -> PrimaryButton(
-                        stringResource(R.string.reader_voice_download),
-                        onDownloadVoice,
-                        Modifier.fillMaxWidth()
-                    )
-                }
+            when (error) {
+                PlaybackError.VOICE_MISSING -> PrimaryButton(
+                    stringResource(R.string.reader_voice_install),
+                    { SystemVoiceSettings.installVoice(context) },
+                    Modifier.fillMaxWidth()
+                )
+                PlaybackError.NO_ENGINE -> PrimaryButton(
+                    stringResource(R.string.reader_voice_settings),
+                    { SystemVoiceSettings.openSettings(context) },
+                    Modifier.fillMaxWidth()
+                )
+                PlaybackError.TEXT_NOT_READY, PlaybackError.NEEDS_API_KEY -> Unit
+            }
+            if (error != PlaybackError.TEXT_NOT_READY && error != PlaybackError.NEEDS_API_KEY) {
+                PlainButton(stringResource(R.string.reader_voice_retry), onRetry, Modifier.fillMaxWidth())
             }
             PlainButton(stringResource(R.string.reader_cancel), onDismiss, Modifier.fillMaxWidth())
         }
     }
 }
-
-private const val BYTES_PER_MB = 1_000_000

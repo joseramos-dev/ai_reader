@@ -138,4 +138,32 @@ class MigrationTest {
         }
         db.close()
     }
+
+    @Test
+    fun migrate5To6AddsHighlightsTable() {
+        helper.createDatabase(5).apply {
+            execSQL(
+                """
+                INSERT INTO books (id, title, author, fileName, filePath, pageCount, coverPath, importedAt,
+                    lastOpenedAt, indexStatus, indexProgress, cleanerVersion, documentTypeSource, aiPrepared)
+                VALUES ('a', 'Libro', NULL, 'a.pdf', '/a.pdf', 10, NULL, 1, NULL, 'READY', 1.0, 1, 'AUTO', 0)
+                """.trimIndent()
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(6, emptyList())
+        db.execSQL(
+            "INSERT INTO highlights (id, bookId, page, paragraph, startOffset, endOffset, note, createdAt) " +
+                "VALUES (1, 'a', 3, 0, 5, 12, NULL, 100)"
+        )
+        db.prepare("SELECT page, paragraph, startOffset, endOffset FROM highlights WHERE bookId = 'a'").use {
+            assertTrue(it.step())
+            assertEquals(3, it.getInt(0))
+            assertEquals(0, it.getInt(1))
+            assertEquals(5, it.getInt(2))
+            assertEquals(12, it.getInt(3))
+        }
+        db.close()
+    }
 }

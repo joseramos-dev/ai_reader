@@ -14,8 +14,6 @@ import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.SkipNext
-import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -36,8 +34,6 @@ class ListeningActions(
     val onResume: () -> Unit,
     val onPreviousPhrase: () -> Unit,
     val onNextPhrase: () -> Unit,
-    val onPreviousPage: () -> Unit,
-    val onNextPage: () -> Unit,
     val onStop: () -> Unit
 )
 
@@ -46,8 +42,8 @@ internal val ListeningBarHeight = 56.dp
 
 /**
  * Barra de transporte de la lectura en voz alta, como la de un reproductor de iOS:
- * ⏮ página anterior · ⏪ frase anterior · ⏯ pausar/reanudar · ⏩ frase siguiente · ⏭ página
- * siguiente · ⏹ detener. Solo se muestra mientras se está escuchando.
+ * ⏪ frase anterior · ⏯ pausar/reanudar · ⏩ frase siguiente · ⏹ detener. Solo se muestra
+ * mientras se está escuchando.
  */
 @Composable
 internal fun ListeningBar(isPlaying: Boolean, actions: ListeningActions, modifier: Modifier = Modifier) {
@@ -56,15 +52,9 @@ internal fun ListeningBar(isPlaying: Boolean, actions: ListeningActions, modifie
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        BarIconButton(
-            Icons.Rounded.SkipPrevious,
-            stringResource(R.string.listen_previous_page),
-            actions.onPreviousPage
-        )
         BarIconButton(Icons.Rounded.FastRewind, stringResource(R.string.player_previous), actions.onPreviousPhrase)
         PlayPauseButton(isPlaying, onClick = if (isPlaying) actions.onPause else actions.onResume)
         BarIconButton(Icons.Rounded.FastForward, stringResource(R.string.player_next), actions.onNextPhrase)
-        BarIconButton(Icons.Rounded.SkipNext, stringResource(R.string.listen_next_page), actions.onNextPage)
         BarIconButton(Icons.Rounded.Stop, stringResource(R.string.listen_stop), actions.onStop)
     }
 }

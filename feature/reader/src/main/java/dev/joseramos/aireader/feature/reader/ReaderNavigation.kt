@@ -45,7 +45,6 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
     val state by viewModel.state.collectAsStateWithLifecycle()
     val extras by viewModel.extras.collectAsStateWithLifecycle()
     val playback by viewModel.playback.collectAsStateWithLifecycle()
-    val voice by viewModel.voice.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val summaryViewModel: SummaryViewModel = hiltViewModel()
     var aiSheet by remember { mutableStateOf(false) }
@@ -97,6 +96,9 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
             onBookmarkNote = viewModel::setBookmarkNote,
             onDeleteBookmark = viewModel::deleteBookmark,
             onDismissBookmarkSuggestion = viewModel::dismissBookmarkSuggestion,
+            onAddHighlight = viewModel::addHighlight,
+            onEditHighlightNote = viewModel::setHighlightNote,
+            onDeleteHighlight = viewModel::deleteHighlight,
             onOpenCharacters = openCharacters.takeIf { literature },
             onOpenCharacter = { characterId = it },
             onRecap = {
@@ -191,10 +193,8 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
     playback.error?.let { error ->
         PlaybackProblemSheet(
             error = error,
-            voiceInfo = viewModel.missingVoice,
-            voice = voice,
-            onDownloadVoice = viewModel::downloadVoice,
-            onVoiceReady = {
+            language = playback.language,
+            onRetry = {
                 viewModel.dismissPlaybackError()
                 viewModel.listen(state.currentPage)
             },

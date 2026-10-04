@@ -14,6 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * - v3: geometría de las líneas (`page_layouts`), nivel de cada párrafo y apartados en el índice.
  * - v4: índice compuesto (bookId, createdAt) en `bookmarks` para el marcapáginas más reciente de
  *   cada libro en la biblioteca (antes sin índice para ese orden).
+ * - v6: subrayados de texto (`highlights`).
  */
 @Database(
     entities = [
@@ -34,15 +35,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CharacterNameEntity::class,
         CharacterFactEntity::class,
         RelationEntity::class,
-        CharacterScanEntity::class
+        CharacterScanEntity::class,
+        HighlightEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2, spec = AppDatabase.Migration1To2::class),
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
-        AutoMigration(from = 4, to = 5)
+        AutoMigration(from = 4, to = 5),
+        AutoMigration(from = 5, to = 6)
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -69,6 +72,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bookmarkDao(): BookmarkDao
 
     abstract fun characterDao(): CharacterDao
+
+    abstract fun highlightDao(): HighlightDao
 
     /** La página más avanzada de los libros ya empezados es, como mínimo, la página actual. */
     class Migration1To2 : AutoMigrationSpec {

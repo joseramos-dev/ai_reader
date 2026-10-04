@@ -16,6 +16,12 @@ import kotlinx.coroutines.flow.map
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+/** Motor de voz para la lectura en voz alta. */
+enum class TtsEngineKind { SYSTEM, GOOGLE_CLOUD }
+
+/** Nivel de voz de Google Cloud TTS: más alto es más natural, pero más caro y con menos cuota gratuita. */
+enum class CloudVoiceTier { STANDARD, WAVENET, NEURAL2 }
+
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val readingSpeed: Float = 1.0f,
@@ -24,7 +30,10 @@ data class AppSettings(
     /** Escala de letra del modo lectura de texto. */
     val textScale: Float = 1.0f,
     /** Analizar los personajes de las novelas al indexarlas; si no, solo cuando se pide. */
-    val autoCharacterAnalysis: Boolean = true
+    val autoCharacterAnalysis: Boolean = true,
+    val ttsEngine: TtsEngineKind = TtsEngineKind.SYSTEM,
+    /** Por defecto, el nivel con más cuota gratuita; se puede subir a WaveNet o Neural2 desde Ajustes. */
+    val cloudVoiceTier: CloudVoiceTier = CloudVoiceTier.STANDARD
 ) {
     companion object {
         // Gemini en lugar de Claude (docs/02-diseno-tecnico.md §10): Flash para el chat y Flash-Lite,
@@ -51,12 +60,24 @@ class SettingsRepository @Inject constructor(@Named(SETTINGS_STORE) private val 
             chatModel = AppSettings.validModel(prefs[CHAT_MODEL], AppSettings.DEFAULT_CHAT_MODEL),
             summaryModel = AppSettings.validModel(prefs[SUMMARY_MODEL], AppSettings.DEFAULT_SUMMARY_MODEL),
             textScale = prefs[TEXT_SCALE] ?: 1.0f,
-            autoCharacterAnalysis = prefs[AUTO_CHARACTERS] ?: true
+            autoCharacterAnalysis = prefs[AUTO_CHARACTERS] ?: true,
+            ttsEngine = prefs[TTS_ENGINE]?.let { runCatching { TtsEngineKind.valueOf(it) }.getOrNull() }
+                ?: TtsEngineKind.SYSTEM,
+            cloudVoiceTier = prefs[CLOUD_VOICE_TIER]?.let { runCatching { CloudVoiceTier.valueOf(it) }.getOrNull() }
+                ?: CloudVoiceTier.STANDARD
         )
     }
 
     suspend fun setThemeMode(mode: ThemeMode) {
         dataStore.edit { it[THEME] = mode.name }
+    }
+
+    suspend fun setTtsEngine(engine: TtsEngineKind) {
+        dataStore.edit { it[TTS_ENGINE] = engine.name }
+    }
+
+    suspend fun setCloudVoiceTier(tier: CloudVoiceTier) {
+        dataStore.edit { it[CLOUD_VOICE_TIER] = tier.name }
     }
 
     suspend fun setReadingSpeed(speed: Float) {
@@ -102,5 +123,7 @@ class SettingsRepository @Inject constructor(@Named(SETTINGS_STORE) private val 
         private val TEXT_SCALE = floatPreferencesKey("text_scale")
         private val AUTO_CHARACTERS = booleanPreferencesKey("auto_character_analysis")
         private val SPOILERS_ALLOWED = stringSetPreferencesKey("spoilers_allowed_books")
+        private val TTS_ENGINE = stringPreferencesKey("tts_engine")
+        private val CLOUD_VOICE_TIER = stringPreferencesKey("cloud_voice_tier")
     }
 }

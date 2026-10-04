@@ -25,13 +25,19 @@
     <string name="reader_text_failed_message">Puede que el PDF sea una imagen escaneada o esté dañado. Puedes leerlo en modo PDF.</string>
     <string name="reader_scanned_page">Esta página es una imagen escaneada y no tiene texto.</string>
     <string name="reader_open_error">No se pudo abrir el PDF</string>
-    <string name="reader_voice_title">Descarga la voz</string>
-    <string name="reader_voice_message">Para escuchar este libro hace falta la %1$s (unos %2$d MB). Se descarga una sola vez y funciona sin conexión.</string>
-    <string name="reader_voice_download">Descargar voz</string>
+    <string name="reader_voice_title">Falta la voz</string>
+    <string name="reader_voice_message">Tu móvil no tiene instalada una voz en %1$s para leer sin conexión. Instálala desde los ajustes de voz del sistema y vuelve a intentarlo.</string>
+    <string name="reader_voice_install">Instalar voz</string>
     <string name="reader_voice_retry">Reintentar</string>
-    <string name="reader_voice_installing">Instalando…</string>
+    <string name="reader_no_engine_title">No hay motor de voz</string>
+    <string name="reader_no_engine_message">Este móvil no tiene un motor de texto a voz activo. Instala o activa uno (por ejemplo, Servicios de voz de Google) y vuelve a intentarlo.</string>
+    <string name="reader_voice_settings">Abrir ajustes de voz</string>
+    <string name="reader_language_spanish">español</string>
+    <string name="reader_language_english">inglés</string>
     <string name="reader_text_not_ready_title">El texto aún no está listo</string>
     <string name="reader_text_not_ready_message">El libro se está preparando. Podrás escucharlo en cuanto termine.</string>
+    <string name="reader_cloud_tts_key_title">Falta la clave de Google Cloud TTS</string>
+    <string name="reader_cloud_tts_key_message">Has elegido Google Cloud como motor de voz en Ajustes, pero todavía no has configurado su clave de API.</string>
     <string name="player_play">Reproducir</string>
     <string name="player_pause">Pausar</string>
     <string name="player_previous">Frase anterior</string>
@@ -44,8 +50,6 @@
     <string name="player_sleep_minutes">%1$d min</string>
     <string name="player_sleep_chapter">Fin del capítulo</string>
     <string name="player_stop">Dejar de escuchar</string>
-    <string name="listen_previous_page">Página anterior</string>
-    <string name="listen_next_page">Página siguiente</string>
     <string name="listen_resume">Reanudar</string>
     <string name="listen_stop">Detener</string>
     <string name="ai_title">Inteligencia artificial</string>
@@ -76,6 +80,12 @@
     <string name="bookmark_delete">Borrar</string>
     <string name="bookmark_go">Ir al marcapáginas · p. %1$d</string>
     <string name="bookmarks_empty">Toca el icono de marcapáginas de la barra superior para marcar la página; mantenlo pulsado para añadir una nota.</string>
+
+    <string name="reader_highlights">Subrayados</string>
+    <string name="highlights_empty">Mantén pulsado un punto del texto y arrastra para seleccionarlo; al soltar, podrás guardarlo aquí.</string>
+    <string name="highlight_title">Subrayado</string>
+    <string name="highlight_remove">Quitar subrayado</string>
+    <string name="highlight_copy">Copiar</string>
     <string name="characters_on_page">En esta página:</string>
 
     <string name="recap_offer_title">¿Repasamos lo anterior?</string>

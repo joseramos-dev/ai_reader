@@ -8,28 +8,13 @@ plugins {
     alias(libs.plugins.androidx.baselineprofile)
 }
 
-// Modelos que vienen ya en el APK (ModelManager.installBundledModels): voces de Piper y el
-// embedder de RAG. Como el AAR de sherpa-onnx en settings.gradle.kts, se descargan una vez a
-// src/main/assets/bundled_models/ (gitignored, no se versionan) en vez de subirlos a git: pesan
-// ~177 MB en total y uno de ellos ya supera el límite de 100 MB por archivo de GitHub.
+// Modelos que vienen ya en el APK (ModelManager.installBundledModels): el embedder de RAG. Se
+// descargan una vez a src/main/assets/bundled_models/ (gitignored, no se versionan) en vez de
+// subirlos a git: pesan ~135 MB y el modelo supera el límite de 100 MB por archivo de GitHub.
 // Los nombres, URLs y sha256 deben coincidir con ai/models/.../ModelCatalog.kt.
 data class BundledModelFile(val modelId: String, val fileName: String, val url: String, val sha256: String)
 
 val bundledModelFiles = listOf(
-    BundledModelFile(
-        "tts-piper-es_ES-davefx-medium-int8",
-        "voice.tar.bz2",
-        "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/" +
-            "vits-piper-es_ES-davefx-medium-int8.tar.bz2",
-        "8bb8ac1cefb727caec9bd9c6c3185c673c8b42c53bd29bb25d5a7715dac37125"
-    ),
-    BundledModelFile(
-        "tts-piper-en_US-lessac-medium-int8",
-        "voice.tar.bz2",
-        "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/" +
-            "vits-piper-en_US-lessac-medium-int8.tar.bz2",
-        "f1c6d0295cf16087b05f80fdca5b44daca5cd78e2c425d419a42ba34929805f9"
-    ),
     BundledModelFile(
         "emb-multilingual-e5-small-int8",
         "model.onnx",
@@ -60,6 +45,12 @@ fun sha256Of(file: File): String {
 }
 
 val bundledModelsDir = file("src/main/assets/bundled_models")
+// Lo que ya no está en la lista (por ejemplo, las antiguas voces de Piper) se borra para que no se empaquete.
+val bundledModelIds = bundledModelFiles.map { it.modelId }.toSet()
+bundledModelsDir.listFiles()?.filter { it.name !in bundledModelIds }?.forEach { stale ->
+    logger.lifecycle("Borrando modelo empaquetado retirado: ${stale.name}")
+    stale.deleteRecursively()
+}
 bundledModelFiles.forEach { spec ->
     val dest = File(bundledModelsDir, "${spec.modelId}/${spec.fileName}")
     if (dest.exists() && sha256Of(dest) == spec.sha256) return@forEach
@@ -88,7 +79,7 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
-            // sherpa-onnx y onnxruntime-android traen cada uno su lib/x86/libonnxruntime.so; x86 32-bit y armeabi-v7a no se usan.
+            // onnxruntime-android trae también lib/x86 y armeabi-v7a, que no se usan.
             excludes += listOf("lib/x86/**", "lib/armeabi-v7a/**")
         }
     }

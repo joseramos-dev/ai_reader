@@ -47,9 +47,9 @@ core/designsystem    Tema (colores, Inter, espaciados) y componentes tipo iOS
 core/data            Room, DataStore, clave de API cifrada (Tink) y repositorios
 pdf                  Render de páginas (PdfRenderer) y extracción de texto e índice (PdfBox)
 text                 Limpieza del texto, frases, fragmentos, normalización para la voz y buscador de nombres
-tts                  Voz Piper (sherpa-onnx), pipeline de audio y servicio de reproducción (Media3)
+tts                  Voz del sistema (android.speech.tts), pipeline de audio y servicio de reproducción (Media3)
 indexing             Importación de PDFs e IndexWorker: texto, capítulos, tipo de documento y embeddings
-ai/models            Descarga, verificación e instalación de modelos (voz, embeddings)
+ai/models            Descarga, verificación e instalación de modelos (embeddings)
 ai/llm               Cliente de Gemini (REST), prompts, resúmenes y repaso
 ai/embeddings        Embeddings en el dispositivo (multilingual-e5-small con ONNX Runtime)
 ai/rag               Búsqueda híbrida, respuestas con citas y evaluación de la búsqueda
@@ -61,8 +61,6 @@ feature/characters   Personajes, ficha y grafo de relaciones
 feature/settings     Pantalla Ajustes
 benchmark/           Pruebas de rendimiento con Macrobenchmark
 build-logic/         Plugins de convención de Gradle compartidos por los módulos
-spikes/              App de pruebas técnicas (fase F1), desechable
-tools/spikes/        Scripts auxiliares de los spikes (referencia de tokens en Python)
 tools/rag-eval/      Formato y plantilla del conjunto de preguntas para evaluar la búsqueda
 config/detekt/       Configuración de análisis estático
 gradle/              Wrapper y catálogo de versiones (libs.versions.toml)
@@ -90,14 +88,4 @@ Mide la fluidez del scroll del lector con un PDF generado de 320 páginas. Neces
 En las compilaciones de depuración, Ajustes → Acerca de → «Evaluar la búsqueda» mide con un fichero
 de preguntas si el chat encuentra la página de cada respuesta. Formato e instrucciones en
 [tools/rag-eval](tools/rag-eval/README.md).
-
-### App de pruebas técnicas (`:spikes`)
-
-Mide en un móvil real la voz en el dispositivo, los embeddings, el tokenizador, la extracción de texto de PDFs, el audio en segundo plano y el streaming de la API de Gemini. Se instala aparte como «AI Reader · Spikes»:
-
-```bash
-./gradlew :spikes:installDebug
-```
-
-La primera compilación descarga el AAR de sherpa-onnx (unos 40 MB) en `spikes/libs/`.
 

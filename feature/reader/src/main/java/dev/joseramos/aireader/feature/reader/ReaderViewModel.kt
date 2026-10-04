@@ -14,10 +14,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.joseramos.aireader.ai.characters.CharacterAnalysis
 import dev.joseramos.aireader.ai.characters.CharacterBrowser
 import dev.joseramos.aireader.ai.characters.CharactersSnapshot
-import dev.joseramos.aireader.ai.models.ModelCatalog
-import dev.joseramos.aireader.ai.models.ModelInfo
-import dev.joseramos.aireader.ai.models.ModelManager
-import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.core.common.ApplicationScope
 import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.book.Book
@@ -26,6 +22,8 @@ import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Bookmark
 import dev.joseramos.aireader.core.data.book.BookmarkRepository
 import dev.joseramos.aireader.core.data.book.Chapter
+import dev.joseramos.aireader.core.data.book.Highlight
+import dev.joseramos.aireader.core.data.book.HighlightRepository
 import dev.joseramos.aireader.core.data.book.PageText
 import dev.joseramos.aireader.core.data.book.ReadingPosition
 import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
@@ -94,7 +92,9 @@ data class ReaderExtras(
     /** Página del último marcapáginas, para el chip «Ir al marcapáginas» al abrir. */
     val bookmarkSuggestion: Int? = null,
     /** El libro llevaba más de una semana sin abrirse: se ofrece «¿Repasamos lo anterior?». */
-    val offerRecap: Boolean = false
+    val offerRecap: Boolean = false,
+    /** Subrayados de texto (solo modo texto), con nota opcional. */
+    val highlights: List<Highlight> = emptyList()
 )
 
 private data class ReaderMeta(
@@ -117,9 +117,9 @@ class ReaderViewModel @Inject constructor(
     contentRepository: BookContentRepository,
     private val positions: ReadingPositionRepository,
     private val bookmarks: BookmarkRepository,
+    private val highlights: HighlightRepository,
     private val settings: SettingsRepository,
     private val playbackController: PlaybackController,
-    private val modelManager: ModelManager,
     characterBrowser: CharacterBrowser,
     private val characterAnalysis: CharacterAnalysis,
     @IoDispatcher private val io: CoroutineDispatcher,
@@ -181,12 +181,13 @@ class ReaderViewModel @Inject constructor(
             if (literature) characterBrowser.observe(bookId) else flowOf(CharactersSnapshot())
         }
 
-    val extras: StateFlow<ReaderExtras> = combine(bookmarks.observe(bookId), characters, prompts) {
-            marks,
-            snapshot,
-            p
-        ->
-        ReaderExtras(marks, snapshot, p.bookmarkSuggestion, p.offerRecap)
+    val extras: StateFlow<ReaderExtras> = combine(
+        bookmarks.observe(bookId),
+        characters,
+        prompts,
+        highlights.observe(bookId)
+    ) { marks, snapshot, p, hls ->
+        ReaderExtras(marks, snapshot, p.bookmarkSuggestion, p.offerRecap, hls)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderExtras())
 
     /** Lectura en voz alta de este libro (vacía si suena otro). */
@@ -199,18 +200,11 @@ class ReaderViewModel @Inject constructor(
                 isListening = playing.isListening,
                 location = playing.position?.let { PhraseLocation(it.page, it.paragraph, it.phrase) },
                 phrase = playing.phrase,
-                error = playing.error
+                error = playing.error,
+                language = playing.language
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderPlayback())
-
-    /** Estado de la voz que necesita este libro (en español o en inglés, según su idioma). */
-    val voice: StateFlow<ModelState> = combine(playbackController.state, modelManager.states) { playing, models ->
-        models[playing.voiceId] ?: ModelState.NotInstalled
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ModelState.NotInstalled)
-
-    /** Voz que falta para leer este libro. */
-    val missingVoice: ModelInfo get() = ModelCatalog.byId(playbackController.state.value.voiceId)
 
     fun listen(page: Int) {
         viewModelScope.launch { playbackController.play(bookId, page) }
@@ -228,12 +222,8 @@ class ReaderViewModel @Inject constructor(
         onResume = { viewModelScope.launch { playbackController.resume() } },
         onPreviousPhrase = playbackController::previous,
         onNextPhrase = playbackController::next,
-        onPreviousPage = playbackController::previousPage,
-        onNextPage = playbackController::nextPage,
         onStop = playbackController::stop
     )
-
-    fun downloadVoice() = modelManager.download(playbackController.state.value.voiceId)
 
     fun dismissPlaybackError() = playbackController.clearError()
 
@@ -319,6 +309,18 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun dismissBookmarkSuggestion() = prompts.update { it.copy(bookmarkSuggestion = null) }
+
+    fun addHighlight(page: Int, paragraph: Int, range: IntRange, note: String? = null) {
+        viewModelScope.launch { highlights.add(bookId, page, paragraph, range, note) }
+    }
+
+    fun setHighlightNote(id: Long, note: String?) {
+        viewModelScope.launch { highlights.setNote(id, note) }
+    }
+
+    fun deleteHighlight(id: Long) {
+        viewModelScope.launch { highlights.delete(id) }
+    }
 
     fun dismissRecapOffer() = prompts.update { it.copy(offerRecap = false) }
 

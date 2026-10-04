@@ -3,8 +3,8 @@ package dev.joseramos.aireader.text
 /**
  * Divide un párrafo en frases para la lectura en voz alta y el resaltado. Respeta las
  * abreviaturas habituales en español e inglés («Sr.», «pág.», «p. ej.», «Mr.») y las iniciales,
- * y parte por comas o punto y coma las frases que superan [maxChars] (Piper pierde naturalidad
- * con frases muy largas).
+ * y parte por comas o punto y coma las frases que superan [maxChars] (las frases muy largas suenan
+ * menos naturales y tardan más en empezar a sonar, porque cada frase se sintetiza entera).
  */
 object PhraseSplitter {
     const val DEFAULT_MAX_CHARS = 300
@@ -17,11 +17,13 @@ object PhraseSplitter {
         "mr", "mrs", "ms", "jr", "st", "vs", "approx", "inc", "ltd", "mt"
     )
     private const val SENTENCE_STARTERS = "¿¡«\"“—('"
+    private val whitespace = Regex("\\s+")
+    private val commaOrSemicolon = Regex("(?<=[,;:])\\s+")
 
     /** Los saltos de renglón del párrafo (versos, elementos de una lista) también cierran frase. */
     fun split(paragraph: String, maxChars: Int = DEFAULT_MAX_CHARS): List<String> =
         paragraph.split('\n').flatMap { line ->
-            val text = line.replace(Regex("\\s+"), " ").trim()
+            val text = line.replace(whitespace, " ").trim()
             if (text.isEmpty()) emptyList() else sentences(text).flatMap { splitLong(it, maxChars) }
         }
 
@@ -62,7 +64,7 @@ object PhraseSplitter {
         if (sentence.length <= maxChars) return listOf(sentence)
         val parts = mutableListOf<String>()
         var current = StringBuilder()
-        for (piece in sentence.split(Regex("(?<=[,;:])\\s+"))) {
+        for (piece in sentence.split(commaOrSemicolon)) {
             if (current.isNotEmpty() && current.length + piece.length + 1 > maxChars) {
                 parts += current.toString()
                 current = StringBuilder()

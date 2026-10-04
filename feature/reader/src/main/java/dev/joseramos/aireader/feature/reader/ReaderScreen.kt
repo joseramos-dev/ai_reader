@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
@@ -72,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import dev.joseramos.aireader.core.data.book.Chapter
+import dev.joseramos.aireader.core.data.book.Highlight
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.settings.AppSettings
 import dev.joseramos.aireader.core.designsystem.component.AppBottomSheet
@@ -82,6 +84,7 @@ import dev.joseramos.aireader.core.designsystem.component.barBlur
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.BarSize
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
+import dev.joseramos.aireader.text.Language
 import dev.joseramos.aireader.tts.PlaybackError
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -96,7 +99,9 @@ data class ReaderPlayback(
     val isListening: Boolean = false,
     val location: PhraseLocation? = null,
     val phrase: String? = null,
-    val error: PlaybackError? = null
+    val error: PlaybackError? = null,
+    /** Idioma del libro: el de la voz que hay que instalar si falta. */
+    val language: Language = Language.SPANISH
 )
 
 /** Acciones del lector; las de voz, IA y personajes son opcionales para poder montarlo por fases. */
@@ -115,6 +120,9 @@ class ReaderActions(
     val onBookmarkNote: (page: Int, note: String?) -> Unit = { _, _ -> },
     val onDeleteBookmark: (id: Long) -> Unit = {},
     val onDismissBookmarkSuggestion: () -> Unit = {},
+    val onAddHighlight: (page: Int, paragraph: Int, range: IntRange, note: String?) -> Unit = { _, _, _, _ -> },
+    val onEditHighlightNote: (id: Long, note: String?) -> Unit = { _, _ -> },
+    val onDeleteHighlight: (id: Long) -> Unit = {},
     val onOpenCharacters: (() -> Unit)? = null,
     val onOpenCharacter: (Long) -> Unit = {},
     val onRecap: (() -> Unit)? = null,
@@ -123,7 +131,7 @@ class ReaderActions(
 
 private enum class ReaderSheet { CHAPTERS, APPEARANCE }
 
-private enum class ContentsTab { CHAPTERS, BOOKMARKS }
+private enum class ContentsTab { CHAPTERS, BOOKMARKS, HIGHLIGHTS }
 
 @Composable
 internal fun ReaderScreen(
@@ -139,6 +147,8 @@ internal fun ReaderScreen(
     var sheet by rememberSaveable { mutableStateOf<ReaderSheet?>(null) }
     var goToPage by rememberSaveable { mutableStateOf(false) }
     var notePage by rememberSaveable { mutableStateOf<Int?>(null) }
+    var pendingHighlight by remember { mutableStateOf<PendingHighlight?>(null) }
+    var editingHighlight by remember { mutableStateOf<Highlight?>(null) }
     val scope = rememberCoroutineScope()
     val hazeState = rememberHazeState()
 
@@ -179,9 +189,17 @@ internal fun ReaderScreen(
     // Mientras se escucha, la vista sigue a la página que se está leyendo (también al saltar con los
     // controles de la voz, aunque se haya desplazado a mano a otra página).
     var followRequests by remember { mutableIntStateOf(0) }
+    var pageTransitionLoading by remember { mutableStateOf(false) }
     LaunchedEffect(playback.location?.page, playback.isPlaying, followRequests) {
         val page = playback.location?.page ?: return@LaunchedEffect
-        if (playback.isListening && page != listState.dominantPage()) listState.animateScrollToItem(page - 1)
+        if (playback.isListening && page != listState.dominantPage()) {
+            pageTransitionLoading = true
+            try {
+                listState.animateScrollToItem(page - 1)
+            } finally {
+                pageTransitionLoading = false
+            }
+        }
     }
     val listening = remember(actions.listening) { actions.listening?.following { followRequests++ } }
     val scrollTo: (Int) -> Unit = { page ->
@@ -228,10 +246,17 @@ internal fun ReaderScreen(
                     contentPadding = contentPadding,
                     onTap = { controlsVisible = !controlsVisible }
                 )
-                ReaderMode.TEXT -> TextModeContent(state, playback, extras, actions, listState, contentPadding) {
-                    controlsVisible =
-                        !controlsVisible
-                }
+                ReaderMode.TEXT -> TextModeContent(
+                    state = state,
+                    playback = playback,
+                    extras = extras,
+                    actions = actions,
+                    listState = listState,
+                    contentPadding = contentPadding,
+                    onCreateHighlight = { pendingHighlight = it },
+                    onTapHighlight = { editingHighlight = it },
+                    onTap = { controlsVisible = !controlsVisible }
+                )
             }
         }
 
@@ -248,6 +273,14 @@ internal fun ReaderScreen(
                 onBookmarkNote = { notePage = state.currentPage },
                 modifier = Modifier.barBlur(hazeState)
             )
+        }
+        AnimatedVisibility(
+            visible = pageTransitionLoading,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            CircularProgressIndicator(color = colors.accent, strokeWidth = 2.dp)
         }
         extras.bookmarkSuggestion?.let { page ->
             BookmarkSuggestionChip(
@@ -290,6 +323,7 @@ internal fun ReaderScreen(
                 scrollTo(page)
             },
             onDeleteBookmark = actions.onDeleteBookmark,
+            onDeleteHighlight = actions.onDeleteHighlight,
             onDismiss = { sheet = null }
         )
         ReaderSheet.APPEARANCE -> AppearanceSheet(state, actions, onDismiss = { sheet = null })
@@ -304,6 +338,33 @@ internal fun ReaderScreen(
                 notePage = null
             },
             onDismiss = { notePage = null }
+        )
+    }
+    pendingHighlight?.let { pending ->
+        HighlightSheet(
+            quotedText = pending.quotedText,
+            initialNote = null,
+            onSave = { note ->
+                actions.onAddHighlight(pending.page, pending.paragraph, pending.range, note)
+                pendingHighlight = null
+            },
+            onRemove = null,
+            onDismiss = { pendingHighlight = null }
+        )
+    }
+    editingHighlight?.let { h ->
+        HighlightSheet(
+            quotedText = quotedText(h, state.pages).orEmpty(),
+            initialNote = h.note,
+            onSave = { note ->
+                actions.onEditHighlightNote(h.id, note)
+                editingHighlight = null
+            },
+            onRemove = {
+                actions.onDeleteHighlight(h.id)
+                editingHighlight = null
+            },
+            onDismiss = { editingHighlight = null }
         )
     }
     if (goToPage) {
@@ -325,6 +386,8 @@ private fun TextModeContent(
     actions: ReaderActions,
     listState: LazyListState,
     contentPadding: PaddingValues,
+    onCreateHighlight: (PendingHighlight) -> Unit,
+    onTapHighlight: (Highlight) -> Unit,
     onTap: () -> Unit
 ) {
     val book = state.book
@@ -355,12 +418,15 @@ private fun TextModeContent(
         pages = state.pages,
         textScale = state.textScale,
         highlight = playback.location,
+        highlights = extras.highlights,
         contentPadding = contentPadding,
         modifier = Modifier.pointerInput(Unit) { detectTapGestures { onTap() } },
         names = extras.characters.index,
         onTapCharacter = actions.onOpenCharacter,
         // Solo con la voz en marcha (sonando o en pausa); si no, tocar muestra u oculta los controles.
         onTapPhrase = actions.onListenFrom?.takeIf { playback.location != null },
+        onCreateHighlight = onCreateHighlight,
+        onTapHighlight = onTapHighlight,
         chapters = state.contents
     )
 }
@@ -513,8 +579,6 @@ private fun ListeningActions.following(onFollow: () -> Unit): ListeningActions {
         onResume = wrap(onResume),
         onPreviousPhrase = wrap(onPreviousPhrase),
         onNextPhrase = wrap(onNextPhrase),
-        onPreviousPage = wrap(onPreviousPage),
-        onNextPage = wrap(onNextPage),
         onStop = onStop
     )
 }
@@ -541,6 +605,7 @@ private fun ContentsSheet(
     extras: ReaderExtras,
     onSelectPage: (Int) -> Unit,
     onDeleteBookmark: (Long) -> Unit,
+    onDeleteHighlight: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
     var tab by rememberSaveable { mutableStateOf(ContentsTab.CHAPTERS) }
@@ -554,7 +619,11 @@ private fun ContentsSheet(
                 ) {
                     Text(
                         stringResource(
-                            if (entry == ContentsTab.CHAPTERS) R.string.reader_chapters else R.string.reader_bookmarks
+                            when (entry) {
+                                ContentsTab.CHAPTERS -> R.string.reader_chapters
+                                ContentsTab.BOOKMARKS -> R.string.reader_bookmarks
+                                ContentsTab.HIGHLIGHTS -> R.string.reader_highlights
+                            }
                         )
                     )
                 }
@@ -568,6 +637,13 @@ private fun ContentsSheet(
                 pages = state.pages,
                 onSelect = { onSelectPage(it.page) },
                 onDelete = { onDeleteBookmark(it.id) }
+            )
+            ContentsTab.HIGHLIGHTS -> HighlightsList(
+                highlights = extras.highlights,
+                chapters = state.chapters,
+                pages = state.pages,
+                onSelect = { onSelectPage(it.page) },
+                onDelete = { onDeleteHighlight(it.id) }
             )
         }
     }

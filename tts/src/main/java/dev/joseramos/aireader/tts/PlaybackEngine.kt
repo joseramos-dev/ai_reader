@@ -1,11 +1,8 @@
 package dev.joseramos.aireader.tts
 
 import android.content.Context
-import android.media.AudioAttributes
 import android.media.AudioFocusRequest
-import android.media.AudioFormat
 import android.media.AudioManager
-import android.media.AudioTrack
 import android.os.PowerManager
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -27,13 +24,16 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -41,7 +41,17 @@ import kotlinx.coroutines.withContext
 
 enum class PlaybackStatus { IDLE, LOADING, PLAYING, PAUSED, ENDED }
 
-enum class PlaybackError { VOICE_MISSING, TEXT_NOT_READY }
+enum class PlaybackError {
+    /** El motor de voz no tiene instalada una voz sin conexión para el idioma del libro. */
+    VOICE_MISSING,
+
+    /** El dispositivo no tiene motor de texto a voz. */
+    NO_ENGINE,
+    TEXT_NOT_READY,
+
+    /** El motor elegido en Ajustes es Google Cloud TTS, pero no tiene clave de API configurada. */
+    NEEDS_API_KEY
+}
 
 sealed interface SleepTimer {
     data object Off : SleepTimer
@@ -62,9 +72,8 @@ data class PlaybackState(
     val speed: Float = 1f,
     val sleepTimer: SleepTimer = SleepTimer.Off,
     val error: PlaybackError? = null,
-    /** Idioma del libro y voz que le corresponde (la que hay que descargar si falta). */
-    val language: Language = Language.SPANISH,
-    val voiceId: String = Language.SPANISH.voice().id
+    /** Idioma del libro (el de la voz que hay que instalar si falta). */
+    val language: Language = Language.SPANISH
 ) {
     val isActive: Boolean get() = bookId != null && status != PlaybackStatus.IDLE
     val isPlaying: Boolean get() = status == PlaybackStatus.PLAYING || status == PlaybackStatus.LOADING
@@ -78,10 +87,12 @@ data class PlaybackState(
  *
  * frases (canal de 3) → síntesis en un único hilo → audio PCM (canal de 2) → AudioTrack.
  *
- * Mientras suena una frase se sintetiza la siguiente. Saltar (de frase, de página o de capítulo),
- * cambiar de velocidad o de posición cancela la sesión —se descarta la síntesis pendiente y el audio
- * que quedaba en el búfer— y la vuelve a arrancar desde la frase nueva. Si estaba en pausa, sigue en
- * pausa en la frase nueva. La posición se guarda por frase.
+ * Mientras suena una frase se sintetiza la siguiente. La frase actual (resaltado, posición guardada,
+ * temporizador) cambia cuando empieza a *sonar*, no cuando se escribe en el búfer del track. La
+ * velocidad se aplica al reproducir, así que cambiarla no reinicia la frase. Saltar (de frase, de
+ * página o de capítulo) o cambiar de posición cancela la sesión —se corta la síntesis en curso y se
+ * descarta el audio que quedaba en el búfer— y la vuelve a arrancar desde la frase nueva. Si estaba
+ * en pausa, sigue en pausa en la frase nueva. La posición se guarda por frase.
  *
  * Las órdenes que cambian de sesión (empezar, saltar, parar) se ejecutan de una en una, en orden, para
  * que varios toques seguidos no dejen dos sesiones sonando a la vez.
@@ -91,7 +102,7 @@ data class PlaybackState(
 @Singleton
 class PlaybackEngine @Inject constructor(
     @ApplicationContext context: Context,
-    private val voice: PiperTtsEngine,
+    private val voice: TtsEngine,
     private val content: BookContentRepository,
     private val books: BookRepository,
     private val positions: ReadingPositionRepository,
@@ -109,6 +120,12 @@ class PlaybackEngine @Inject constructor(
     private var chapters: List<Chapter> = emptyList()
     private var lastSavedAt = 0L
 
+    /** Track de la sesión en curso (para cambiar la velocidad en marcha). */
+    @Volatile private var output: SpeechTrack? = null
+
+    /** Si el dispositivo no admite cambiar la velocidad al reproducir, se sintetiza ya a esa velocidad. */
+    @Volatile private var speedAtPlayback = true
+
     /** Idioma detectado de cada libro (se calcula una vez por sesión). */
     private val languages = mutableMapOf<String, Language>()
 
@@ -118,7 +135,7 @@ class PlaybackEngine @Inject constructor(
         .apply { setReferenceCounted(false) }
     private var resumeOnFocusGain = false
     private val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-        .setAudioAttributes(audioAttributes)
+        .setAudioAttributes(speechAudioAttributes)
         .setOnAudioFocusChangeListener(::onFocusChange)
         .build()
 
@@ -156,11 +173,16 @@ class PlaybackEngine @Inject constructor(
             position = from,
             speed = speed,
             sleepTimer = _state.value.sleepTimer.takeIf { _state.value.bookId == bookId } ?: SleepTimer.Off,
-            language = language,
-            voiceId = language.voice().id
+            language = language
         )
-        if (!voice.load(language.voice().id)) {
-            _state.update { it.copy(status = PlaybackStatus.IDLE, error = PlaybackError.VOICE_MISSING) }
+        val error = when (voice.load(language)) {
+            VoiceAvailability.READY -> null
+            VoiceAvailability.MISSING -> PlaybackError.VOICE_MISSING
+            VoiceAvailability.NO_ENGINE -> PlaybackError.NO_ENGINE
+            VoiceAvailability.NEEDS_API_KEY -> PlaybackError.NEEDS_API_KEY
+        }
+        if (error != null) {
+            _state.update { it.copy(status = PlaybackStatus.IDLE, error = error) }
             return
         }
         if (content.pagesFrom(bookId, 1, 1).isEmpty()) {
@@ -171,7 +193,7 @@ class PlaybackEngine @Inject constructor(
             audioManager.requestAudioFocus(focusRequest)
             wakeLock.acquire(WAKE_LOCK_TIMEOUT_MS)
         }
-        session = scope.launch { runSession(bookId, from, speed, language) }
+        session = scope.launch { runSession(bookId, from, language) }
     }
 
     fun pause() {
@@ -235,14 +257,6 @@ class PlaybackEngine @Inject constructor(
     /** Vuelve a la frase anterior (en la primera del libro, la repite). */
     fun previous() = jump { bookId, position -> PhraseSource(content, bookId).previous(position) }
 
-    /** Primera frase de la siguiente página con texto (se saltan las vacías o escaneadas). */
-    fun nextPage() = jump { bookId, position -> PhraseSource(content, bookId).nextPage(position.page) }
-
-    /** Primera frase de la página con texto anterior; en la primera, vuelve al principio de la actual. */
-    fun previousPage() = jump { bookId, position ->
-        PhraseSource(content, bookId).previousPage(position.page) ?: ReadingPosition(position.page)
-    }
-
     /** Salta al principio del capítulo siguiente (si lo hay). */
     fun nextChapter() = jump { _, position ->
         chapters.firstOrNull { it.startPage > position.page }?.let { ReadingPosition(it.startPage) }
@@ -260,10 +274,15 @@ class PlaybackEngine @Inject constructor(
         }
     }
 
+    /** Cambia la velocidad en marcha, sin reiniciar la frase (salvo que el dispositivo no lo admita). */
     fun setSpeed(speed: Float) {
         if (speed == _state.value.speed) return
         _state.update { it.copy(speed = speed) }
-        if (_state.value.isListening) jump { _, position -> position }
+        if (!_state.value.isListening) return
+        val track = output
+        if (speedAtPlayback && (track == null || track.setSpeed(speed))) return
+        speedAtPlayback = false
+        jump { _, position -> position }
     }
 
     fun setSleepTimer(timer: SleepTimer) {
@@ -288,22 +307,27 @@ class PlaybackEngine @Inject constructor(
         _state.update { it.copy(sleepTimer = applied) }
     }
 
+    /** Si el motor puede leer [language] (para Ajustes), sin tocar la lectura en curso. */
+    suspend fun availability(language: Language): VoiceAvailability = voice.availability(language)
+
     /**
      * Lee una frase de prueba (Ajustes) con la voz de [language] si no hay ninguna lectura en curso
      * (ni sonando ni en pausa: cargar otra voz aquí sustituiría la del libro a medio escuchar).
      * Pasa por la misma cola de órdenes que el resto de la sesión para que no se solape con ella.
      */
     suspend fun preview(text: String, language: Language = Language.SPANISH): Boolean = commands.withLock {
-        if (_state.value.isListening || !voice.load(language.voice().id)) return@withLock false
+        if (_state.value.isListening || voice.load(language) != VoiceAvailability.READY) return@withLock false
+        val speed = _state.value.speed
         val pcm = withContext(synthDispatcher) {
-            voice.synthesize(SpeechNormalizer.normalize(text, language), _state.value.speed)
+            voice.synthesize(SpeechNormalizer.normalize(text, language), if (speedAtPlayback) 1f else speed)
         }
         withContext(Dispatchers.IO) {
-            val track = newTrack(voice.sampleRate)
+            val track = SpeechTrack(pcm.sampleRate)
             try {
-                track.play()
-                track.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING)
-                drain(track, pcm.size)
+                if (speedAtPlayback && !track.setSpeed(speed)) speedAtPlayback = false
+                track.track.play()
+                track.write(pcm.samples, 0, pcm.samples.size)
+                drain(track)
             } finally {
                 track.release()
             }
@@ -329,54 +353,103 @@ class PlaybackEngine @Inject constructor(
         }
     }
 
-    private suspend fun runSession(bookId: String, from: ReadingPosition, speed: Float, language: Language) =
-        coroutineScope {
-            val texts = Channel<Phrase>(TEXT_BUFFER)
-            val audio = Channel<Pair<Phrase, FloatArray>>(AUDIO_BUFFER)
-            launch {
-                PhraseSource(content, bookId).from(from).collect { texts.send(it) }
-                texts.close()
-            }
-            launch(synthDispatcher) {
-                try {
-                    for (phrase in texts) {
-                        audio.send(
-                            phrase to voice.synthesize(SpeechNormalizer.normalize(phrase.text, language), speed)
-                        )
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-                    // Un fallo del motor nativo no debe dejar la sesión colgada en "cargando" para siempre.
-                    Log.e(TAG, "Fallo sintetizando voz para $bookId", e)
-                } finally {
-                    audio.close()
-                }
-            }
-            withContext(Dispatchers.IO) {
-                val track = newTrack(voice.sampleRate)
-                var lastFrames = 0
-                try {
-                    track.play()
-                    for ((phrase, pcm) in audio) {
-                        onPhraseStart(phrase)
-                        writeInterruptibly(track, pcm)
-                        lastFrames = pcm.size
-                    }
-                    drain(track, lastFrames)
-                    _state.update { it.copy(status = PlaybackStatus.ENDED, phrase = null) }
-                    savePosition(force = true)
-                    releaseWakeLock()
-                } finally {
-                    // Al saltar o parar se descarta lo que quedaba en el búfer: no debe oírse ni un trozo.
-                    runCatching {
-                        track.pause()
-                        track.flush()
-                    }
-                    track.release()
-                }
+    private suspend fun runSession(bookId: String, from: ReadingPosition, language: Language) = coroutineScope {
+        val texts = Channel<Phrase>(TEXT_BUFFER)
+        val audio = Channel<Pair<Phrase, Pcm>>(AUDIO_BUFFER)
+        launch {
+            PhraseSource(content, bookId).from(from).collect { texts.send(it) }
+            texts.close()
+        }
+        launch(synthDispatcher) {
+            try {
+                synthesizeAll(texts, audio, language)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                // Si el motor deja de funcionar, la sesión no debe quedarse colgada en "cargando" para siempre.
+                Log.e(TAG, "Fallo sintetizando voz para $bookId", e)
+            } finally {
+                audio.close()
             }
         }
+        val follower = launch(Dispatchers.Default) { followPlayback() }
+        withContext(Dispatchers.IO) {
+            try {
+                play(audio)
+                // Las frases que quedaran por marcar (las muy cortas del final) cuentan como leídas.
+                follower.cancelAndJoin()
+                output?.started(all = true)?.forEach { onPhraseStart(it) }
+                _state.update { it.copy(status = PlaybackStatus.ENDED, phrase = null) }
+                savePosition(force = true)
+                releaseWakeLock()
+            } finally {
+                // Al saltar o parar se descarta lo que quedaba en el búfer: no debe oírse ni un trozo.
+                output?.release()
+                output = null
+            }
+        }
+    }
+
+    /**
+     * Sintetiza las frases en orden. Una frase que el motor no sepa leer se salta; si fallan varias
+     * seguidas, el motor ha dejado de funcionar y se termina.
+     */
+    private suspend fun synthesizeAll(
+        texts: ReceiveChannel<Phrase>,
+        audio: Channel<Pair<Phrase, Pcm>>,
+        language: Language
+    ) {
+        val speed = if (speedAtPlayback) 1f else _state.value.speed
+        var failures = 0
+        for (phrase in texts) {
+            val pcm = try {
+                voice.synthesize(SpeechNormalizer.normalize(phrase.text, language), speed).also { failures = 0 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                if (++failures >= MAX_CONSECUTIVE_FAILURES) throw e
+                Log.w(TAG, "Se salta una frase que la voz no ha podido leer", e)
+                continue
+            }
+            audio.send(phrase to pcm)
+        }
+    }
+
+    /** Escribe el audio en el track (uno por frecuencia de muestreo) y espera a que acabe de sonar. */
+    private suspend fun play(audio: ReceiveChannel<Pair<Phrase, Pcm>>) {
+        for ((phrase, pcm) in audio) {
+            val track = output?.takeIf { it.sampleRate == pcm.sampleRate } ?: openTrack(pcm.sampleRate)
+            track.mark(phrase)
+            writeInterruptibly(track, pcm.samples)
+        }
+        output?.let { drain(it) }
+    }
+
+    /** Crea el track de la sesión; si ya había otro (la voz cambió de frecuencia), deja que acabe antes. */
+    private suspend fun openTrack(sampleRate: Int): SpeechTrack {
+        output?.let { previous ->
+            drain(previous)
+            previous.started(all = true).forEach { onPhraseStart(it) }
+            previous.release()
+        }
+        val track = SpeechTrack(sampleRate)
+        if (speedAtPlayback && !track.setSpeed(_state.value.speed)) {
+            // Este dispositivo no cambia la velocidad al reproducir: se vuelve a empezar sintetizándola.
+            speedAtPlayback = false
+            if (_state.value.speed != 1f) jump { _, position -> position }
+        }
+        track.track.play()
+        output = track
+        return track
+    }
+
+    /** Marca como actual cada frase cuando empieza a sonar (no cuando se escribe en el búfer). */
+    private suspend fun followPlayback() {
+        while (currentCoroutineContext().isActive) {
+            output?.started()?.forEach { onPhraseStart(it) }
+            delay(FOLLOW_INTERVAL_MS)
+        }
+    }
 
     private suspend fun onPhraseStart(phrase: Phrase) {
         val end = sleepChapterEnd
@@ -396,26 +469,41 @@ class PlaybackEngine @Inject constructor(
     }
 
     /** Escribe en trozos de ~0,1 s para que pausar o saltar responda enseguida. */
-    private suspend fun writeInterruptibly(track: AudioTrack, pcm: FloatArray) {
-        val slice = (voice.sampleRate / SLICES_PER_SECOND).coerceAtLeast(1)
+    private suspend fun writeInterruptibly(track: SpeechTrack, pcm: FloatArray) {
+        val slice = (track.sampleRate / SLICES_PER_SECOND).coerceAtLeast(1)
         var offset = 0
         while (offset < pcm.size) {
-            kotlin.coroutines.coroutineContext.ensureActive()
-            if (paused.value) {
-                track.pause()
-                paused.first { !it }
-                track.play()
-            }
+            currentCoroutineContext().ensureActive()
+            waitWhilePaused(track)
             val count = minOf(slice, pcm.size - offset)
-            track.write(pcm, offset, count, AudioTrack.WRITE_BLOCKING)
+            track.write(pcm, offset, count)
             offset += count
         }
     }
 
-    /** Espera a que suene lo que queda en el búfer antes de parar. */
-    private suspend fun drain(track: AudioTrack, lastFrames: Int) {
-        delay(lastFrames * MILLIS / voice.sampleRate.coerceAtLeast(1) + DRAIN_MARGIN_MS)
-        runCatching { track.stop() }
+    /**
+     * Espera a que suene lo que queda en el búfer (respetando la pausa) y para el track. Si el
+     * track deja de avanzar sin estar en pausa, no se espera más.
+     */
+    private suspend fun drain(track: SpeechTrack) {
+        var lastPlayed = -1L
+        var stalledMs = 0L
+        while (track.framesPlayed < track.framesWritten && stalledMs < DRAIN_STALL_MS) {
+            currentCoroutineContext().ensureActive()
+            waitWhilePaused(track)
+            delay(FOLLOW_INTERVAL_MS)
+            val played = track.framesPlayed
+            stalledMs = if (played == lastPlayed) stalledMs + FOLLOW_INTERVAL_MS else 0L
+            lastPlayed = played
+        }
+        runCatching { track.track.stop() }
+    }
+
+    private suspend fun waitWhilePaused(track: SpeechTrack) {
+        if (!paused.value) return
+        track.track.pause()
+        paused.first { !it }
+        track.track.play()
     }
 
     private suspend fun savePosition(force: Boolean) {
@@ -432,6 +520,7 @@ class PlaybackEngine @Inject constructor(
     private suspend fun stopSession() {
         session?.cancelAndJoin()
         session = null
+        output = null
         releaseWakeLock()
     }
 
@@ -472,33 +561,15 @@ class PlaybackEngine @Inject constructor(
         const val SLICES_PER_SECOND = 10
         const val SAVE_INTERVAL_MS = 3_000L
         const val MINUTE_MS = 60_000L
-        const val MILLIS = 1000L
-        const val DRAIN_MARGIN_MS = 300L
         const val WAKE_LOCK_TIMEOUT_MS = 4 * 60 * 60 * 1000L
-        const val BUFFER_MULTIPLIER = 4
 
-        val audioAttributes: AudioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .build()
+        /** Cada cuánto se mira qué frase está sonando (y si el track ha terminado). */
+        const val FOLLOW_INTERVAL_MS = 40L
 
-        fun newTrack(sampleRate: Int): AudioTrack {
-            val format = AudioFormat.Builder()
-                .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
-                .setSampleRate(sampleRate)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                .build()
-            val minBuffer = AudioTrack.getMinBufferSize(
-                sampleRate,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_FLOAT
-            )
-            return AudioTrack.Builder()
-                .setAudioAttributes(audioAttributes)
-                .setAudioFormat(format)
-                .setBufferSizeInBytes(minBuffer * BUFFER_MULTIPLIER)
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .build()
-        }
+        /** Si el track no avanza durante este tiempo sin estar en pausa, se da por terminado. */
+        const val DRAIN_STALL_MS = 1_000L
+
+        /** Frases seguidas que pueden fallar antes de dar el motor por estropeado. */
+        const val MAX_CONSECUTIVE_FAILURES = 3
     }
 }

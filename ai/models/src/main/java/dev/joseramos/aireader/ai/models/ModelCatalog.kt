@@ -2,65 +2,21 @@ package dev.joseramos.aireader.ai.models
 
 import dev.joseramos.aireader.core.data.db.ModelKind
 
-enum class ArchiveType { NONE, TAR_BZ2 }
-
 /** Fichero descargable de un modelo, con su sha256 para verificarlo. */
 data class ModelFile(val url: String, val name: String, val sha256: String, val sizeBytes: Long)
 
-/**
- * Modelo que la app descarga en el primer uso (no va dentro de la APK). Un `.tar.bz2` se extrae
- * en el directorio del modelo; con [ArchiveType.NONE] los ficheros se guardan tal cual.
- */
+/** Modelo que la app descarga o trae empaquetado; sus ficheros se guardan tal cual en su directorio. */
 data class ModelInfo(
     val id: String,
     val kind: ModelKind,
     val displayName: String,
     val version: String,
-    val archive: ArchiveType,
     val files: List<ModelFile>
 ) {
     val sizeBytes: Long get() = files.sumOf { it.sizeBytes }
 }
 
 object ModelCatalog {
-    /** Voz en español (docs/02-diseno-tecnico.md §5.1). */
-    val spanishVoice = ModelInfo(
-        id = "tts-piper-es_ES-davefx-medium-int8",
-        kind = ModelKind.TTS_VOICE,
-        displayName = "Voz en español",
-        version = "sherpa-onnx tts-models",
-        archive = ArchiveType.TAR_BZ2,
-        files = listOf(
-            ModelFile(
-                url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/" +
-                    "vits-piper-es_ES-davefx-medium-int8.tar.bz2",
-                name = "voice.tar.bz2",
-                sha256 = "8bb8ac1cefb727caec9bd9c6c3185c673c8b42c53bd29bb25d5a7715dac37125",
-                sizeBytes = 21_171_632
-            )
-        )
-    )
-
-    /** Voz en inglés para los libros en inglés: Piper `en_US-lessac-medium` int8. */
-    val englishVoice = ModelInfo(
-        id = "tts-piper-en_US-lessac-medium-int8",
-        kind = ModelKind.TTS_VOICE,
-        displayName = "Voz en inglés",
-        version = "sherpa-onnx tts-models",
-        archive = ArchiveType.TAR_BZ2,
-        files = listOf(
-            ModelFile(
-                url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/" +
-                    "vits-piper-en_US-lessac-medium-int8.tar.bz2",
-                name = "voice.tar.bz2",
-                sha256 = "f1c6d0295cf16087b05f80fdca5b44daca5cd78e2c425d419a42ba34929805f9",
-                sizeBytes = 20_969_179
-            )
-        )
-    )
-
-    val voices: List<ModelInfo> = listOf(spanishVoice, englishVoice)
-
     /** Versión fijada del repositorio para que los sha256 no cambien. */
     private const val E5_REPO = "https://huggingface.co/Xenova/multilingual-e5-small/resolve/" +
         "761b726dd34fb83930e26aab4e9ac3899aa1fa78"
@@ -71,7 +27,6 @@ object ModelCatalog {
         kind = ModelKind.EMBEDDING,
         displayName = "Modelo para preguntar al libro",
         version = "761b726",
-        archive = ArchiveType.NONE,
         files = listOf(
             ModelFile(
                 url = "$E5_REPO/onnx/model_quantized.onnx",
@@ -88,7 +43,7 @@ object ModelCatalog {
         )
     )
 
-    val all: List<ModelInfo> = voices + e5Small
+    val all: List<ModelInfo> = listOf(e5Small)
 
     fun byId(id: String): ModelInfo = all.first { it.id == id }
 }
