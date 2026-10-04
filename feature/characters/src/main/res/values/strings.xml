@@ -17,6 +17,7 @@
     <string name="characters_failed">No se pudo terminar el análisis.</string>
     <string name="characters_retry">Reintentar</string>
     <string name="characters_no_key">Añade tu clave de API para analizar los personajes.</string>
+    <string name="characters_invalid_key">La clave de API no es válida o no tiene permisos.</string>
     <string name="characters_open_settings">Añadir clave de API</string>
     <string name="characters_book_not_ready">El análisis empezará cuando el libro termine de prepararse.</string>
 

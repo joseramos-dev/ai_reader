@@ -35,7 +35,9 @@ data class AnalysisProgress(
     val scanned: Int = 0,
     val total: Int = 0,
     val running: Boolean = false,
-    val failed: Boolean = false
+    val failed: Boolean = false,
+    /** El último intento falló porque la clave de API de Gemini falta o no es válida. */
+    val needsApiKey: Boolean = false
 ) {
     val complete: Boolean get() = total > 0 && scanned >= total
 }
@@ -107,12 +109,15 @@ class CharacterAnalysis @Inject constructor(
         content.observeChapters(bookId),
         workManager.getWorkInfosForUniqueWorkFlow(workName(bookId))
     ) { data, chapters, work ->
-        val state = work.lastOrNull()?.state
+        val lastWork = work.lastOrNull()
+        val state = lastWork?.state
         AnalysisProgress(
             scanned = chapters.count { it.id in data.scannedChapterIds },
             total = chapters.size,
             running = state == WorkInfo.State.RUNNING || state == WorkInfo.State.ENQUEUED,
-            failed = state == WorkInfo.State.FAILED
+            failed = state == WorkInfo.State.FAILED,
+            needsApiKey = state == WorkInfo.State.FAILED &&
+                lastWork.outputData.getString(CharacterScanWorker.KEY_REASON) == CharacterScanWorker.REASON_API_KEY
         )
     }
 

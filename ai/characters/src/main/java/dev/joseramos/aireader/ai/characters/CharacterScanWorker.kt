@@ -11,6 +11,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dev.joseramos.aireader.ai.llm.LlmClient
@@ -41,7 +42,7 @@ class CharacterScanWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val bookId = inputData.getString(KEY_BOOK_ID) ?: return Result.failure()
         val book = books.getBook(bookId) ?: return Result.success()
-        if (!llm.hasApiKey()) return Result.failure()
+        if (!llm.hasApiKey()) return apiKeyFailure()
         runCatching { setForeground(foregroundInfo(book.title)) }
 
         val model = settings.settings.first().summaryModel
@@ -61,11 +62,15 @@ class CharacterScanWorker @AssistedInject constructor(
                 return if (runAttemptCount >= MAX_RATE_LIMIT_ATTEMPTS) Result.failure() else Result.retry()
             } catch (e: LlmException) {
                 Log.w(TAG, "Fallo analizando el capítulo ${chapter.number} (intento ${runAttemptCount + 1})", e)
+                if (e is LlmException.NoApiKey || e is LlmException.Unauthorized) return apiKeyFailure()
                 return if (e.isPermanent() || runAttemptCount >= MAX_ATTEMPTS) Result.failure() else Result.retry()
             }
         }
         return Result.success()
     }
+
+    /** Falla por un problema con la clave de API, dejando el motivo para que la pantalla lo explique. */
+    private fun apiKeyFailure() = Result.failure(workDataOf(KEY_REASON to REASON_API_KEY))
 
     private fun foregroundInfo(title: String): ForegroundInfo {
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
@@ -92,6 +97,8 @@ class CharacterScanWorker @AssistedInject constructor(
 
     companion object {
         const val KEY_BOOK_ID = "book_id"
+        const val KEY_REASON = "reason"
+        const val REASON_API_KEY = "api_key"
         private const val TAG = "CharacterScanWorker"
         private const val CHANNEL_ID = "characters"
         private const val NOTIFICATION_ID = 4102

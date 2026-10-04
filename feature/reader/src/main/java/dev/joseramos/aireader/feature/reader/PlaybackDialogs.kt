@@ -42,9 +42,6 @@ internal fun PlaybackProblemSheet(
         PlaybackError.TEXT_NOT_READY ->
             stringResource(R.string.reader_text_not_ready_title) to
                 stringResource(R.string.reader_text_not_ready_message)
-        PlaybackError.NEEDS_API_KEY ->
-            stringResource(R.string.reader_cloud_tts_key_title) to
-                stringResource(R.string.reader_cloud_tts_key_message)
     }
     AppBottomSheet(onDismissRequest = onDismiss, title = title) {
         Column(Modifier.padding(horizontal = Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
@@ -60,9 +57,9 @@ internal fun PlaybackProblemSheet(
                     { SystemVoiceSettings.openSettings(context) },
                     Modifier.fillMaxWidth()
                 )
-                PlaybackError.TEXT_NOT_READY, PlaybackError.NEEDS_API_KEY -> Unit
+                PlaybackError.TEXT_NOT_READY -> Unit
             }
-            if (error != PlaybackError.TEXT_NOT_READY && error != PlaybackError.NEEDS_API_KEY) {
+            if (error != PlaybackError.TEXT_NOT_READY) {
                 PlainButton(stringResource(R.string.reader_voice_retry), onRetry, Modifier.fillMaxWidth())
             }
             PlainButton(stringResource(R.string.reader_cancel), onDismiss, Modifier.fillMaxWidth())

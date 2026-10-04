@@ -59,12 +59,11 @@ import kotlinx.coroutines.withContext
 
 enum class ReaderMode { PDF, TEXT }
 
-/** Estado del lector. Las páginas de [startPage] y [currentPage] son en base 1. */
+/** Estado del lector. [currentPage] es en base 1. */
 data class ReaderUiState(
     val book: Book? = null,
     val opened: Boolean = false,
     val pageSizes: List<Size> = emptyList(),
-    val startPage: Int = 1,
     val currentPage: Int = 1,
     /** Capítulos (nivel 0): los que se resumen y por los que salta la voz. */
     val chapters: List<Chapter> = emptyList(),
@@ -100,7 +99,6 @@ data class ReaderExtras(
 private data class ReaderMeta(
     val opened: Boolean = false,
     val pageSizes: List<Size> = emptyList(),
-    val startPage: Int = 1,
     val currentPage: Int = 1,
     val mode: ReaderMode = ReaderMode.PDF,
     val error: String? = null
@@ -162,7 +160,6 @@ class ReaderViewModel @Inject constructor(
             book = book,
             opened = m.opened,
             pageSizes = m.pageSizes,
-            startPage = m.startPage,
             currentPage = m.currentPage,
             chapters = contents.filter { it.level == 0 },
             contents = contents,
@@ -261,7 +258,7 @@ class ReaderViewModel @Inject constructor(
             Log.d(TAG, "PDF de ${opened.pageCount} páginas abierto en ${SystemClock.elapsedRealtime() - started} ms")
             renderer = opened
             val start = (route.page ?: saved?.page ?: 1).coerceIn(1, opened.pageCount)
-            meta.update { it.copy(opened = true, pageSizes = sizes, startPage = start, currentPage = start) }
+            meta.update { it.copy(opened = true, pageSizes = sizes, currentPage = start) }
 
             val lastBookmark = bookmarks.observe(bookId).first().maxByOrNull { it.createdAt }
             val longBreak = book.lastOpenedAt?.let { System.currentTimeMillis() - it > RECAP_AFTER_MS } == true
@@ -289,7 +286,7 @@ class ReaderViewModel @Inject constructor(
 
     fun setMode(mode: ReaderMode) {
         savedState[KEY_MODE] = mode
-        meta.update { it.copy(mode = mode, startPage = it.currentPage) }
+        meta.update { it.copy(mode = mode) }
     }
 
     fun setTextScale(scale: Float) {

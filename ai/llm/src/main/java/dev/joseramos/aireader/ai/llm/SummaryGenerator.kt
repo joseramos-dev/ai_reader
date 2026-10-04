@@ -314,7 +314,8 @@ class SummaryGenerator @Inject constructor(
             // Cancelado, no es un fallo: no se queda "Running" para siempre, pero tampoco es un error.
             is CancellationException -> _jobs.update { it - key }
             is LlmException -> {
-                val failed = SummaryJob.Failed(error.message.orEmpty(), error is LlmException.NoApiKey)
+                val needsApiKey = error is LlmException.NoApiKey || error is LlmException.Unauthorized
+                val failed = SummaryJob.Failed(error.message.orEmpty(), needsApiKey)
                 _jobs.update { it + (key to failed) }
             }
             else -> {

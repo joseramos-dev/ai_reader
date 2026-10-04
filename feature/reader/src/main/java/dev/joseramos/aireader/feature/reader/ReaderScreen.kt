@@ -182,7 +182,10 @@ internal fun ReaderScreen(
     }
 
     // Una lista por modo; ambas tienen un elemento por página, así que el índice es la página - 1.
-    val listState = remember(state.mode) { LazyListState(state.startPage - 1) }
+    // Se parte de currentPage (no de un valor fijado solo al abrir el libro): así, si la pantalla se
+    // recompone entera al volver de otra pantalla (p. ej. el chat de IA), la lista se repone donde
+    // estaba el usuario de verdad, no donde se abrió el libro.
+    val listState = remember(state.mode) { LazyListState(state.currentPage - 1) }
     LaunchedEffect(listState) {
         snapshotFlow { listState.dominantPage() }.collect(actions.onPageVisible)
     }

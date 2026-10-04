@@ -47,10 +47,7 @@ enum class PlaybackError {
 
     /** El dispositivo no tiene motor de texto a voz. */
     NO_ENGINE,
-    TEXT_NOT_READY,
-
-    /** El motor elegido en Ajustes es Google Cloud TTS, pero no tiene clave de API configurada. */
-    NEEDS_API_KEY
+    TEXT_NOT_READY
 }
 
 sealed interface SleepTimer {
@@ -179,7 +176,6 @@ class PlaybackEngine @Inject constructor(
             VoiceAvailability.READY -> null
             VoiceAvailability.MISSING -> PlaybackError.VOICE_MISSING
             VoiceAvailability.NO_ENGINE -> PlaybackError.NO_ENGINE
-            VoiceAvailability.NEEDS_API_KEY -> PlaybackError.NEEDS_API_KEY
         }
         if (error != null) {
             _state.update { it.copy(status = PlaybackStatus.IDLE, error = error) }
@@ -305,34 +301,6 @@ class PlaybackEngine @Inject constructor(
             SleepTimer.Off -> timer
         }
         _state.update { it.copy(sleepTimer = applied) }
-    }
-
-    /** Si el motor puede leer [language] (para Ajustes), sin tocar la lectura en curso. */
-    suspend fun availability(language: Language): VoiceAvailability = voice.availability(language)
-
-    /**
-     * Lee una frase de prueba (Ajustes) con la voz de [language] si no hay ninguna lectura en curso
-     * (ni sonando ni en pausa: cargar otra voz aquí sustituiría la del libro a medio escuchar).
-     * Pasa por la misma cola de órdenes que el resto de la sesión para que no se solape con ella.
-     */
-    suspend fun preview(text: String, language: Language = Language.SPANISH): Boolean = commands.withLock {
-        if (_state.value.isListening || voice.load(language) != VoiceAvailability.READY) return@withLock false
-        val speed = _state.value.speed
-        val pcm = withContext(synthDispatcher) {
-            voice.synthesize(SpeechNormalizer.normalize(text, language), if (speedAtPlayback) 1f else speed)
-        }
-        withContext(Dispatchers.IO) {
-            val track = SpeechTrack(pcm.sampleRate)
-            try {
-                if (speedAtPlayback && !track.setSpeed(speed)) speedAtPlayback = false
-                track.track.play()
-                track.write(pcm.samples, 0, pcm.samples.size)
-                drain(track)
-            } finally {
-                track.release()
-            }
-        }
-        true
     }
 
     /**

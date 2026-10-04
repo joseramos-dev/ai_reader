@@ -22,13 +22,10 @@ import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
 
 /**
- * Hoja para introducir la clave de API. Se usa en Ajustes y también donde una función de IA la
- * necesita (resumen, chat, personajes), para no tener que salir del libro: al guardar, quien la
- * abre puede reintentar lo que estaba haciendo.
+ * Hoja para introducir la clave de API de Gemini. Se usa en Ajustes y también donde una función de
+ * IA la necesita (resumen, chat, personajes), para no tener que salir del libro: al guardar, quien
+ * la abre puede reintentar lo que estaba haciendo.
  *
- * @param title título de la hoja; por defecto, el de la clave de Gemini.
- * @param hint texto de ejemplo del campo; por defecto, el de la clave de Gemini.
- * @param help texto de ayuda bajo el campo; por defecto, el de la clave de Gemini.
  * @param onRemove si no es `null` (ya hay clave), muestra la opción de eliminarla.
  */
 @Suppress("DEPRECATION") // LocalClipboard (nuevo) es suspendible; para leer texto plano basta el clásico.
@@ -36,19 +33,16 @@ import dev.joseramos.aireader.core.designsystem.theme.Spacing
 fun ApiKeySheet(
     onSave: (String) -> Unit,
     onDismiss: () -> Unit,
-    onRemove: (() -> Unit)? = null,
-    title: String = stringResource(R.string.api_key_title),
-    hint: String = stringResource(R.string.api_key_hint),
-    help: String = stringResource(R.string.api_key_help)
+    onRemove: (() -> Unit)? = null
 ) {
     var key by remember { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
-    AppBottomSheet(onDismissRequest = onDismiss, title = title) {
+    AppBottomSheet(onDismissRequest = onDismiss, title = stringResource(R.string.api_key_title)) {
         Column(Modifier.padding(horizontal = Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
             OutlinedTextField(
                 value = key,
                 onValueChange = { key = it },
-                placeholder = { Text(hint) },
+                placeholder = { Text(stringResource(R.string.api_key_hint)) },
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 singleLine = true,
@@ -60,7 +54,7 @@ fun ApiKeySheet(
                 modifier = Modifier.fillMaxWidth()
             )
             Text(
-                help,
+                stringResource(R.string.api_key_help),
                 style = AppTheme.typography.footnote,
                 color = AppTheme.colors.secondaryLabel
             )

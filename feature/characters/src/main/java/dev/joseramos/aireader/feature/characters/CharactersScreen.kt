@@ -255,6 +255,14 @@ private fun AnalysisStatus(
                     Modifier.fillMaxWidth()
                 )
             }
+            progress.needsApiKey -> {
+                Text(stringResource(R.string.characters_invalid_key), style = footnote, color = colors.destructive)
+                SecondaryButton(
+                    stringResource(R.string.characters_open_settings),
+                    onOpenSettings,
+                    Modifier.fillMaxWidth()
+                )
+            }
             progress.failed -> {
                 Text(stringResource(R.string.characters_failed), style = footnote, color = colors.destructive)
                 SecondaryButton(stringResource(R.string.characters_retry), onAnalyze, Modifier.fillMaxWidth())

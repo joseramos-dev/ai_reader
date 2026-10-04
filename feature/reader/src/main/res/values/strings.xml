@@ -36,8 +36,6 @@
     <string name="reader_language_english">inglés</string>
     <string name="reader_text_not_ready_title">El texto aún no está listo</string>
     <string name="reader_text_not_ready_message">El libro se está preparando. Podrás escucharlo en cuanto termine.</string>
-    <string name="reader_cloud_tts_key_title">Falta la clave de Google Cloud TTS</string>
-    <string name="reader_cloud_tts_key_message">Has elegido Google Cloud como motor de voz en Ajustes, pero todavía no has configurado su clave de API.</string>
     <string name="player_play">Reproducir</string>
     <string name="player_pause">Pausar</string>
     <string name="player_previous">Frase anterior</string>

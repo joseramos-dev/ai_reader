@@ -13,16 +13,10 @@ enum class VoiceAvailability {
     MISSING,
 
     /** El dispositivo no tiene ningún motor de texto a voz (o no arranca). */
-    NO_ENGINE,
-
-    /** El motor en la nube (Google Cloud TTS) no tiene clave de API configurada en Ajustes. */
-    NEEDS_API_KEY
+    NO_ENGINE
 }
 
-/**
- * Motor de voz. La interfaz existe para poder probar el pipeline con un motor simulado y para
- * poder cambiar de motor (el del sistema o Google Cloud TTS) sin tocar el pipeline.
- */
+/** Motor de voz. La interfaz existe para poder probar el pipeline con un motor simulado. */
 interface TtsEngine {
     /** Prepara la voz de [language] (y suelta la que hubiera). */
     suspend fun load(language: Language): VoiceAvailability
