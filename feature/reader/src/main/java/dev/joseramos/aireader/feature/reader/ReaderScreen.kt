@@ -147,7 +147,6 @@ internal fun ReaderScreen(
     var sheet by rememberSaveable { mutableStateOf<ReaderSheet?>(null) }
     var goToPage by rememberSaveable { mutableStateOf(false) }
     var notePage by rememberSaveable { mutableStateOf<Int?>(null) }
-    var pendingHighlight by remember { mutableStateOf<PendingHighlight?>(null) }
     var editingHighlight by remember { mutableStateOf<Highlight?>(null) }
     val scope = rememberCoroutineScope()
     val hazeState = rememberHazeState()
@@ -256,7 +255,7 @@ internal fun ReaderScreen(
                     actions = actions,
                     listState = listState,
                     contentPadding = contentPadding,
-                    onCreateHighlight = { pendingHighlight = it },
+                    onCreateHighlight = { actions.onAddHighlight(it.page, it.paragraph, it.range, null) },
                     onTapHighlight = { editingHighlight = it },
                     onTap = { controlsVisible = !controlsVisible }
                 )
@@ -343,18 +342,6 @@ internal fun ReaderScreen(
             onDismiss = { notePage = null }
         )
     }
-    pendingHighlight?.let { pending ->
-        HighlightSheet(
-            quotedText = pending.quotedText,
-            initialNote = null,
-            onSave = { note ->
-                actions.onAddHighlight(pending.page, pending.paragraph, pending.range, note)
-                pendingHighlight = null
-            },
-            onRemove = null,
-            onDismiss = { pendingHighlight = null }
-        )
-    }
     editingHighlight?.let { h ->
         HighlightSheet(
             quotedText = quotedText(h, state.pages).orEmpty(),
@@ -423,13 +410,13 @@ private fun TextModeContent(
         highlight = playback.location,
         highlights = extras.highlights,
         contentPadding = contentPadding,
-        modifier = Modifier.pointerInput(Unit) { detectTapGestures { onTap() } },
         names = extras.characters.index,
         onTapCharacter = actions.onOpenCharacter,
         // Solo con la voz en marcha (sonando o en pausa); si no, tocar muestra u oculta los controles.
         onTapPhrase = actions.onListenFrom?.takeIf { playback.location != null },
         onCreateHighlight = onCreateHighlight,
         onTapHighlight = onTapHighlight,
+        onTap = onTap,
         chapters = state.contents
     )
 }

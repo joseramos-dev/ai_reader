@@ -80,7 +80,8 @@
     <string name="bookmarks_empty">Toca el icono de marcapáginas de la barra superior para marcar la página; mantenlo pulsado para añadir una nota.</string>
 
     <string name="reader_highlights">Subrayados</string>
-    <string name="highlights_empty">Mantén pulsado un punto del texto y arrastra para seleccionarlo; al soltar, podrás guardarlo aquí.</string>
+    <string name="highlights_empty">Mantén pulsado un punto del texto para seleccionarlo, ajusta la selección con las flechitas y pulsa «Subrayar».</string>
+    <string name="selection_highlight">Subrayar</string>
     <string name="highlight_title">Subrayado</string>
     <string name="highlight_remove">Quitar subrayado</string>
     <string name="highlight_copy">Copiar</string>
