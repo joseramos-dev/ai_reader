@@ -54,6 +54,17 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
+
+        <!--
+            Sin telemetría de ONNX Runtime. El AAR oficial trae este provider, que al arrancar la app
+            carga libonnxruntime.so y crea el cliente HTTP de 1DS (Microsoft): lee el ANDROID_ID, el
+            fabricante y el modelo, y vigila la red y la batería. Sin él, la telemetría nativa no llega
+            a iniciarse y la librería solo se carga cuando E5Embedder la necesita.
+        -->
+        <provider
+            android:name="ai.onnxruntime.TelemetryInitializer"
+            android:authorities="${applicationId}.onnxruntime_telemetry_initializer"
+            tools:node="remove" />
     </application>
 
 </manifest>

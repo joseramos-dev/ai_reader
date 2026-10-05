@@ -4,6 +4,7 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.os.Process
+import android.system.Os
 import dev.joseramos.aireader.ai.models.ModelCatalog
 import dev.joseramos.aireader.ai.models.ModelManager
 import dev.joseramos.aireader.core.common.DefaultDispatcher
@@ -109,6 +110,10 @@ class E5Embedder @Inject constructor(
     private suspend fun load(): Loaded {
         loaded?.let { return it }
         val dir = models.installedDir(modelId) ?: throw EmbeddingModelMissingException()
+        // Sin telemetría de ONNX Runtime aunque una versión futura la active sin el provider que quita el manifiesto
+        // de :app. Es su desactivación documentada: la librería nativa lee la variable al iniciarse, así que va antes
+        // de tocar ORT. setTelemetry(false) no bastaría: el evento de arranque ya se ha emitido al crear el entorno.
+        Os.setenv("ORT_DISABLE_TELEMETRY", "1", true)
         val options = OrtSession.SessionOptions().apply {
             // Un hilo por inferencia: el paralelismo lo dan varios textos a la vez (ver la clase).
             setIntraOpNumThreads(1)
