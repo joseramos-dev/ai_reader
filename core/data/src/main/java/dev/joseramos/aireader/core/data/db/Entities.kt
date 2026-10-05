@@ -6,6 +6,7 @@ import androidx.room.ForeignKey
 import androidx.room.ForeignKey.Companion.CASCADE
 import androidx.room.ForeignKey.Companion.SET_NULL
 import androidx.room.Fts4
+import androidx.room.FtsOptions
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -142,8 +143,16 @@ data class ChunkEntity(
     val tokenCount: Int
 )
 
-/** Índice de texto completo sobre [ChunkEntity.text] para la búsqueda léxica del RAG. */
-@Fts4(contentEntity = ChunkEntity::class)
+/**
+ * Índice de texto completo sobre [ChunkEntity.text] para la búsqueda léxica del RAG. `unicode61` con
+ * `remove_diacritics=1` pliega las tildes (y las mayúsculas) al indexar y al buscar: «mato» encuentra «mató».
+ * Se usa 1 y no 2 porque con minSdk 28 (SQLite 3.22) solo existen 0 y 1.
+ */
+@Fts4(
+    tokenizer = FtsOptions.TOKENIZER_UNICODE61,
+    tokenizerArgs = ["remove_diacritics=1"],
+    contentEntity = ChunkEntity::class
+)
 @Entity(tableName = "chunks_fts")
 data class ChunkFtsEntity(@PrimaryKey @ColumnInfo(name = "rowid") val rowId: Long, val text: String)
 

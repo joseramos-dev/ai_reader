@@ -15,6 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * - v4: índice compuesto (bookId, createdAt) en `bookmarks` para el marcapáginas más reciente de
  *   cada libro en la biblioteca (antes sin índice para ese orden).
  * - v6: subrayados de texto (`highlights`).
+ * - v7: `chunks_fts` con el tokenizador `unicode61` sin diacríticos (migración manual: reconstruye el índice).
  */
 @Database(
     entities = [
@@ -38,7 +39,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CharacterScanEntity::class,
         HighlightEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2, spec = AppDatabase.Migration1To2::class),

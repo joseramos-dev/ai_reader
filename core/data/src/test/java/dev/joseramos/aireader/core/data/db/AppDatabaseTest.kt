@@ -87,6 +87,22 @@ class AppDatabaseTest {
     }
 
     @Test
+    fun textSearchIgnoresAccentsAndCase() = runTest {
+        db.bookDao().upsert(book("a", importedAt = 1))
+        val ids = db.chunkDao().insertAll(
+            listOf(chunk("a", 0, "Raskólnikov mató a la vieja"), chunk("a", 1, "El ÚLTIMO día de la semana"))
+        )
+
+        for (query in listOf("mato", "mató", "mat*", "MATÓ")) {
+            assertEquals(query, listOf(ids[0]), db.chunkDao().searchText("a", query, 10).map { it.chunkId })
+        }
+        for (query in listOf("ultimo", "último", "ultim*", "últim*")) {
+            assertEquals(query, listOf(ids[1]), db.chunkDao().searchText("a", query, 10).map { it.chunkId })
+        }
+        assertEquals(listOf(ids[0]), db.chunkDao().searchTextInPages("a", "raskolnikov", 1, 1, 10).map { it.chunkId })
+    }
+
+    @Test
     fun deletingBookCascadesToEverything() = runTest {
         db.bookDao().upsert(book("a", importedAt = 1))
         val chapterId = db.chapterDao().insertAll(
