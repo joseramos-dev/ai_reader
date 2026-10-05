@@ -34,8 +34,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.Highlight
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material3.AlertDialog
@@ -605,17 +607,16 @@ private fun ContentsSheet(
                 SegmentedButton(
                     selected = tab == entry,
                     onClick = { tab = entry },
-                    shape = SegmentedButtonDefaults.itemShape(i, ContentsTab.entries.size)
+                    shape = SegmentedButtonDefaults.itemShape(i, ContentsTab.entries.size),
+                    // Sin la marca de selección: con solo un icono, el relleno ya indica la pestaña.
+                    icon = {}
                 ) {
-                    Text(
-                        stringResource(
-                            when (entry) {
-                                ContentsTab.CHAPTERS -> R.string.reader_chapters
-                                ContentsTab.BOOKMARKS -> R.string.reader_bookmarks
-                                ContentsTab.HIGHLIGHTS -> R.string.reader_highlights
-                            }
-                        )
-                    )
+                    val (icon, label) = when (entry) {
+                        ContentsTab.CHAPTERS -> Icons.AutoMirrored.Rounded.FormatListBulleted to R.string.reader_chapters
+                        ContentsTab.BOOKMARKS -> Icons.Outlined.BookmarkBorder to R.string.reader_bookmarks
+                        ContentsTab.HIGHLIGHTS -> Icons.Outlined.Highlight to R.string.reader_highlights
+                    }
+                    Icon(icon, contentDescription = stringResource(label), modifier = Modifier.size(22.dp))
                 }
             }
         }
