@@ -1,0 +1,14 @@
+Alguien hace una pregunta sobre una novela que está leyendo. Estos son los hechos importantes de cada capítulo, en orden:
+
+{{chapters}}
+
+Pregunta: {{question}}
+
+La pregunta sitúa lo que pregunta respecto a un hecho: «{{expression}}». Busca ese hecho en la lista y responde:
+- "hecho": el hecho de la lista que corresponde, copiado tal cual.
+- "capitulo": el número entre corchetes del capítulo donde está ese hecho, es decir, donde ocurre el hecho mismo (no lo que pasa antes o después de él).
+- "relacion": ANTES, DURANTE o DESPUES, según la pregunta sea sobre lo que pasa antes, durante o después del hecho.
+
+Si ese hecho no está en la lista, o no es un hecho de la historia (por ejemplo, «después de comer» o «antes de dormir»), responde {"hecho": "", "capitulo": 0, "relacion": "NINGUNA"}.
+
+Responde solo con un objeto JSON, por ejemplo: {"hecho": "Ana pierde el tren de las nueve.", "capitulo": 3, "relacion": "ANTES"}

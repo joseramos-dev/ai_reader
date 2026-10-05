@@ -19,17 +19,18 @@ class Prompts @Inject constructor(@ApplicationContext private val context: Conte
         val template = cache.getOrPut(id) {
             context.resources.openRawResource(id).bufferedReader().use { it.readText() }
         }
-        return render(template, *values)
+        return fill(template, *values)
     }
 
     val summarySystem: String get() = render(R.raw.summary_system_v1)
 
-    private companion object {
+    companion object {
         // Una sola pasada sobre la plantilla original: si un valor insertado (texto del libro, por
         // ejemplo) contiene literalmente "{{otraClave}}", no se vuelve a sustituir por error.
-        val PLACEHOLDER = Regex("\\{\\{(\\w+)\\}\\}")
+        private val PLACEHOLDER = Regex("\\{\\{(\\w+)\\}\\}")
 
-        fun render(template: String, vararg values: Pair<String, Any>): String {
+        /** Sustituye las variables de [template]. Público para las pruebas que leen la plantilla del disco. */
+        fun fill(template: String, vararg values: Pair<String, Any>): String {
             val byKey = values.toMap()
             return PLACEHOLDER.replace(template) { match ->
                 byKey[match.groupValues[1]]?.toString() ?: match.value

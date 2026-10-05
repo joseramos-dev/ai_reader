@@ -27,7 +27,8 @@ data class Candidates(val vector: List<Long>, val text: List<Long>, val vectorSc
  * Si el libro no tiene vectores o el modelo no se puede cargar, busca solo por palabras; y si
  * tampoco encuentra nada, usa fragmentos repartidos por todo el libro. Nunca falla por los embeddings.
  *
- * Con `maxPage` (anti-spoilers) solo se usan fragmentos que acaban como muy tarde en esa página.
+ * Con `pages` solo se usan los fragmentos que caen dentro de esos rangos: la parte del libro por la
+ * que se pregunta («al final del libro») y, con anti-spoilers, lo ya leído.
  */
 @Singleton
 class HybridRetriever @Inject constructor(
@@ -44,38 +45,34 @@ class HybridRetriever @Inject constructor(
     /** Si el libro tiene fragmentos en los que buscar (aunque no tenga vectores). */
     fun observeSearchable(bookId: String): Flow<Boolean> = chunkDao.observeHasChunks(bookId)
 
+    /** [pages]: rangos de páginas en los que buscar; `null`, todo el libro. */
     suspend fun retrieve(
         bookId: String,
         question: String,
         k: Int = DEFAULT_K,
-        maxPage: Int? = null
+        pages: List<IntRange>? = null
     ): List<ChunkEntity> {
-        val candidates = candidates(bookId, question, maxPage)
+        val candidates = candidates(bookId, question, pages)
         val fused = reciprocalRankFusion(listOf(candidates.vector, candidates.text))
         val ids = dropWeakMatches(fused, candidates).take(k)
-            .ifEmpty { evenlySpaced(allowedIds(bookId, maxPage), k) }
+            .ifEmpty { evenlySpaced(allowedIds(bookId, pages), k) }
         return chunks(ids)
     }
 
     /** [k] fragmentos repartidos entre [fromPage] y [toPage], en orden de lectura (para resumir un capítulo). */
     suspend fun spread(bookId: String, fromPage: Int, toPage: Int, k: Int): List<ChunkEntity> =
-        if (toPage < fromPage) emptyList() else chunks(evenlySpaced(chunkDao.idsInPages(bookId, fromPage, toPage), k))
+        if (toPage < fromPage) emptyList() else spread(bookId, listOf(fromPage..toPage), k)
+
+    /** [k] fragmentos repartidos por los rangos de [pages], en orden de lectura (para resumir una parte del libro). */
+    suspend fun spread(bookId: String, pages: List<IntRange>, k: Int): List<ChunkEntity> =
+        chunks(evenlySpaced(allowedIds(bookId, pages), k))
 
     /** Resultados de cada búsqueda por separado, antes de fusionarlos (para evaluar y ajustar). */
-    suspend fun candidates(bookId: String, question: String, maxPage: Int? = null): Candidates {
+    suspend fun candidates(bookId: String, question: String, pages: List<IntRange>? = null): Candidates {
         val textHits = FtsQuery.from(question)
-            ?.let { query ->
-                runCatching {
-                    if (maxPage == null) {
-                        chunkDao.searchText(bookId, query, CANDIDATES)
-                    } else {
-                        chunkDao.searchTextUntil(bookId, query, maxPage, CANDIDATES)
-                    }
-                }.getOrDefault(emptyList())
-            }
-            ?.map { it.chunkId }
+            ?.let { query -> runCatching { textSearch(bookId, query, pages) }.getOrDefault(emptyList()) }
             .orEmpty()
-        val semantic = semantic(bookId, question, maxPage)
+        val semantic = semantic(bookId, question, pages)
         return Candidates(semantic.map { it.first }, textHits, semantic.map { it.second })
     }
 
@@ -85,14 +82,25 @@ class HybridRetriever @Inject constructor(
         embedder.release()
     }
 
+    /**
+     * Búsqueda por palabras: en todo el libro o en cada rango de [pages], quedándose con los que
+     * tienen más coincidencias.
+     */
+    private suspend fun textSearch(bookId: String, query: String, pages: List<IntRange>?): List<Long> {
+        val matches = pages?.flatMap { chunkDao.searchTextInPages(bookId, query, it.first, it.last, CANDIDATES) }
+            ?.sortedBy { it.score }
+            ?: chunkDao.searchText(bookId, query, CANDIDATES)
+        return matches.map { it.chunkId }.distinct().take(CANDIDATES)
+    }
+
     /** Búsqueda por significado, o nada si no hay vectores o el modelo falla. */
     @Suppress("TooGenericExceptionCaught") // Errores nativos (ONNX, tokenizador) o de memoria al cargar el modelo.
-    private suspend fun semantic(bookId: String, question: String, maxPage: Int?): List<Pair<Long, Float>> {
+    private suspend fun semantic(bookId: String, question: String, pages: List<IntRange>?): List<Pair<Long, Float>> {
         if (semanticBroken) return emptyList()
         return try {
             // Sin vectores no se carga el modelo: es lo que tarda y lo que puede fallar.
             val index = index(bookId).takeIf { it.size > 0 && embedder.isAvailable() } ?: return emptyList()
-            val allowed = maxPage?.let { allowedIds(bookId, it).toSet() }
+            val allowed = pages?.let { allowedIds(bookId, it).toSet() }
             index.searchScored(embedder.embedQuery(question), CANDIDATES, allowed)
         } catch (e: CancellationException) {
             throw e
@@ -106,8 +114,8 @@ class HybridRetriever @Inject constructor(
         }
     }
 
-    private suspend fun allowedIds(bookId: String, maxPage: Int?): List<Long> =
-        if (maxPage == null) chunkDao.idsByBook(bookId) else chunkDao.idsInPages(bookId, 1, maxPage)
+    private suspend fun allowedIds(bookId: String, pages: List<IntRange>?): List<Long> =
+        pages?.flatMap { chunkDao.idsInPages(bookId, it.first, it.last) }?.distinct() ?: chunkDao.idsByBook(bookId)
 
     private suspend fun chunks(ids: List<Long>): List<ChunkEntity> {
         val byId = chunkDao.getByIds(ids).associateBy { it.id }

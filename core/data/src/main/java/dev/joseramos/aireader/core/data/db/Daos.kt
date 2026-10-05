@@ -208,17 +208,27 @@ interface ChunkDao {
     )
     suspend fun searchText(bookId: String, query: String, limit: Int): List<ChunkMatch>
 
-    /** Como [searchText], pero solo en fragmentos que acaban como muy tarde en [maxPage] (anti-spoilers). */
+    /**
+     * Como [searchText], pero solo en fragmentos que caen entre [fromPage] y [toPage] (ambas
+     * incluidas), igual que [idsInPages]: la parte del libro por la que se pregunta o, con
+     * anti-spoilers, lo ya leído.
+     */
     @Query(
         """
         SELECT c.id AS chunkId, -length(offsets(chunks_fts)) AS score
         FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid
-        WHERE chunks_fts MATCH :query AND c.bookId = :bookId AND c.endPage <= :maxPage
+        WHERE chunks_fts MATCH :query AND c.bookId = :bookId AND c.startPage >= :fromPage AND c.endPage <= :toPage
         ORDER BY score
         LIMIT :limit
         """
     )
-    suspend fun searchTextUntil(bookId: String, query: String, maxPage: Int, limit: Int): List<ChunkMatch>
+    suspend fun searchTextInPages(
+        bookId: String,
+        query: String,
+        fromPage: Int,
+        toPage: Int,
+        limit: Int
+    ): List<ChunkMatch>
 
     /** Fragmentos que caen entre [fromPage] y [toPage] (ambas incluidas), en orden de lectura. */
     @Query(

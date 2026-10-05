@@ -41,9 +41,12 @@ data class ReadingContext(val currentPage: Int = 1, val spoilerLimit: Int? = nul
 
 /**
  * Responde una pregunta sobre un libro (RAG):
- * 1. Con historial, reformula la pregunta para que se entienda sola (modelo de resúmenes).
- * 2. «Resume este capítulo» → resumen guardado o fragmentos repartidos por el capítulo; preguntas
- *    globales → resúmenes de capítulo; concretas → búsqueda híbrida (top 8).
+ * 1. Sitúa la pregunta en el libro si habla de una parte de él («el capítulo 2», «al final del
+ *    libro», «después del crimen»: [BookLocator]) y, con historial, la reformula para que se entienda
+ *    sola (modelo de resúmenes).
+ * 2. Resumen de una parte del libro («resume este capítulo», «¿qué pasa al final?») → resúmenes
+ *    guardados o fragmentos repartidos por ella; otras preguntas sobre una parte → búsqueda híbrida
+ *    solo en sus páginas; globales → resúmenes de capítulo; concretas → búsqueda híbrida (top 8).
  * 3. Prompt: instrucciones + contexto del libro (prefijo estable, que aprovecha la caché implícita de
  *    Gemini) + reglas anti-spoilers si toca + fragmentos numerados y la posición del lector.
  * 4. Respuesta en streaming con el modelo del chat (Gemini Flash) y validación de las citas `[p. N]`.
@@ -54,6 +57,7 @@ data class ReadingContext(val currentPage: Int = 1, val spoilerLimit: Int? = nul
 class AskBook @Inject constructor(
     private val llm: LlmClient,
     private val retriever: HybridRetriever,
+    private val locator: BookLocator,
     private val prompts: Prompts,
     private val books: BookRepository,
     private val content: BookContentRepository,
@@ -61,6 +65,12 @@ class AskBook @Inject constructor(
     private val chat: ChatRepository,
     private val settings: SettingsRepository
 ) {
+    /**
+     * Lo que se busca para una pregunta: [question] (la reformulada, si hizo falta), [query] (sin la
+     * expresión que la sitúa en el libro) y la parte del libro a la que se refiere, si es el caso.
+     */
+    private data class Search(val question: String, val query: String, val located: LocatedQuestion?)
+
     fun ask(
         bookId: String,
         threadId: Long,
@@ -94,26 +104,17 @@ class AskBook @Inject constructor(
         // Los títulos de los capítulos que aún no se han leído también pueden destripar.
         val visibleChapters = if (limit == null) chapters else chapters.filter { it.startPage <= limit }
         val book = books.getBook(bookId)
-
-        // «El capítulo anterior» se resuelve con la página del lector, no con la conversación: se
-        // reconoce en la pregunta original, porque al reformularla podría perderse la referencia.
-        val chapterRef = QueryRouter.chapterSummary(question)
-        // Reformular cuesta una llamada: solo se hace si la pregunta depende de la conversación.
-        val standalone = if (chapterRef != null || history.isEmpty() || !QueryRouter.needsContext(question)) {
-            question
-        } else {
-            rewrite(history, question, config.summaryModel)
-        }
-        val fragments = fragmentsFor(bookId, standalone, chapterRef, chapters, reading)
+        val pageCount = book?.pageCount ?: chapters.maxOfOrNull { it.endPage } ?: 0
+        val context = LocationContext(chapters, pageCount, book?.isLiterature == true, reading)
+        val search = search(bookId, question, history, context, config.summaryModel)
+        val fragments = fragmentsFor(bookId, search, context)
         val system = buildList {
             add(SystemBlock(prompts.render(R.raw.rag_system_v1)))
             add(SystemBlock(bookContext(bookId, visibleChapters)))
-            if (limit != null) {
-                add(
-                    SystemBlock(
-                        prompts.render(R.raw.rag_spoilers_v1, "page" to limit, "pages" to (book?.pageCount ?: limit))
-                    )
-                )
+            // Con el libro entero leído no hay nada que ocultar: las reglas anti-spoilers solo harían
+            // que el modelo se negara a contar «qué pasa al final».
+            if (limit != null && limit < pageCount) {
+                add(SystemBlock(prompts.render(R.raw.rag_spoilers_v1, "page" to limit, "pages" to pageCount)))
             }
         }
         val request = LlmRequest(
@@ -134,7 +135,7 @@ class AskBook @Inject constructor(
                     prompts.render(
                         R.raw.rag_question_v1,
                         "fragments" to render(fragments),
-                        "position" to position(reading, visibleChapters),
+                        "position" to position(reading, visibleChapters, search.located),
                         "question" to question
                     )
                 ),
@@ -153,31 +154,105 @@ class AskBook @Inject constructor(
         emit(AskEvent.Completed(cited))
     }
 
-    private suspend fun fragmentsFor(
+    /**
+     * Prepara la búsqueda. La ubicación se busca en la pregunta original: «el capítulo anterior» se
+     * resuelve con la página del lector, y al reformularla podría perderse la referencia. Reformular
+     * cuesta una llamada: solo se hace si la pregunta depende de la conversación y no pide el resumen
+     * de una parte del libro (que sale de esa parte, no del texto de la pregunta).
+     */
+    private suspend fun search(
         bookId: String,
         question: String,
-        chapterRef: ChapterRef?,
-        chapters: List<Chapter>,
-        reading: ReadingContext
-    ): List<Fragment> {
-        val limit = reading.spoilerLimit
-        (chapterRef ?: QueryRouter.chapterSummary(question))?.let { ref ->
-            val chapter = ChapterResolver.resolve(ref, chapters, reading.currentPage)
-            if (chapter != null) return chapterFragments(bookId, chapter, limit)
+        history: List<ChatMessage>,
+        context: LocationContext,
+        model: String
+    ): Search {
+        val original = locator.locate(bookId, question, context)
+        val summaryOfPart = original != null && QueryRouter.isSummary(question)
+        if (history.isEmpty() || !QueryRouter.needsContext(question) || summaryOfPart) {
+            return Search(question, original?.query ?: question, original)
         }
+        val standalone = rewrite(history, question, model)
+        // Situada por la original, se busca con la reformulada entera: la expresión era de la otra.
+        if (original != null) return Search(standalone, standalone, original)
+        // La reformulada solo se sitúa si la original no hablaba de ninguna parte del libro («¿y después
+        // de eso?» lo dice con la conversación); si hablaba y se descartó («al principio de su mano»),
+        // reformularla no debe resucitarlo.
+        val located = if (LocationRules.detect(question, context.literature) == null) {
+            locator.locate(bookId, standalone, context)
+        } else {
+            null
+        }
+        return Search(standalone, located?.query ?: standalone, located)
+    }
+
+    private suspend fun fragmentsFor(bookId: String, search: Search, context: LocationContext): List<Fragment> {
+        search.located?.let { return locatedFragments(bookId, search, it, context) }
+        val question = search.question
+        val limit = context.reading.spoilerLimit
         if (QueryRouter.route(question) == QueryScope.GLOBAL) {
-            val chapterSummaries = summaries.all(bookId).filter { it.kind == SummaryKind.CHAPTER_SHORT }
-            val byChapter = chapters.filter { limit == null || it.endPage <= limit }.mapNotNull { chapter ->
-                chapterSummaries.firstOrNull { it.chapterId == chapter.id }?.let { chapter to it.text }
+            val saved = shortSummaries(bookId)
+            val byChapter = context.chapters.filter { limit == null || it.endPage <= limit }.mapNotNull { chapter ->
+                saved[chapter.id]?.let { chapter to it }
             }
-            if (byChapter.isNotEmpty()) {
-                return byChapter.mapIndexed { i, (chapter, text) ->
-                    Fragment(i + 1, "Resumen del capítulo: $text", chapter.startPage, chapter.endPage, chapter.title)
-                }
-            }
+            if (byChapter.isNotEmpty()) return byChapter.toSummaryFragments()
         }
         val k = if (QueryRouter.route(question) == QueryScope.GLOBAL) GLOBAL_K else SPECIFIC_K
-        return retriever.retrieve(bookId, question, k, limit).toFragments(chapters)
+        return retriever.retrieve(bookId, question, k, limit?.let { listOf(1..it) }).toFragments(context.chapters)
+    }
+
+    /**
+     * Pregunta sobre una parte del libro. Si pide un resumen: el del capítulo, si es uno entero, o los
+     * de los capítulos de esa parte (o fragmentos repartidos por ella); si no, la búsqueda híbrida solo
+     * en sus páginas. Si el lector aún no ha llegado ahí (anti-spoilers), nada.
+     */
+    private suspend fun locatedFragments(
+        bookId: String,
+        search: Search,
+        located: LocatedQuestion,
+        context: LocationContext
+    ): List<Fragment> {
+        val summary = QueryRouter.isSummary(search.question) || QueryRouter.route(search.question) == QueryScope.GLOBAL
+        return when {
+            located.pages.isEmpty() -> emptyList()
+            !summary -> retriever.retrieve(bookId, search.query, SPECIFIC_K, located.pages)
+                .toFragments(context.chapters)
+            else -> wholeChapter(located.location, context)
+                ?.let { chapterFragments(bookId, it, context.reading.spoilerLimit) }
+                ?: rangeFragments(bookId, located.pages, context.chapters)
+        }
+    }
+
+    /** El capítulo, si la pregunta es sobre uno solo y entero («resume el capítulo 3»). */
+    private fun wholeChapter(location: BookLocation, context: LocationContext): Chapter? {
+        val chapters = location as? BookLocation.Chapters ?: return null
+        if (chapters.refs.size != 1 || chapters.stretch != Stretch.WHOLE) return null
+        return ChapterResolver.resolve(chapters.refs.single(), context.chapters, context.reading.currentPage)
+    }
+
+    /**
+     * Para resumir una parte del libro: los resúmenes breves de los capítulos que caen enteros en
+     * ella, si están todos; si no, fragmentos repartidos por sus páginas.
+     */
+    private suspend fun rangeFragments(bookId: String, pages: List<IntRange>, chapters: List<Chapter>): List<Fragment> {
+        val inside = chapters.filter { chapter ->
+            pages.any { chapter.startPage >= it.first && chapter.endPage <= it.last }
+        }
+        val saved = shortSummaries(bookId)
+        val byChapter = inside.mapNotNull { chapter -> saved[chapter.id]?.let { chapter to it } }
+        return if (byChapter.isNotEmpty() && byChapter.size == inside.size) {
+            byChapter.toSummaryFragments()
+        } else {
+            retriever.spread(bookId, pages, CHAPTER_K).toFragments(chapters)
+        }
+    }
+
+    /** Resúmenes breves guardados, por id de capítulo. */
+    private suspend fun shortSummaries(bookId: String): Map<Long?, String> =
+        summaries.all(bookId).filter { it.kind == SummaryKind.CHAPTER_SHORT }.associate { it.chapterId to it.text }
+
+    private fun List<Pair<Chapter, String>>.toSummaryFragments() = mapIndexed { i, (chapter, text) ->
+        Fragment(i + 1, "Resumen del capítulo: $text", chapter.startPage, chapter.endPage, chapter.title)
     }
 
     /**
@@ -214,16 +289,31 @@ class AskBook @Inject constructor(
 
     /**
      * Dónde está el lector, con el capítulo actual y el anterior por su título (el número interno del
-     * índice no sirve: en los libros con partes, el capítulo 38 del índice es «Parte 6. Capítulo 6»).
+     * índice no sirve: en los libros con partes, el capítulo 38 del índice es «Parte 6. Capítulo 6»),
+     * y a qué páginas se refiere la pregunta, si habla de una parte del libro.
      */
-    private fun position(reading: ReadingContext, chapters: List<Chapter>): String {
-        val current = ChapterResolver.resolve(ChapterRef.Current, chapters, reading.currentPage)
-            ?: return "El lector está en la página ${reading.currentPage}."
-        val previous = ChapterResolver.resolve(ChapterRef.Previous, chapters, reading.currentPage)
+    private fun position(reading: ReadingContext, chapters: List<Chapter>, located: LocatedQuestion?): String {
+        val page = reading.currentPage
+        val current = ChapterResolver.resolve(ChapterRef.Current, chapters, page)
+        val previous = ChapterResolver.resolve(ChapterRef.Previous, chapters, page)
         return buildString {
-            append("El lector está en la página ${reading.currentPage}, en el capítulo ${describe(current, chapters)}.")
-            if (previous != null) append(" El capítulo anterior es ${describe(previous, chapters)}.")
+            if (current == null) {
+                append("El lector está en la página $page.")
+            } else {
+                append("El lector está en la página $page, en el capítulo ${describe(current, chapters)}.")
+                if (previous != null) append(" El capítulo anterior es ${describe(previous, chapters)}.")
+            }
+            if (located != null) append(" ").append(scope(located))
         }
+    }
+
+    private fun scope(located: LocatedQuestion): String = if (located.pages.isEmpty()) {
+        "La pregunta se refiere a una parte del libro que el lector aún no ha leído."
+    } else {
+        val pages = located.pages.joinToString(", ") { range ->
+            if (range.first == range.last) "${range.first}" else "${range.first}–${range.last}"
+        }
+        "La pregunta se refiere a las páginas $pages."
     }
 
     private fun describe(chapter: Chapter, chapters: List<Chapter>): String {

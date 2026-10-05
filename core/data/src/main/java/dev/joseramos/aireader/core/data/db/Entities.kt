@@ -20,8 +20,12 @@ enum class IndexStatus { PENDING, EXTRACTING_TEXT, TEXT_READY, EMBEDDING, READY,
 
 enum class ChapterSource { OUTLINE, HEURISTIC, LLM, BLOCKS }
 
-/** [RECAP]: repaso «Hasta ahora…» de lo leído hasta [SummaryEntity.untilPage]. */
-enum class SummaryKind { CHAPTER_SHORT, CHAPTER_LONG, BOOK, RECAP }
+/**
+ * [RECAP]: repaso «Hasta ahora…» de lo leído hasta [SummaryEntity.untilPage]. [CHAPTER_EVENTS]: los
+ * hechos importantes de un capítulo, uno por línea; sitúan en el libro preguntas como «¿qué hace
+ * después del crimen?». Room guarda el nombre, así que añadir tipos no necesita migración.
+ */
+enum class SummaryKind { CHAPTER_SHORT, CHAPTER_LONG, BOOK, RECAP, CHAPTER_EVENTS }
 
 enum class ChatRole { USER, ASSISTANT }
 

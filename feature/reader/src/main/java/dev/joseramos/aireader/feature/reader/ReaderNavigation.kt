@@ -176,6 +176,7 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
     summaryTarget?.let { target ->
         SummarySheet(
             target = target,
+            literature = literature,
             viewModel = summaryViewModel,
             onChangeTarget = { summaryTarget = it },
             onAddApiKey = { retryAfterKey = { summaryViewModel.generate(target) } },

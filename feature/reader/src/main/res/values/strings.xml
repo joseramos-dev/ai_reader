@@ -55,6 +55,7 @@
     <string name="ai_ask_subtitle">Pide resúmenes o pregunta lo que quieras: responde con el texto del libro y cita la página</string>
     <string name="ai_brief">Breve</string>
     <string name="ai_detailed">Detallado</string>
+    <string name="ai_events">Hechos</string>
     <string name="ai_generating">Generando el resumen…</string>
     <string name="ai_retry">Reintentar</string>
     <string name="ai_regenerate">Volver a generar</string>

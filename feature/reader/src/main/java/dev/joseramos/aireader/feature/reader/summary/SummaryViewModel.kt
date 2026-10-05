@@ -27,10 +27,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** Resumen que se está mostrando: de un capítulo (en breve o detallado) o del libro entero. */
-data class SummaryTarget(val chapter: Chapter, val detailed: Boolean = false) {
-    val kind: SummaryKind get() = if (detailed) SummaryKind.CHAPTER_LONG else SummaryKind.CHAPTER_SHORT
-}
+/** Resumen de un capítulo que se está mostrando: breve, detallado o sus hechos importantes. */
+data class SummaryTarget(val chapter: Chapter, val kind: SummaryKind = SummaryKind.CHAPTER_SHORT)
 
 data class SummariesUiState(
     val summaries: List<Summary> = emptyList(),
@@ -115,5 +113,5 @@ class SummaryViewModel @Inject constructor(
         }
     }
 
-    fun generate(target: SummaryTarget) = generator.summarizeChapter(bookId, target.chapter, target.detailed)
+    fun generate(target: SummaryTarget) = generator.summarizeChapter(bookId, target.chapter, target.kind)
 }

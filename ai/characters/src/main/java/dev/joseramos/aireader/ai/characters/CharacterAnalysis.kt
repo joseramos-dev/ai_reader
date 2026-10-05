@@ -16,6 +16,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.joseramos.aireader.ai.llm.LlmClient
+import dev.joseramos.aireader.ai.llm.SummaryGenerator
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.CharacterRepository
@@ -43,9 +44,10 @@ data class AnalysisProgress(
 }
 
 /**
- * Arranca y sigue el análisis de personajes. Solo se hace con novelas y con clave de API; con el
- * ajuste automático se lanza al terminar la indexación (o al abrir el libro, si entonces no se
- * pudo), y si no, cuando el usuario lo pide desde el menú de personajes.
+ * Arranca y sigue el análisis de personajes, que también genera los hechos de cada capítulo. Solo se
+ * hace con novelas y con clave de API; con el ajuste automático se lanza al terminar la indexación
+ * (o al abrir el libro, si entonces no se pudo o faltan hechos), y si no, cuando el usuario lo pide
+ * desde el menú de personajes.
  */
 @Singleton
 class CharacterAnalysis @Inject constructor(
@@ -56,6 +58,7 @@ class CharacterAnalysis @Inject constructor(
     private val settings: SettingsRepository,
     private val llm: LlmClient,
     private val extractor: CharacterExtractor,
+    private val summaries: SummaryGenerator,
     private val usage: UsageRepository
 ) {
     private val workManager get() = WorkManager.getInstance(context)
@@ -80,7 +83,8 @@ class CharacterAnalysis @Inject constructor(
     }
 
     /**
-     * Arranca el análisis si es una novela ya indexada, hay clave y quedan capítulos por analizar.
+     * Arranca el análisis si es una novela ya indexada, hay clave y quedan capítulos por analizar o
+     * sin hechos (los libros analizados antes de que existieran los hechos los completan así).
      * Si no cabe en lo que queda del presupuesto de hoy, no arranca solo: queda el botón de la
      * pantalla de personajes, que pide confirmación.
      */
@@ -89,7 +93,7 @@ class CharacterAnalysis @Inject constructor(
         val indexed = book.indexStatus in setOf(IndexStatus.READY, IndexStatus.TEXT_READY, IndexStatus.EMBEDDING)
         if (!book.isLiterature || !indexed || !llm.hasApiKey()) return
         val progress = observe(bookId).first()
-        if (progress.complete || progress.running) return
+        if (progress.running || (progress.complete && summaries.estimateEvents(bookId).total == 0L)) return
         val confirmation = usage.today.first().confirmationFor(estimateTokens(bookId))
         if (confirmation != null) {
             Log.i(
@@ -101,8 +105,9 @@ class CharacterAnalysis @Inject constructor(
         start(bookId)
     }
 
-    /** Tokens que costaría analizar los capítulos que faltan (estimación local). */
-    suspend fun estimateTokens(bookId: String): Long = extractor.estimate(bookId).total
+    /** Tokens que costaría analizar los capítulos que faltan y generar sus hechos (estimación local). */
+    suspend fun estimateTokens(bookId: String): Long =
+        (extractor.estimate(bookId) + summaries.estimateEvents(bookId)).total
 
     fun observe(bookId: String): Flow<AnalysisProgress> = combine(
         characters.observe(bookId),

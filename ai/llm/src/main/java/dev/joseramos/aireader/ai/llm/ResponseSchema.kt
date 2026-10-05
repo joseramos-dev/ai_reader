@@ -12,11 +12,20 @@ import kotlinx.serialization.json.putJsonArray
  * un objeto son obligatorias, para que el modelo no las omita.
  */
 object ResponseSchema {
-    fun obj(vararg properties: Pair<String, JsonObject>, nullable: Boolean = false): JsonObject = buildJsonObject {
+    /**
+     * [ordered]: el modelo escribe las propiedades en este orden (`propertyOrdering`; si no, Gemini las
+     * ordena alfabéticamente). Sirve para que razone en orden, por ejemplo citando algo antes de decidir.
+     */
+    fun obj(
+        vararg properties: Pair<String, JsonObject>,
+        nullable: Boolean = false,
+        ordered: Boolean = false
+    ): JsonObject = buildJsonObject {
         put("type", "OBJECT")
         put("properties", JsonObject(properties.toMap()))
         putJsonArray("required") { properties.forEach { add(JsonPrimitive(it.first)) } }
         if (nullable) put("nullable", true)
+        if (ordered) putJsonArray("propertyOrdering") { properties.forEach { add(JsonPrimitive(it.first)) } }
     }
 
     fun array(items: JsonObject): JsonObject = buildJsonObject {

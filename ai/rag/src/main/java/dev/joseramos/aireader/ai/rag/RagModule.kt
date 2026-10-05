@@ -26,6 +26,10 @@ interface RagModule {
     /** Activa la etapa de embeddings de la indexación. */
     @Binds
     fun embeddingStage(impl: BookEmbeddingIndexer): EmbeddingStage
+
+    /** Decide con Gemini las ubicaciones dudosas y dónde ocurre un hecho. */
+    @Binds
+    fun locationJudge(impl: GeminiLocationJudge): LocationJudge
 }
 
 /**

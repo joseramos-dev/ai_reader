@@ -96,10 +96,35 @@ class HybridRetrieverTest {
         )
         val retriever = HybridRetriever(FakeChunkDao(chunks, textHits = listOf(8, 3)), vectors, FakeEmbedder())
 
-        assertEquals(setOf(2L, 3L), retriever.retrieve("libro", "Sonia y el hacha", maxPage = 4).map { it.id }.toSet())
+        assertEquals(
+            setOf(2L, 3L),
+            retriever.retrieve("libro", "Sonia y el hacha", pages = listOf(1..4)).map { it.id }.toSet()
+        )
 
         val fallback = HybridRetriever(FakeChunkDao(chunks, textHits = emptyList()), FakeEmbeddingDao(), FakeEmbedder())
-        assertTrue(fallback.retrieve("libro", "¿De qué trata?", k = 5, maxPage = 3).all { it.endPage <= 3 })
+        assertTrue(fallback.retrieve("libro", "¿De qué trata?", k = 5, pages = listOf(1..3)).all { it.endPage <= 3 })
+    }
+
+    /** «Al final del libro», «los capítulos 2 y 7»: solo se busca en esas páginas, aunque sean dos tramos. */
+    @Test
+    fun withPageRangesSearchesOnlyInsideThem() = runTest {
+        val vectors = FakeEmbeddingDao(
+            listOf(
+                BookVector(1, VectorCodec.encode(floatArrayOf(1f, 0f))),
+                BookVector(5, VectorCodec.encode(floatArrayOf(0.9f, 0.1f))),
+                BookVector(9, VectorCodec.encode(floatArrayOf(0.8f, 0.2f)))
+            )
+        )
+        val retriever = HybridRetriever(FakeChunkDao(chunks, textHits = listOf(2, 6, 10)), vectors, FakeEmbedder())
+
+        val ids = retriever.retrieve("libro", "Sonia y el hacha", pages = listOf(5..6, 9..10)).map { it.id }
+
+        assertEquals(setOf(5L, 6L, 9L, 10L), ids.toSet())
+
+        val fallback = HybridRetriever(FakeChunkDao(chunks, textHits = emptyList()), FakeEmbeddingDao(), FakeEmbedder())
+        val spread = fallback.retrieve("libro", "¿De qué trata?", k = 3, pages = listOf(5..6, 9..10))
+        assertTrue(spread.isNotEmpty() && spread.all { it.startPage in 5..6 || it.startPage in 9..10 })
+        assertTrue(fallback.retrieve("libro", "¿De qué trata?", pages = emptyList()).isEmpty())
     }
 
     @Test
@@ -109,20 +134,7 @@ class HybridRetrieverTest {
 
         assertEquals(listOf(3L, 5L), retriever.spread("libro", fromPage = 3, toPage = 6, k = 2).map { it.id })
         assertTrue(retriever.spread("libro", fromPage = 6, toPage = 3, k = 2).isEmpty())
-    }
-
-    @Test
-    fun chapterSummaryRequestsAreRecognised() {
-        assertEquals(ChapterRef.Current, QueryRouter.chapterSummary("Resume este capítulo"))
-        assertEquals(ChapterRef.Current, QueryRouter.chapterSummary("¿De qué trata el tema actual?"))
-        assertEquals(ChapterRef.Number(3), QueryRouter.chapterSummary("Hazme un resumen del capítulo 3"))
-        assertEquals(ChapterRef.Number(4), QueryRouter.chapterSummary("resumen del capítulo IV"))
-        assertEquals(null, QueryRouter.chapterSummary("¿Quién mata al prestamista en el capítulo 3?"))
-        assertEquals(null, QueryRouter.chapterSummary("Resume el libro"))
-        assertEquals(ChapterRef.Previous, QueryRouter.chapterSummary("Resúmeme el capítulo anterior"))
-        assertEquals(ChapterRef.Previous, QueryRouter.chapterSummary("¿Qué pasó en el anterior capítulo?"))
-        assertEquals(ChapterRef.Next, QueryRouter.chapterSummary("¿De qué trata el capítulo siguiente?"))
-        assertEquals(ChapterRef.Current, QueryRouter.chapterSummary("Cuéntame el capítulo en el que estoy"))
+        assertEquals(listOf(2L, 9L), retriever.spread("libro", listOf(2..3, 9..10), k = 2).map { it.id })
     }
 
     private val partedBook = listOf(
@@ -195,8 +207,11 @@ class HybridRetrieverTest {
         override suspend fun searchText(bookId: String, query: String, limit: Int) =
             textHits.map { ChunkMatch(it, 0.0) }
 
-        override suspend fun searchTextUntil(bookId: String, query: String, maxPage: Int, limit: Int) =
-            textHits.filter { id -> chunks.first { it.id == id }.endPage <= maxPage }.map { ChunkMatch(it, 0.0) }
+        override suspend fun searchTextInPages(bookId: String, query: String, fromPage: Int, toPage: Int, limit: Int) =
+            textHits.filter { id ->
+                val chunk = chunks.first { it.id == id }
+                chunk.startPage >= fromPage && chunk.endPage <= toPage
+            }.map { ChunkMatch(it, 0.0) }
 
         override suspend fun idsInPages(bookId: String, fromPage: Int, toPage: Int) =
             chunks.filter { it.startPage >= fromPage && it.endPage <= toPage }.map { it.id }

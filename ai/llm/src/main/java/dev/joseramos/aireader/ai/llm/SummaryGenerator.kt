@@ -36,6 +36,8 @@ sealed interface SummaryJob {
  * - Libro: a partir de los resúmenes breves de cada capítulo, generando los que falten.
  * - Repaso «Hasta ahora…»: resúmenes de los capítulos anteriores más el capítulo actual hasta la
  *   página dada, nunca más allá (sin spoilers).
+ * - Hechos de un capítulo: los importantes, uno por línea (del texto o, si es largo, de los resúmenes
+ *   de sus bloques). Sirven para situar en el libro preguntas como «¿qué hace después del crimen?».
  * El estilo depende del tipo de documento (narrativo, tipo abstract, conceptos clave o documento).
  * Cada capítulo es un trabajo independiente: si falla uno, los demás se conservan.
  * Corre en el ámbito de la app para que cerrar la hoja no lo cancele.
@@ -53,9 +55,43 @@ class SummaryGenerator @Inject constructor(
     private val _jobs = MutableStateFlow<Map<SummaryKey, SummaryJob>>(emptyMap())
     val jobs: StateFlow<Map<SummaryKey, SummaryJob>> = _jobs
 
-    fun summarizeChapter(bookId: String, chapter: Chapter, detailed: Boolean = false) {
-        val kind = if (detailed) SummaryKind.CHAPTER_LONG else SummaryKind.CHAPTER_SHORT
-        launchJob(SummaryKey(bookId, chapter.id, kind)) { chapterSummary(bookId, chapter, detailed) }
+    /** [kind]: resumen breve, detallado o hechos del capítulo. */
+    fun summarizeChapter(bookId: String, chapter: Chapter, kind: SummaryKind = SummaryKind.CHAPTER_SHORT) {
+        require(kind in CHAPTER_KINDS) { "No es un resumen de capítulo: $kind" }
+        launchJob(SummaryKey(bookId, chapter.id, kind)) { chapterSummary(bookId, chapter, kind) }
+    }
+
+    /**
+     * Hechos importantes de un capítulo: los guardados o, si no hay, unos nuevos. Para el análisis en
+     * segundo plano, que los genera capítulo a capítulo: los errores se propagan para que reintente,
+     * salvo que el modelo se niegue, que se apunta para no volver a pedirlos en cada análisis.
+     */
+    suspend fun chapterEvents(bookId: String, chapter: Chapter): String {
+        summaries.get(bookId, chapter.id, SummaryKind.CHAPTER_EVENTS)?.let { return it.text }
+        val key = SummaryKey(bookId, chapter.id, SummaryKind.CHAPTER_EVENTS)
+        return try {
+            runForKey(key) { chapterSummary(bookId, chapter, SummaryKind.CHAPTER_EVENTS) }
+        } catch (e: LlmException.Refused) {
+            Log.w(TAG, "Hechos del capítulo ${chapter.number} rechazados", e)
+            summaries.save(bookId, chapter.id, SummaryKind.CHAPTER_EVENTS, EVENTS_REFUSED, model())
+            _jobs.update { it - key }
+            EVENTS_REFUSED
+        }
+    }
+
+    /**
+     * Estimación local (sin llamar a la API) de lo que costaría generar los hechos que faltan: cada
+     * capítulo, como un resumen breve (una llamada o, si es largo, bloques y una más). Cero si ya
+     * están todos (los capítulos sin texto no cuentan: no llaman a la API).
+     */
+    suspend fun estimateEvents(bookId: String): TokenEstimate {
+        val done = summaries.all(bookId).filter { it.kind == SummaryKind.CHAPTER_EVENTS }.map { it.chapterId }.toSet()
+        var estimate = TokenEstimate()
+        for (chapter in content.chapters(bookId).filter { it.id !in done }) {
+            val text = content.text(bookId, chapter.startPage, chapter.endPage)
+            if (text.isNotBlank()) estimate += chapterCost(estimateTokens(text).toLong())
+        }
+        return estimate
     }
 
     fun summarizeBook(bookId: String) {
@@ -212,17 +248,36 @@ class SummaryGenerator @Inject constructor(
     private suspend fun shortSummary(bookId: String, chapter: Chapter): String =
         summaries.get(bookId, chapter.id, SummaryKind.CHAPTER_SHORT)?.text
             ?: runForKey(SummaryKey(bookId, chapter.id, SummaryKind.CHAPTER_SHORT)) {
-                chapterSummary(bookId, chapter, detailed = false)
+                chapterSummary(bookId, chapter, SummaryKind.CHAPTER_SHORT)
             }
 
-    private suspend fun chapterSummary(bookId: String, chapter: Chapter, detailed: Boolean): String {
+    private suspend fun chapterSummary(bookId: String, chapter: Chapter, kind: SummaryKind): String {
         val title = bookTitle(bookId)
         val text = content.text(bookId, chapter.startPage, chapter.endPage)
         val model = model()
-        val kind = if (detailed) SummaryKind.CHAPTER_LONG else SummaryKind.CHAPTER_SHORT
+        val detailed = kind == SummaryKind.CHAPTER_LONG
+        val fits = estimateTokens(text) <= SINGLE_CALL_TOKENS
         val summary = when {
             text.isBlank() -> EMPTY_CHAPTER
-            estimateTokens(text) <= SINGLE_CALL_TOKENS -> ask(
+            kind == SummaryKind.CHAPTER_EVENTS -> {
+                // Los hechos de un capítulo largo salen de los resúmenes de sus bloques.
+                val source = if (fits) {
+                    text
+                } else {
+                    mapBlocks(bookId, model, title, chapter.title, text).joinToString("\n\n")
+                }
+                ask(
+                    bookId,
+                    model,
+                    prompts.render(
+                        R.raw.summary_chapter_events_v1,
+                        "book" to title,
+                        "chapter" to chapter.title,
+                        "text" to source
+                    )
+                )
+            }
+            fits -> ask(
                 bookId,
                 model,
                 prompts.render(
@@ -351,6 +406,9 @@ class SummaryGenerator @Inject constructor(
         private const val ESTIMATED_SUMMARY_TOKENS = 500L
         private const val EMPTY_CHAPTER = "Este capítulo no tiene texto extraíble (puede ser una imagen escaneada)."
         private const val GENERIC_ERROR = "No se pudo generar el resumen. Inténtalo de nuevo."
+        private const val EVENTS_REFUSED = "El modelo no ha querido enumerar los hechos de este capítulo."
+        private val CHAPTER_KINDS =
+            setOf(SummaryKind.CHAPTER_SHORT, SummaryKind.CHAPTER_LONG, SummaryKind.CHAPTER_EVENTS)
 
         /** Estimación grosera (≈4 caracteres por token en español), suficiente para decidir el reparto. */
         fun estimateTokens(text: String) = text.length / CHARS_PER_TOKEN

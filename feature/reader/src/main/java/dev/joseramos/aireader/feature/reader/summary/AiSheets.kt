@@ -29,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.joseramos.aireader.ai.llm.SummaryJob
+import dev.joseramos.aireader.core.data.db.SummaryKind
 import dev.joseramos.aireader.core.data.settings.BudgetLevel
 import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.designsystem.component.AiUsageRow
@@ -151,11 +152,13 @@ private const val LOCKED_ALPHA = 0.4f
 
 /**
  * Resumen de un capítulo, que se abre desde «Ponerme al día». Si no existe, se genera al abrir la hoja. Los errores se
- * explican con una acción (por ejemplo, ir a Ajustes si falta la clave).
+ * explican con una acción (por ejemplo, ir a Ajustes si falta la clave). En novelas ([literature]) ofrece también sus
+ * hechos importantes, que el análisis de personajes suele tener ya generados.
  */
 @Composable
 internal fun SummarySheet(
     target: SummaryTarget,
+    literature: Boolean,
     viewModel: SummaryViewModel,
     onChangeTarget: (SummaryTarget) -> Unit,
     onAddApiKey: () -> Unit,
@@ -180,13 +183,28 @@ internal fun SummarySheet(
         skipPartiallyExpanded = false
     ) {
         Column(Modifier.padding(horizontal = Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            val kinds = listOfNotNull(
+                SummaryKind.CHAPTER_SHORT,
+                SummaryKind.CHAPTER_LONG,
+                SummaryKind.CHAPTER_EVENTS.takeIf { literature }
+            )
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                listOf(false, true).forEachIndexed { i, detailed ->
+                kinds.forEachIndexed { i, kind ->
                     SegmentedButton(
-                        selected = target.detailed == detailed,
-                        onClick = { onChangeTarget(target.copy(detailed = detailed)) },
-                        shape = SegmentedButtonDefaults.itemShape(i, 2)
-                    ) { Text(stringResource(if (detailed) R.string.ai_detailed else R.string.ai_brief)) }
+                        selected = target.kind == kind,
+                        onClick = { onChangeTarget(target.copy(kind = kind)) },
+                        shape = SegmentedButtonDefaults.itemShape(i, kinds.size)
+                    ) {
+                        Text(
+                            stringResource(
+                                when (kind) {
+                                    SummaryKind.CHAPTER_LONG -> R.string.ai_detailed
+                                    SummaryKind.CHAPTER_EVENTS -> R.string.ai_events
+                                    else -> R.string.ai_brief
+                                }
+                            )
+                        )
+                    }
                 }
             }
             when {

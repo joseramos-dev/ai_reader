@@ -1,0 +1,7 @@
+Alguien hace una pregunta sobre un libro que está leyendo. Decide si la expresión «{{expression}}» de su pregunta se refiere a una parte del propio libro (su principio, su mitad, su final, un capítulo o una parte de la obra) o a otra cosa de la que se habla (el final de una calle, el principio de una vida, la mitad de un dinero, la segunda parte de una carta…).
+
+Si la expresión no dice de qué es (por ejemplo, «al final» o «al principio» sin más), se refiere al libro.
+
+Pregunta: {{question}}
+
+Responde solo con un objeto JSON: {"parte_del_libro": true} si se refiere a una parte del libro, o {"parte_del_libro": false} si no.
