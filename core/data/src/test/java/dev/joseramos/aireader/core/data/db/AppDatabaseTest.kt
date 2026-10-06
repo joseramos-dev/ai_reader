@@ -3,6 +3,9 @@ package dev.joseramos.aireader.core.data.db
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import dev.joseramos.aireader.core.data.book.ChatRepository
+import dev.joseramos.aireader.core.data.book.ChatSource
+import dev.joseramos.aireader.core.data.book.SourceKind
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -151,6 +154,26 @@ class AppDatabaseTest {
         assertNull(db.readingPositionDao().get("a"))
         assertTrue(db.summaryDao().observeByBook("a").first().isEmpty())
         assertNull(db.chatDao().latestThread("a"))
+    }
+
+    @Test
+    fun chatAnswerKeepsItsSources() = runTest {
+        db.bookDao().upsert(book("a", importedAt = 1))
+        val chat = ChatRepository(db.chatDao())
+        val thread = chat.currentThread("a")
+        val sources = listOf(
+            ChatSource(1, SourceKind.BOOK, "Raskólnikov salió.", 12, 13, "Capítulo 1"),
+            ChatSource(2, SourceKind.SUMMARY, "Resumen breve.", 20, 30)
+        )
+        chat.add(thread, ChatRole.USER, "¿Qué hace?")
+        val answer = chat.add(thread, ChatRole.ASSISTANT, "Sale [p. 12].", listOf(12), sources)
+
+        val messages = chat.messages(thread)
+        assertEquals(emptyList<ChatSource>(), messages.first().sources)
+        assertEquals(sources, messages.last().sources)
+        assertTrue(messages.last().sources.first().isCitedBy(messages.last().citations))
+        assertEquals(sources[1], chat.source(answer, 2))
+        assertNull(chat.source(answer, 3))
     }
 
     @Test

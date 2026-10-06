@@ -16,6 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *   cada libro en la biblioteca (antes sin índice para ese orden).
  * - v6: subrayados de texto (`highlights`).
  * - v7: `chunks_fts` con el tokenizador `unicode61` sin diacríticos (migración manual: reconstruye el índice).
+ * - v8: fragmentos enviados al modelo en cada respuesta del chat (`sourcesJson`), para la sección «Fuentes».
  */
 @Database(
     entities = [
@@ -39,14 +40,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CharacterScanEntity::class,
         HighlightEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2, spec = AppDatabase.Migration1To2::class),
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
-        AutoMigration(from = 5, to = 6)
+        AutoMigration(from = 5, to = 6),
+        AutoMigration(from = 7, to = 8)
     ]
 )
 abstract class AppDatabase : RoomDatabase() {

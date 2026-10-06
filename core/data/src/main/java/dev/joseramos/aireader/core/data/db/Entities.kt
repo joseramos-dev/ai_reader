@@ -340,7 +340,9 @@ data class ChatMessageEntity(
     val text: String,
     /** Citas validadas de la respuesta, como array JSON de páginas. */
     val citationsJson: String,
-    val createdAt: Long
+    val createdAt: Long,
+    /** Fragmentos enviados al modelo para la respuesta, como array JSON de `ChatSource`. */
+    @ColumnInfo(defaultValue = "[]") val sourcesJson: String = "[]"
 )
 
 @Entity(tableName = "downloaded_models")

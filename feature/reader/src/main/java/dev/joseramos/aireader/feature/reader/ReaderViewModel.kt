@@ -22,11 +22,13 @@ import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Bookmark
 import dev.joseramos.aireader.core.data.book.BookmarkRepository
 import dev.joseramos.aireader.core.data.book.Chapter
+import dev.joseramos.aireader.core.data.book.ChatRepository
 import dev.joseramos.aireader.core.data.book.Highlight
 import dev.joseramos.aireader.core.data.book.HighlightRepository
 import dev.joseramos.aireader.core.data.book.PageText
 import dev.joseramos.aireader.core.data.book.ReadingPosition
 import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
+import dev.joseramos.aireader.core.data.book.SourceKind
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.pdf.PdfPageRenderer
@@ -93,7 +95,9 @@ data class ReaderExtras(
     /** El libro llevaba más de una semana sin abrirse: se ofrece «¿Repasamos lo anterior?». */
     val offerRecap: Boolean = false,
     /** Subrayados de texto (solo modo texto), con nota opcional. */
-    val highlights: List<Highlight> = emptyList()
+    val highlights: List<Highlight> = emptyList(),
+    /** Pasaje de una fuente del chat que se ha abierto, resaltado mientras el lector siga abierto. */
+    val passage: SourcePassage? = null
 )
 
 private data class ReaderMeta(
@@ -116,6 +120,8 @@ class ReaderViewModel @Inject constructor(
     private val positions: ReadingPositionRepository,
     private val bookmarks: BookmarkRepository,
     private val highlights: HighlightRepository,
+    private val chat: ChatRepository,
+    private val sourceLocator: SourcePassageLocator,
     private val settings: SettingsRepository,
     private val playbackController: PlaybackController,
     characterBrowser: CharacterBrowser,
@@ -178,13 +184,16 @@ class ReaderViewModel @Inject constructor(
             if (literature) characterBrowser.observe(bookId) else flowOf(CharactersSnapshot())
         }
 
+    private val passage = MutableStateFlow<SourcePassage?>(null)
+
     val extras: StateFlow<ReaderExtras> = combine(
         bookmarks.observe(bookId),
         characters,
         prompts,
-        highlights.observe(bookId)
-    ) { marks, snapshot, p, hls ->
-        ReaderExtras(marks, snapshot, p.bookmarkSuggestion, p.offerRecap, hls)
+        highlights.observe(bookId),
+        passage
+    ) { marks, snapshot, p, hls, source ->
+        ReaderExtras(marks, snapshot, p.bookmarkSuggestion, p.offerRecap, hls, source)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderExtras())
 
     /** Lectura en voz alta de este libro (vacía si suena otro). */
@@ -228,6 +237,7 @@ class ReaderViewModel @Inject constructor(
         // Si sonaba otro libro, se para y se olvida (frases, audio y mini reproductor) al abrir este.
         viewModelScope.launch { playbackController.onBookOpened(bookId) }
         viewModelScope.launch { open() }
+        viewModelScope.launch { locateSource() }
         viewModelScope.launch {
             visiblePage.filterNotNull().distinctUntilChanged().debounce(SAVE_DEBOUNCE_MS).collect { page ->
                 // Si la voz ya guardó una posición más precisa en esta página, se respeta.
@@ -270,6 +280,21 @@ class ReaderViewModel @Inject constructor(
             meta.update { it.copy(error = e.message ?: "No se pudo abrir el PDF") }
         }
         if (book.isLiterature) characterAnalysis.startIfAuto(bookId)
+    }
+
+    /**
+     * Si se llegó desde una fuente del chat, busca su pasaje en el texto y en las líneas del PDF. Si el
+     * lector está en modo PDF y esas páginas no tienen geometría, pasa al modo texto para poder resaltarlo.
+     */
+    private suspend fun locateSource() {
+        val messageId = route.sourceMessageId ?: return
+        val number = route.sourceNumber ?: return
+        val source = chat.source(messageId, number)?.takeIf { it.kind == SourceKind.BOOK } ?: return
+        val found = withContext(io) { sourceLocator.locate(bookId, source) } ?: return
+        passage.value = found
+        if (found.rects.isEmpty() && found.spans.isNotEmpty() && meta.value.mode == ReaderMode.PDF) {
+            setMode(ReaderMode.TEXT)
+        }
     }
 
     /** Página [index] (base 0) renderizada a [widthPx]. */

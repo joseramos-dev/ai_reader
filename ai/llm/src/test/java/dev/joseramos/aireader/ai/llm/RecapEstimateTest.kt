@@ -75,7 +75,7 @@ class RecapEstimateTest {
         val generator = SummaryGenerator(
             llm,
             Prompts(context),
-            BookContentRepository(db.chapterDao(), db.pageTextDao()),
+            BookContentRepository(db.chapterDao(), db.pageTextDao(), db.pageLayoutDao()),
             BookRepository(db.bookDao(), dispatcher),
             summaries,
             settings,

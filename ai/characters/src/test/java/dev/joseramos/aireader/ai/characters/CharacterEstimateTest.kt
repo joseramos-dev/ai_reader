@@ -75,7 +75,7 @@ class CharacterEstimateTest {
         extractor = CharacterExtractor(
             context,
             llm,
-            BookContentRepository(db.chapterDao(), db.pageTextDao()),
+            BookContentRepository(db.chapterDao(), db.pageTextDao(), db.pageLayoutDao()),
             db.characterDao(),
             CharacterMerger(db, db.characterDao())
         )

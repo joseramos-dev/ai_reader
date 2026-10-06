@@ -123,6 +123,9 @@ interface PageLayoutDao {
     @Query("SELECT page FROM page_layouts WHERE bookId = :bookId")
     suspend fun pages(bookId: String): List<Int>
 
+    @Query("SELECT * FROM page_layouts WHERE bookId = :bookId AND page BETWEEN :fromPage AND :toPage ORDER BY page")
+    suspend fun getRange(bookId: String, fromPage: Int, toPage: Int): List<PageLayoutEntity>
+
     @Upsert
     suspend fun upsert(layout: PageLayoutEntity)
 
@@ -465,6 +468,9 @@ interface ChatDao {
 
     @Query("SELECT * FROM chat_messages WHERE threadId = :threadId ORDER BY createdAt, id")
     suspend fun getMessages(threadId: Long): List<ChatMessageEntity>
+
+    @Query("SELECT * FROM chat_messages WHERE id = :id")
+    suspend fun getMessage(id: Long): ChatMessageEntity?
 
     @Insert
     suspend fun insertMessage(message: ChatMessageEntity): Long

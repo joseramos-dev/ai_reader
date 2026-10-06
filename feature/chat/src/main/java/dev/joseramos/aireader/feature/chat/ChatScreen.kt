@@ -59,6 +59,8 @@ import androidx.navigation.compose.composable
 import dev.joseramos.aireader.ai.models.ModelCatalog
 import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.core.data.book.ChatMessage
+import dev.joseramos.aireader.core.data.book.ChatSource
+import dev.joseramos.aireader.core.data.book.SourceKind
 import dev.joseramos.aireader.core.data.db.ChatRole
 import dev.joseramos.aireader.core.data.settings.BudgetLevel
 import dev.joseramos.aireader.core.designsystem.component.ApiKeySheet
@@ -78,7 +80,15 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class ChatRoute(val bookId: String)
 
-fun NavGraphBuilder.chatScreen(onBack: () -> Unit, onOpenPage: (bookId: String, page: Int) -> Unit) {
+/**
+ * [onOpenPage] abre el libro en una página (al tocar una cita); [onOpenSource], en el pasaje de una
+ * fuente del libro de la respuesta [messageId], resaltado.
+ */
+fun NavGraphBuilder.chatScreen(
+    onBack: () -> Unit,
+    onOpenPage: (bookId: String, page: Int) -> Unit,
+    onOpenSource: (bookId: String, messageId: Long, source: ChatSource) -> Unit
+) {
     composable<ChatRoute>(
         enterTransition = { slideIntoContainer(SlideDirection.Up) },
         popExitTransition = { slideOutOfContainer(SlideDirection.Down) }
@@ -93,6 +103,7 @@ fun NavGraphBuilder.chatScreen(onBack: () -> Unit, onOpenPage: (bookId: String, 
             onStop = viewModel::stop,
             onNewConversation = viewModel::newConversation,
             onOpenPage = { onOpenPage(viewModel.bookId, it) },
+            onOpenSource = { message, source -> onOpenSource(viewModel.bookId, message.id, source) },
             onOpenSettings = { askKey = true },
             onDownloadModel = viewModel::downloadModel,
             onRetryIndexing = viewModel::retryIndexing,
@@ -113,6 +124,7 @@ private fun ChatScreen(
     onStop: () -> Unit,
     onNewConversation: () -> Unit,
     onOpenPage: (Int) -> Unit,
+    onOpenSource: (ChatMessage, ChatSource) -> Unit,
     onOpenSettings: () -> Unit,
     onDownloadModel: () -> Unit,
     onRetryIndexing: () -> Unit,
@@ -178,10 +190,14 @@ private fun ChatScreen(
             if (state.messages.isEmpty() && state.streaming == null) {
                 item { EmptyChat(enabled = state.availability is ChatAvailability.Ready, onSend = onSend) }
             }
-            items(state.messages, key = { it.id }) { message -> MessageBubble(message, onOpenPage) }
+            items(state.messages, key = { it.id }) { message -> MessageBubble(message, onOpenPage, onOpenSource) }
             state.streaming?.let { partial ->
                 item(key = "streaming") {
-                    MessageBubble(ChatMessage(-1, ChatRole.ASSISTANT, partial.ifEmpty { "…" }, emptyList()), onOpenPage)
+                    MessageBubble(
+                        ChatMessage(-1, ChatRole.ASSISTANT, partial.ifEmpty { "…" }, emptyList()),
+                        onOpenPage,
+                        onOpenSource
+                    )
                 }
             }
             state.error?.let { error ->
@@ -325,7 +341,11 @@ private fun EmptyChat(enabled: Boolean, onSend: (String) -> Unit) {
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage, onOpenPage: (Int) -> Unit) {
+private fun MessageBubble(
+    message: ChatMessage,
+    onOpenPage: (Int) -> Unit,
+    onOpenSource: (ChatMessage, ChatSource) -> Unit
+) {
     val colors = AppTheme.colors
     val fromUser = message.role == ChatRole.USER
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (fromUser) Alignment.End else Alignment.Start) {
@@ -356,6 +376,12 @@ private fun MessageBubble(message: ChatMessage, onOpenPage: (Int) -> Unit) {
                             .padding(horizontal = Spacing.xs, vertical = 2.dp)
                     )
                 }
+            }
+        }
+        if (message.sources.isNotEmpty()) {
+            Sources(message) { source ->
+                // Un resumen no está en el libro: se abre el principio de su capítulo.
+                if (source.kind == SourceKind.BOOK) onOpenSource(message, source) else onOpenPage(source.startPage)
             }
         }
     }

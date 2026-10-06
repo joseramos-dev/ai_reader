@@ -248,7 +248,8 @@ internal fun ReaderScreen(
                     pageSizes = state.pageSizes,
                     render = render,
                     contentPadding = contentPadding,
-                    onTap = { controlsVisible = !controlsVisible }
+                    onTap = { controlsVisible = !controlsVisible },
+                    passage = extras.passage?.rects.orEmpty()
                 )
                 ReaderMode.TEXT -> TextModeContent(
                     state = state,
@@ -419,7 +420,8 @@ private fun TextModeContent(
         onCreateHighlight = onCreateHighlight,
         onTapHighlight = onTapHighlight,
         onTap = onTap,
-        chapters = state.contents
+        chapters = state.contents,
+        passage = extras.passage?.spans.orEmpty()
     )
 }
 
@@ -612,7 +614,9 @@ private fun ContentsSheet(
                     icon = {}
                 ) {
                     val (icon, label) = when (entry) {
-                        ContentsTab.CHAPTERS -> Icons.AutoMirrored.Rounded.FormatListBulleted to R.string.reader_chapters
+                        ContentsTab.CHAPTERS ->
+                            Icons.AutoMirrored.Rounded.FormatListBulleted to
+                                R.string.reader_chapters
                         ContentsTab.BOOKMARKS -> Icons.Outlined.BookmarkBorder to R.string.reader_bookmarks
                         ContentsTab.HIGHLIGHTS -> Icons.Outlined.Highlight to R.string.reader_highlights
                     }

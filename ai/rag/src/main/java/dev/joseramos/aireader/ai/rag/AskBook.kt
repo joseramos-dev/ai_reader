@@ -13,6 +13,8 @@ import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.book.ChatMessage
 import dev.joseramos.aireader.core.data.book.ChatRepository
+import dev.joseramos.aireader.core.data.book.ChatSource
+import dev.joseramos.aireader.core.data.book.SourceKind
 import dev.joseramos.aireader.core.data.book.SummaryRepository
 import dev.joseramos.aireader.core.data.db.ChatRole
 import dev.joseramos.aireader.core.data.db.ChunkEntity
@@ -150,7 +152,7 @@ class AskBook @Inject constructor(
             }
         }
         val cited = CitationParser.validate(answer.toString(), fragments)
-        chat.add(threadId, ChatRole.ASSISTANT, cited.text, cited.pages)
+        chat.add(threadId, ChatRole.ASSISTANT, cited.text, cited.pages, fragments.map { it.toSource() })
         emit(AskEvent.Completed(cited))
     }
 
@@ -252,7 +254,7 @@ class AskBook @Inject constructor(
         summaries.all(bookId).filter { it.kind == SummaryKind.CHAPTER_SHORT }.associate { it.chapterId to it.text }
 
     private fun List<Pair<Chapter, String>>.toSummaryFragments() = mapIndexed { i, (chapter, text) ->
-        Fragment(i + 1, "Resumen del capítulo: $text", chapter.startPage, chapter.endPage, chapter.title)
+        Fragment(i + 1, text, chapter.startPage, chapter.endPage, chapter.title, summary = true)
     }
 
     /**
@@ -265,7 +267,7 @@ class AskBook @Inject constructor(
         if (limit == null || chapter.endPage <= limit) {
             summaries.get(bookId, chapter.id, SummaryKind.CHAPTER_SHORT)?.let {
                 return listOf(
-                    Fragment(1, "Resumen del capítulo: ${it.text}", chapter.startPage, chapter.endPage, chapter.title)
+                    Fragment(1, it.text, chapter.startPage, chapter.endPage, chapter.title, summary = true)
                 )
             }
         }
@@ -325,8 +327,19 @@ class AskBook @Inject constructor(
     private fun render(fragments: List<Fragment>): String = fragments.joinToString("\n") { f ->
         val pages = if (f.startPage == f.endPage) "${f.startPage}" else "${f.startPage}-${f.endPage}"
         val chapter = f.chapter?.let { " capitulo=\"${it.replace("\"", "'")}\"" }.orEmpty()
-        "<fragmento id=\"${f.number}\" paginas=\"$pages\"$chapter>\n${f.text}\n</fragmento>"
+        val text = if (f.summary) "Resumen del capítulo: ${f.text}" else f.text
+        "<fragmento id=\"${f.number}\" paginas=\"$pages\"$chapter>\n$text\n</fragmento>"
     }
+
+    /** Para la sección «Fuentes» de la respuesta: el fragmento tal cual se envió. */
+    private fun Fragment.toSource() = ChatSource(
+        number = number,
+        kind = if (summary) SourceKind.SUMMARY else SourceKind.BOOK,
+        text = text,
+        startPage = startPage,
+        endPage = endPage,
+        chapter = chapter
+    )
 
     private suspend fun bookContext(bookId: String, chapters: List<Chapter>): String {
         val book = books.getBook(bookId)

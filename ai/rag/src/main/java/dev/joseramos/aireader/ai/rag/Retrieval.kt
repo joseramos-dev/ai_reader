@@ -294,8 +294,18 @@ sealed interface ChapterRef {
     data class Titled(val keyword: String) : ChapterRef
 }
 
-/** Fragmento enviado al modelo, numerado, con sus páginas. */
-data class Fragment(val number: Int, val text: String, val startPage: Int, val endPage: Int, val chapter: String?)
+/**
+ * Fragmento enviado al modelo, numerado, con sus páginas. [summary]: es el resumen de un capítulo, no
+ * texto del libro (el prompt lo presenta como tal).
+ */
+data class Fragment(
+    val number: Int,
+    val text: String,
+    val startPage: Int,
+    val endPage: Int,
+    val chapter: String?,
+    val summary: Boolean = false
+)
 
 /** Respuesta con las citas `[p. N]` comprobadas contra los fragmentos enviados. */
 data class CitedAnswer(val text: String, val pages: List<Int>)

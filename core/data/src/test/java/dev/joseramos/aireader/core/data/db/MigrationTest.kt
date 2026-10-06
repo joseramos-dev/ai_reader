@@ -202,4 +202,32 @@ class MigrationTest {
         }
         db.close()
     }
+
+    @Test
+    fun migrate7To8KeepsMessagesWithoutSources() {
+        helper.createDatabase(7).apply {
+            execSQL(
+                """
+                INSERT INTO books (id, title, author, fileName, filePath, pageCount, coverPath, importedAt,
+                    lastOpenedAt, indexStatus, indexProgress, cleanerVersion, documentTypeSource, aiPrepared)
+                VALUES ('a', 'Libro', NULL, 'a.pdf', '/a.pdf', 10, NULL, 1, NULL, 'READY', 1.0, 1, 'AUTO', 0)
+                """.trimIndent()
+            )
+            execSQL("INSERT INTO chat_threads (id, bookId, createdAt) VALUES (1, 'a', 1)")
+            execSQL(
+                "INSERT INTO chat_messages (id, threadId, role, text, citationsJson, createdAt) " +
+                    "VALUES (1, 1, 'ASSISTANT', 'Respuesta [p. 3]', '[3]', 2)"
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(8, emptyList())
+        db.prepare("SELECT text, citationsJson, sourcesJson FROM chat_messages WHERE id = 1").use {
+            assertTrue(it.step())
+            assertEquals("Respuesta [p. 3]", it.getText(0))
+            assertEquals("[3]", it.getText(1))
+            assertEquals("[]", it.getText(2))
+        }
+        db.close()
+    }
 }

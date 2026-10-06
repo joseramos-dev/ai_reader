@@ -2,6 +2,7 @@ package dev.joseramos.aireader.core.data.book
 
 import dev.joseramos.aireader.core.data.db.ChapterDao
 import dev.joseramos.aireader.core.data.db.ChapterEntity
+import dev.joseramos.aireader.core.data.db.PageLayoutDao
 import dev.joseramos.aireader.core.data.db.PageTextDao
 import dev.joseramos.aireader.core.data.db.PageTextEntity
 import javax.inject.Inject
@@ -45,7 +46,8 @@ data class PageText(
 @Singleton
 class BookContentRepository @Inject constructor(
     private val chapterDao: ChapterDao,
-    private val pageTextDao: PageTextDao
+    private val pageTextDao: PageTextDao,
+    private val pageLayoutDao: PageLayoutDao
 ) {
     fun observeChapters(bookId: String): Flow<List<Chapter>> =
         chapterDao.observeByBook(bookId).map { list -> list.map { it.toChapter() } }
@@ -73,6 +75,13 @@ class BookContentRepository @Inject constructor(
     /** Hasta [limit] páginas limpias a partir de [fromPage] (base 1). */
     suspend fun pagesFrom(bookId: String, fromPage: Int, limit: Int): List<PageText> =
         pageTextDao.getFrom(bookId, fromPage, limit).filter { it.cleanerVersion > 0 }.map { it.toPageText() }
+
+    /**
+     * Geometría de las líneas de las páginas [fromPage]..[toPage], por página, como JSON de `TextLine`
+     * (lo decodifica `:text`). Faltan las páginas que se extrajeron sin geometría.
+     */
+    suspend fun lineLayouts(bookId: String, fromPage: Int, toPage: Int): Map<Int, String> =
+        pageLayoutDao.getRange(bookId, fromPage, toPage).associate { it.page to it.linesJson }
 
     /** Texto completo de un rango de páginas, con los párrafos separados por líneas en blanco. */
     suspend fun text(bookId: String, fromPage: Int, toPage: Int): String =

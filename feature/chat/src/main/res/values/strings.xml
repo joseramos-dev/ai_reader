@@ -13,6 +13,26 @@
     <string name="chat_suggestion_ideas">¿Cuáles son las ideas principales?</string>
     <string name="chat_suggestion_characters">¿Quiénes son los personajes o autores que aparecen?</string>
     <string name="chat_page">p. %1$d</string>
+    <string name="chat_pages">p. %1$d–%2$d</string>
+    <string name="chat_sources">Fuentes</string>
+    <plurals name="chat_sources_book">
+        <item quantity="one">%1$d fragmento del libro</item>
+        <item quantity="other">%1$d fragmentos del libro</item>
+    </plurals>
+    <plurals name="chat_sources_summaries">
+        <item quantity="one">resumen de %1$d capítulo</item>
+        <item quantity="other">resúmenes de %1$d capítulos</item>
+    </plurals>
+    <string name="chat_sources_mixed">%1$d del libro y %2$d de resúmenes</string>
+    <string name="chat_sources_show">Mostrar las fuentes</string>
+    <string name="chat_sources_hide">Ocultar las fuentes</string>
+    <string name="chat_source_book">Libro</string>
+    <string name="chat_source_summary">Resumen</string>
+    <string name="chat_source_cited">Citado</string>
+    <string name="chat_source_open_passage">Abrir el pasaje en el libro</string>
+    <string name="chat_source_open_chapter">Abrir el capítulo en el libro</string>
+    <string name="chat_source_more">Ver todo</string>
+    <string name="chat_source_less">Ver menos</string>
     <string name="chat_no_key">Para preguntar al libro hace falta tu clave de API de Gemini (gratis en Google AI Studio).</string>
     <string name="chat_add_key">Añadir clave</string>
     <string name="chat_model_missing">Ahora se busca solo por palabras del texto. Para buscar también por significado y obtener mejores respuestas, descarga un modelo de unos %1$d MB (una sola vez).</string>

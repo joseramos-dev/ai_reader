@@ -25,6 +25,10 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size as GeometrySize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -32,6 +36,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import kotlin.math.roundToInt
 
 private const val MAX_ZOOM = 4f
@@ -40,9 +45,14 @@ private const val DOUBLE_TAP_ZOOM = 2f
 /** Por encima de este zoom las páginas se vuelven a renderizar al doble de resolución. */
 private const val HIGH_RES_ZOOM = 1.4f
 
+/** Resaltado del pasaje de una fuente del chat: fondo translúcido y una raya debajo de cada línea. */
+private const val PASSAGE_ALPHA = 0.28f
+private val PASSAGE_UNDERLINE = 1.5.dp
+
 /**
  * Páginas del PDF en scroll vertical continuo. El zoom con dos dedos (y el doble toque) escala
- * toda la columna; con un dedo se sigue desplazando en vertical.
+ * toda la columna; con un dedo se sigue desplazando en vertical. [passage] son los rectángulos (en
+ * puntos del PDF) del pasaje de una fuente del chat, por página: se resaltan sobre ella.
  */
 @Composable
 internal fun PdfPages(
@@ -51,7 +61,8 @@ internal fun PdfPages(
     render: suspend (index: Int, widthPx: Int) -> Bitmap?,
     contentPadding: PaddingValues,
     onTap: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    passage: Map<Int, List<Rect>> = emptyMap()
 ) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
@@ -98,22 +109,46 @@ internal fun PdfPages(
                 }
         ) {
             items(pageSizes.size, key = { it }) { index ->
-                PdfPage(index, pageSizes[index], renderWidth, render)
+                PdfPage(index, pageSizes[index], renderWidth, render, passage[index + 1].orEmpty())
             }
         }
     }
 }
 
 @Composable
-private fun PdfPage(index: Int, size: Size, widthPx: Int, render: suspend (Int, Int) -> Bitmap?) {
+private fun PdfPage(index: Int, size: Size, widthPx: Int, render: suspend (Int, Int) -> Bitmap?, passage: List<Rect>) {
     val bitmap by produceState<ImageBitmap?>(null, index, widthPx) {
         value = render(index, widthPx)?.asImageBitmap()
     }
+    val accent = AppTheme.colors.accent
     Box(
         Modifier
             .fillMaxWidth()
             .aspectRatio(size.width.toFloat() / size.height.coerceAtLeast(1))
             .background(Color.White)
+            .drawWithContent {
+                drawContent()
+                if (passage.isEmpty()) return@drawWithContent
+                // De puntos del PDF a píxeles de la página tal como se dibuja.
+                val scale = this.size.width / size.width.coerceAtLeast(1)
+                val underline = PASSAGE_UNDERLINE.toPx()
+                passage.forEach { rect ->
+                    val topLeft = Offset(rect.left * scale, rect.top * scale)
+                    drawRect(
+                        accent.copy(alpha = PASSAGE_ALPHA),
+                        topLeft,
+                        GeometrySize(
+                            rect.width * scale,
+                            rect.height * scale
+                        )
+                    )
+                    drawRect(
+                        accent,
+                        Offset(topLeft.x, rect.bottom * scale - underline),
+                        GeometrySize(rect.width * scale, underline)
+                    )
+                }
+            }
     ) {
         bitmap?.let {
             Image(

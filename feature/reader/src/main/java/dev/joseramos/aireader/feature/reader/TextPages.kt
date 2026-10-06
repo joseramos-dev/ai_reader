@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +30,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
@@ -51,7 +54,10 @@ import dev.joseramos.aireader.core.data.book.PageText
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
 import dev.joseramos.aireader.text.HeadingDetector
+import dev.joseramos.aireader.text.ParagraphSpan
 import dev.joseramos.aireader.text.PhraseSplitter
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 /** Frase que está sonando: página (base 1), párrafo y frase dentro del párrafo. */
 data class PhraseLocation(val page: Int, val paragraph: Int, val phrase: Int)
@@ -75,6 +81,7 @@ internal data class PendingHighlight(val page: Int, val paragraph: Int, val rang
  * soltar, la selección queda con dos tiradores para ajustarla y una barra con «Subrayar», que llama a
  * [onCreateHighlight]. Tocar fuera o volver atrás la descarta; si no hay selección, tocar llama a
  * [onTap]. Con [onTapPhrase] (mientras suena la voz), tocar una frase sigue la lectura desde ella.
+ * [passage] es el pasaje de una fuente del chat que se ha abierto: se resalta, sin guardarse.
  */
 @Composable
 internal fun TextPages(
@@ -92,11 +99,23 @@ internal fun TextPages(
     onCreateHighlight: (PendingHighlight) -> Unit = {},
     onTapHighlight: (Highlight) -> Unit = {},
     onTap: () -> Unit = {},
-    chapters: List<Chapter> = emptyList()
+    chapters: List<Chapter> = emptyList(),
+    passage: List<ParagraphSpan> = emptyList()
 ) {
     val byPage = remember(pages) { pages.associateBy { it.page } }
     val titlesByPage = remember(chapters) { chapters.groupBy({ it.startPage }, { it.title }) }
     val highlightsByParagraph = remember(highlights) { highlights.groupBy { ParagraphRef(it.page, it.paragraph) } }
+    val passageByParagraph = remember(passage) {
+        passage.associate { ParagraphRef(it.page, it.paragraph) to (it.start until it.end) }
+    }
+    // Si se abre en la página del pasaje, la lista baja una vez hasta donde empieza (puede quedar
+    // varias pantallas por debajo del principio de la página).
+    val passageStart = passage.firstOrNull()
+    var revealPassage by remember(passageStart) {
+        mutableStateOf(passageStart != null && listState.firstVisibleItemIndex + 1 == passageStart.page)
+    }
+    val revealMargin = with(LocalDensity.current) { PASSAGE_MARGIN.roundToPx() }
+    val scope = rememberCoroutineScope()
     val colors = AppTheme.colors
     val bodyStyle = AppTheme.typography.body.copy(
         fontSize = (BODY_SIZE * textScale).sp,
@@ -143,8 +162,9 @@ internal fun TextPages(
                     val saved = highlightsByParagraph[ref].orEmpty()
                     val selected = selection?.takeIf { it.isIn(ref.page, ref.paragraph) }
                     val live = selected?.let { it.start until it.end }
+                    val source = passageByParagraph[ref]
                     val textKeys =
-                        arrayOf(paragraph, phrase, names, colors, onTapCharacter, saved, onTapHighlight, live)
+                        arrayOf(paragraph, phrase, names, colors, onTapCharacter, saved, onTapHighlight, live, source)
                     val text = remember(*textKeys) {
                         annotated(
                             paragraph,
@@ -157,7 +177,9 @@ internal fun TextPages(
                             colors.accent.copy(alpha = SAVED_HIGHLIGHT_ALPHA),
                             onTapHighlight,
                             live,
-                            colors.accent.copy(alpha = LIVE_SELECTION_ALPHA)
+                            colors.accent.copy(alpha = LIVE_SELECTION_ALPHA),
+                            source,
+                            colors.accent.copy(alpha = PASSAGE_ALPHA)
                         )
                     }
                     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -216,9 +238,25 @@ internal fun TextPages(
                     }
                     // Por encima de los párrafos vecinos, para que los tiradores (que asoman por debajo)
                     // se dibujen encima y se puedan tocar.
+                    val reveal = if (revealPassage && passageStart?.page == ref.page && passageStart.paragraph == p) {
+                        Modifier.onGloballyPositioned { coordinates ->
+                            if (!revealPassage) return@onGloballyPositioned
+                            revealPassage = false
+                            val line =
+                                layout?.let {
+                                    it.getLineTop(it.getLineForOffset(passageStart.start.coerceIn(0, paragraph.length)))
+                                }
+                                    ?: 0f
+                            val offset = (coordinates.positionInParent().y + line).roundToInt() - revealMargin
+                            scope.launch { listState.scrollToItem(index, maxOf(0, offset)) }
+                        }
+                    } else {
+                        Modifier
+                    }
                     Box(
                         (if (heading) Modifier.padding(top = Spacing.m, bottom = Spacing.xxs) else Modifier)
                             .zIndex(if (selected != null) 1f else 0f)
+                            .then(reveal)
                     ) {
                         Text(
                             text,
@@ -274,8 +312,8 @@ private fun PageSeparator(page: Int) {
 
 /**
  * Párrafo con la frase [phrase] resaltada (si no es `null`), los nombres de personajes de [names]
- * subrayados y tocables, los [savedHighlights] ya guardados (tocables para editarlos o quitarlos) y,
- * mientras se arrastra, el rango [liveSelection] en curso.
+ * subrayados y tocables, los [savedHighlights] ya guardados (tocables para editarlos o quitarlos),
+ * mientras se arrastra, el rango [liveSelection] en curso y, subrayado, el [passage] de una fuente del chat.
  */
 @Suppress("LongParameterList") // Es la única función que pinta el párrafo: no gana nada partiéndola.
 private fun annotated(
@@ -289,15 +327,18 @@ private fun annotated(
     savedHighlightColor: Color,
     onTapHighlight: (Highlight) -> Unit,
     liveSelection: IntRange?,
-    liveSelectionColor: Color
+    liveSelectionColor: Color,
+    passage: IntRange?,
+    passageColor: Color
 ): AnnotatedString {
     val range = phrase?.let { phraseRange(paragraph, it) }
     val hits = if (names.isEmpty) emptyList() else names.find(paragraph)
-    if (range == null && hits.isEmpty() && savedHighlights.isEmpty() && liveSelection == null) {
+    if (range == null && hits.isEmpty() && savedHighlights.isEmpty() && liveSelection == null && passage == null) {
         return AnnotatedString(paragraph)
     }
     return buildAnnotatedString {
         append(paragraph)
+        styleRange(SpanStyle(background = passageColor, textDecoration = TextDecoration.Underline), passage)
         range?.let { addStyle(SpanStyle(background = highlight), it.first, it.last + 1) }
         savedHighlights.forEach { saved ->
             val start = saved.startOffset.coerceIn(0, paragraph.length)
@@ -307,17 +348,15 @@ private fun annotated(
                 addLink(LinkAnnotation.Clickable("highlight-${saved.id}") { onTapHighlight(saved) }, start, end)
             }
         }
-        liveSelection?.let {
-            val start = it.first.coerceIn(0, paragraph.length)
-            val end = (it.last + 1).coerceIn(start, paragraph.length)
-            if (start < end) addStyle(SpanStyle(background = liveSelectionColor), start, end)
-        }
+        styleRange(SpanStyle(background = liveSelectionColor), liveSelection)
+        // El fondo del enlace taparía el de la selección en curso o el del pasaje: con ellos, se quita.
+        val covered = liveSelection != null || passage != null
+        val nameBackground = if (covered) Color.Unspecified else nameColor.copy(alpha = 0.08f)
         val style = TextLinkStyles(
             SpanStyle(
                 textDecoration = TextDecoration.Underline,
                 color = Color.Unspecified,
-                // El fondo del enlace taparía el de la selección en curso: mientras la hay, se quita.
-                background = if (liveSelection == null) nameColor.copy(alpha = 0.08f) else Color.Unspecified
+                background = nameBackground
             )
         )
         hits.forEach { hit ->
@@ -330,6 +369,14 @@ private fun annotated(
             )
         }
     }
+}
+
+/** [style] sobre [range] (con su último carácter), recortado al texto ya añadido; nada si es `null` o queda vacío. */
+private fun AnnotatedString.Builder.styleRange(style: SpanStyle, range: IntRange?) {
+    range ?: return
+    val start = range.first.coerceIn(0, length)
+    val end = (range.last + 1).coerceIn(start, length)
+    if (start < end) addStyle(style, start, end)
 }
 
 /** Posición de cada frase de [PhraseSplitter] dentro del párrafo (`null` si no se encuentra tal cual). */
@@ -353,6 +400,10 @@ internal fun phraseAt(paragraph: String, offset: Int): Int =
     phraseRanges(paragraph).indexOfLast { it != null && it.first <= offset }.coerceAtLeast(0)
 
 private const val SAVED_HIGHLIGHT_ALPHA = 0.25f
+private const val PASSAGE_ALPHA = 0.18f
+
+/** Texto que se deja ver por encima del pasaje al bajar hasta él. */
+private val PASSAGE_MARGIN = 48.dp
 private const val LIVE_SELECTION_ALPHA = 0.35f
 private const val BODY_SIZE = 18
 

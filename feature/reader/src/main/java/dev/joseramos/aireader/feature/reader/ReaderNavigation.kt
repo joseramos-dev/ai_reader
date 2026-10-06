@@ -26,9 +26,17 @@ import dev.joseramos.aireader.feature.reader.summary.SummaryTarget
 import dev.joseramos.aireader.feature.reader.summary.SummaryViewModel
 import kotlinx.serialization.Serializable
 
-/** Lector de un libro. [page] (base 1) abre en esa página, por ejemplo al tocar una cita del chat. */
+/**
+ * Lector de un libro. [page] (base 1) abre en esa página, por ejemplo al tocar una cita del chat. Con
+ * [sourceMessageId] y [sourceNumber] (una fuente de una respuesta del chat), resalta además ese pasaje.
+ */
 @Serializable
-data class ReaderRoute(val bookId: String, val page: Int? = null)
+data class ReaderRoute(
+    val bookId: String,
+    val page: Int? = null,
+    val sourceMessageId: Long? = null,
+    val sourceNumber: Int? = null
+)
 
 fun NavGraphBuilder.readerScreen(onBack: () -> Unit, onOpenChat: (String) -> Unit, onOpenCharacters: (String) -> Unit) {
     composable<ReaderRoute>(

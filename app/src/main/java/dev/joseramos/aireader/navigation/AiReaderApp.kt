@@ -114,6 +114,12 @@ fun AiReaderApp(
                     onOpenPage = { bookId, page ->
                         // Sustituye el lector que hay debajo del chat por uno abierto en la página citada.
                         navController.navigate(ReaderRoute(bookId, page)) { popUpTo<ReaderRoute> { inclusive = true } }
+                    },
+                    onOpenSource = { bookId, messageId, source ->
+                        // Igual, en la página donde empieza la fuente y con su pasaje resaltado.
+                        navController.navigate(ReaderRoute(bookId, source.startPage, messageId, source.number)) {
+                            popUpTo<ReaderRoute> { inclusive = true }
+                        }
                     }
                 )
             }
