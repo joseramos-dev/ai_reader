@@ -45,11 +45,11 @@ It is a full rewrite of an earlier web prototype (React + FastAPI + a local LLM 
 
 - **Reader.** PDF pages or a reflowable text mode, a chapter index (from the PDF outline, from heuristics, or from the LLM as a last resort), bookmarks, highlights, and it reopens where you left off.
 - **Read aloud.** Keeps playing with the screen off, with lock-screen and Bluetooth controls, and highlights the sentence being spoken. Text is cleaned before it is spoken: repeated headers and footers are removed, hyphenated words are joined, and abbreviations and Roman numerals are expanded.
-- **Ask the book.** Answers come only from the book's text and cite the pages they use (`[p. 42]`, tap to jump there). When the book doesn't contain the answer, the assistant says so.
-- **Summaries and "catch me up".** Per-chapter summaries and a recap of everything up to your current page.
+- **Ask the book.** Answers come only from the book's text and cite the pages they use (`[p. 42]`, tap to jump there). When the book doesn't contain the answer, the assistant says so. Under each answer, a "Sources" section lists the passages sent to the model, and tapping one opens the book with that passage highlighted.
+- **Key points and "catch me up".** Each chapter gets a short list of key events (novels) or key ideas (other books), each with the page where it happens. They are generated only when needed, and summaries and the "so far…" recap up to your current page are written from them.
 - **Characters (novels).** Names, nicknames and name changes are merged into a single profile. Every fact links to the page it comes from. There is a relationship graph, and the reader shows the characters on the current page.
 - **No spoilers.** Characters, relationships, recaps and chat answers only use pages you have already read.
-- **Document-aware.** Each PDF is classified as fiction, scientific, educational or general, and the summaries adapt to it (narrative, abstract-style or key concepts).
+- **Document-aware.** Each PDF is classified as fiction, scientific, educational or general. Novels get key events; the rest get key ideas that follow their style (findings, concepts or main points).
 
 ## How it works
 
@@ -72,10 +72,10 @@ flowchart TB
 ### On-device RAG
 
 1. **Indexing.** Text is extracted with PdfBox, cleaned, split by chapter and cut into ~350-token chunks. Each chunk repeats the last sentence of the previous one, so an idea split across two chunks can still be found. Chunks are stored in Room with an FTS4 index. Each one is also embedded on the device with `multilingual-e5-small` (int8 ONNX export from Hugging Face, 384 dimensions, mean pooling, `query:`/`passage:` prefixes).
-2. **Routing.** Questions about the whole book are answered from the chapter summaries, and "summarize this chapter" uses the stored summary. Specific questions go to retrieval. When there is chat history, the question is first rewritten so it makes sense on its own.
+2. **Routing.** Questions about the whole book, or summaries of a chapter or part ("what happens at the end?"), are answered from the chapters' **key points**: short sentences with the page where each one happens. Missing ones are generated on the spot (the chat shows the progress, and asks first if the cost doesn't fit the day's budget), and chapters the model refuses to list fall back to passages of their text. Specific questions go to retrieval. When there is chat history, the question is first rewritten so it makes sense on its own.
 3. **Hybrid retrieval.** The top 20 chunks by cosine similarity and the top 20 keyword matches (prefix and accent-insensitive) are fused with **Reciprocal Rank Fusion**. Weak matches are dropped and the best 8 are kept. Keyword search recovers proper nouns, numbers and rare terms that embeddings blur. That matters in a Russian novel, where one character goes by five different names.
 4. **Generation.** The prompt starts with a stable prefix (instructions plus book context), which lets Gemini's **implicit prompt caching** apply. The answer streams back over SSE. Any `[p. N]` citation that doesn't match a retrieved chunk is removed as invented, so every page the user sees is one the model was actually shown.
-5. **Spoiler cap.** With anti-spoilers on, every chunk, summary and chapter title sent to the model ends at the furthest page you have read.
+5. **Spoiler cap.** With anti-spoilers on, every chunk, key point and chapter title sent to the model ends at the furthest page you have read. Because key points carry their page, a chapter you are halfway through can be used up to your page.
 
 Vector search is exact. A book's few thousand vectors live in one contiguous `FloatArray`, and a dot-product scan takes milliseconds, so there is no need for an approximate index or a vector database. If the embedding model can't load on a device, retrieval falls back to keyword search instead of failing.
 
@@ -86,8 +86,8 @@ Code: [AskBook.kt](ai/rag/src/main/java/dev/joseramos/aireader/ai/rag/AskBook.kt
 ### Working with the LLM
 
 - **Provider-agnostic.** All generation goes through an [`LlmClient`](ai/llm/src/main/java/dev/joseramos/aireader/ai/llm/LlmClient.kt) interface. [`GeminiLlmClient`](ai/llm/src/main/java/dev/joseramos/aireader/ai/llm/GeminiLlmClient.kt) implements it with OkHttp over the REST API (`generateContent`, plus `streamGenerateContent` with server-sent events). The project started on the Claude API and moved to Gemini for its free tier, and the interface kept that change small.
-- **Two model tiers.** Gemini Flash handles the chat, and Flash-Lite handles background work (summaries, character extraction, classification). Both are configurable in Settings.
-- **Structured outputs.** Character extraction, document classification and chapter detection use [JSON Schema responses](ai/llm/src/main/java/dev/joseramos/aireader/ai/llm/ResponseSchema.kt), so results are parsed rather than scraped.
+- **Two model tiers.** Gemini Flash handles the chat, and Flash-Lite handles analysis work (key points, recaps, character extraction, classification). Both are configurable in Settings.
+- **Structured outputs.** Key points, character extraction, document classification and chapter detection use [JSON Schema responses](ai/llm/src/main/java/dev/joseramos/aireader/ai/llm/ResponseSchema.kt), so results are parsed rather than scraped.
 - **Cost control.** Each task gets a token estimate. There is a daily token budget with notifications at 80% and 100%, and expensive jobs ask for confirmation first. Transient errors are retried, and quota or invalid-key errors are explained to the user.
 - **Key handling.** The API key is encrypted with Tink (AEAD, with the keyset protected by the Android Keystore). It is only sent in the `x-goog-api-key` header, never in URLs or logs.
 
@@ -182,7 +182,7 @@ text                 Text cleaning, sentences, chunks, speech normalization, nam
 tts                  System voice (android.speech.tts), audio pipeline, Media3 playback service
 indexing             PDF import and IndexWorker: text, chapters, document type, embeddings
 ai/models            Download, verification and installation of on-device models
-ai/llm               Gemini client (REST + SSE), prompts, summaries and recaps
+ai/llm               Gemini client (REST + SSE), prompts, key points and recaps
 ai/embeddings        On-device embeddings (multilingual-e5-small on ONNX Runtime)
 ai/rag               Hybrid retrieval, cited answers and retrieval evaluation
 ai/characters        Character extraction, nickname merging and spoiler rules

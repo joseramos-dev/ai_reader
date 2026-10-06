@@ -2,8 +2,8 @@ package dev.joseramos.aireader.ai.rag
 
 import android.util.Log
 import dev.joseramos.aireader.core.data.book.Chapter
-import dev.joseramos.aireader.core.data.book.SummaryRepository
-import dev.joseramos.aireader.core.data.db.SummaryKind
+import dev.joseramos.aireader.core.data.book.ChapterKeyPoints
+import dev.joseramos.aireader.core.data.book.KeyPointsRepository
 import javax.inject.Inject
 
 /** Lo que hace falta saber del libro y del lector para situar una pregunta. */
@@ -28,31 +28,32 @@ data class LocatedQuestion(
 /**
  * Sitúa una pregunta en el libro: las [LocationRules] encuentran la expresión, el [LocationJudge]
  * decide las dudosas («al principio de su mano») y busca los hechos («después del crimen») entre los
- * hechos guardados de cada capítulo, y el [LocationResolver] lo convierte en páginas.
+ * hechos clave de cada capítulo, y el [LocationResolver] lo convierte en páginas.
  */
 class BookLocator internal constructor(
     private val judge: LocationJudge,
-    /** Texto de los hechos guardados de cada capítulo del libro, por id de capítulo. */
-    private val savedEvents: suspend (bookId: String) -> Map<Long, String>
+    /** Hechos clave guardados de cada capítulo del libro, por id de capítulo. */
+    private val savedEvents: suspend (bookId: String) -> Map<Long, ChapterKeyPoints>
 ) {
-    @Inject constructor(judge: LocationJudge, summaries: SummaryRepository) : this(
-        judge,
-        { bookId ->
-            summaries.all(bookId)
-                .filter { it.kind == SummaryKind.CHAPTER_EVENTS }
-                .mapNotNull { summary -> summary.chapterId?.let { it to summary.text } }
-                .toMap()
-        }
-    )
+    @Inject constructor(judge: LocationJudge, keyPoints: KeyPointsRepository) : this(judge, keyPoints::all)
 
-    /** Dónde se sitúa [question], o `null` si no habla de ninguna parte del libro (o no se ha podido situar). */
-    suspend fun locate(bookId: String, question: String, context: LocationContext): LocatedQuestion? {
+    /**
+     * Dónde se sitúa [question], o `null` si no habla de ninguna parte del libro (o no se ha podido situar).
+     * Si la pregunta sitúa algo respecto a un hecho, antes se llama a [prepareEvents] con los capítulos en
+     * los que buscarlo, para que genere los hechos clave que les falten.
+     */
+    suspend fun locate(
+        bookId: String,
+        question: String,
+        context: LocationContext,
+        prepareEvents: suspend (List<Chapter>) -> Unit = {}
+    ): LocatedQuestion? {
         val candidate = LocationRules.detect(question, context.literature) ?: return null
         val location = when (candidate) {
             is LocationCandidate.Clear -> candidate.location
             is LocationCandidate.Doubtful ->
                 candidate.location.takeIf { judge.refersToBook(question, candidate.expression) == true }
-            is LocationCandidate.Event -> event(bookId, question, candidate.expression, context)
+            is LocationCandidate.Event -> event(bookId, question, candidate.expression, context, prepareEvents)
         }
         val pages = location?.let {
             LocationResolver.pages(it, context.chapters, context.pageCount, context.reading.currentPage)
@@ -67,21 +68,26 @@ class BookLocator internal constructor(
     }
 
     /**
-     * El hecho, entre los de los capítulos que ya tienen hechos. Con anti-spoilers, solo los leídos
-     * enteros: los hechos de un capítulo cuentan el capítulo completo.
+     * El hecho, entre los de los capítulos que tienen hechos clave. Lo más probable es que pregunte por
+     * algo ya leído, así que antes se preparan los de todos los capítulos hasta el que se está leyendo
+     * (con anti-spoilers, hasta la página más avanzada leída), el actual incluido. Con anti-spoilers solo
+     * cuentan los hechos que ocurren hasta esa página.
      */
     private suspend fun event(
         bookId: String,
         question: String,
         expression: String,
-        context: LocationContext
+        context: LocationContext,
+        prepareEvents: suspend (List<Chapter>) -> Unit
     ): BookLocation? {
         val limit = context.reading.spoilerLimit
+        val reached = limit ?: context.reading.currentPage
+        prepareEvents(context.chapters.filter { it.startPage <= reached })
         val saved = savedEvents(bookId)
         val known = context.chapters
-            .filter { limit == null || it.endPage <= limit }
+            .filter { limit == null || it.startPage <= limit }
             .mapNotNull { chapter ->
-                val events = saved[chapter.id]?.let(EventLines::parse).orEmpty()
+                val events = saved[chapter.id]?.until(limit).orEmpty().map { it.text }
                 ChapterEvents(chapter, events).takeIf { events.isNotEmpty() }
             }
         if (known.isEmpty()) return null

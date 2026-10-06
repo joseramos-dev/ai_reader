@@ -27,9 +27,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.joseramos.aireader.ai.llm.SummaryJob
+import dev.joseramos.aireader.ai.llm.KeyPointsJob
 import dev.joseramos.aireader.core.data.book.Chapter
-import dev.joseramos.aireader.core.data.db.SummaryKind
+import dev.joseramos.aireader.core.data.db.KeyPointsStatus
 import dev.joseramos.aireader.core.designsystem.component.AppBottomSheet
 import dev.joseramos.aireader.core.designsystem.component.CostConfirmDialog
 import dev.joseramos.aireader.core.designsystem.component.PlainButton
@@ -40,20 +40,21 @@ import dev.joseramos.aireader.core.designsystem.theme.Spacing
 import dev.joseramos.aireader.feature.reader.R
 
 /**
- * «Ponerme al día»: el repaso «Hasta ahora…» hasta [page] y los capítulos ya leídos con su resumen
- * breve. Nada de lo que viene después de [page] (docs/02-diseno-tecnico.md §6.5).
+ * «Ponerme al día»: el repaso «Hasta ahora…» hasta [page], escrito a partir de los hechos clave, y los
+ * capítulos ya leídos con sus primeros hechos clave (al tocar uno se abren todos). Nada de lo que viene
+ * después de [page] (docs/02-diseno-tecnico.md §6.5).
  */
 @Composable
 internal fun CatchUpSheet(
     page: Int,
     chapters: List<Chapter>,
-    viewModel: SummaryViewModel,
+    viewModel: KeyPointsViewModel,
     onOpenChapter: (Chapter) -> Unit,
     onAddApiKey: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val recap = viewModel.recapFor(state)
+    val recap = state.recap
     val job = viewModel.recapJob(state)
     val current = viewModel.recapIsCurrent(recap, chapters, page)
     val previous = chapters.filter { chapter ->
@@ -64,8 +65,8 @@ internal fun CatchUpSheet(
     LaunchedEffect(page) {
         val now = viewModel.state.value
         if (hasSomething &&
-            viewModel.recapJob(now) !is SummaryJob.Running &&
-            !viewModel.recapIsCurrent(viewModel.recapFor(now), chapters, page)
+            viewModel.recapJob(now) !is KeyPointsJob.Running &&
+            !viewModel.recapIsCurrent(now.recap, chapters, page)
         ) {
             viewModel.requestRecap(page)
         }
@@ -99,7 +100,7 @@ internal fun CatchUpSheet(
             }
             Text(stringResource(R.string.recap_so_far), style = AppTheme.typography.headline, color = colors.label)
             when {
-                job is SummaryJob.Running -> Row(
+                job is KeyPointsJob.Running -> Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s)
                 ) {
@@ -114,7 +115,7 @@ internal fun CatchUpSheet(
                         color = colors.secondaryLabel
                     )
                 }
-                job is SummaryJob.Failed -> {
+                job is KeyPointsJob.Failed -> {
                     Text(job.message, style = AppTheme.typography.subheadline, color = colors.destructive)
                     if (job.needsApiKey) {
                         PrimaryButton(
@@ -131,14 +132,12 @@ internal fun CatchUpSheet(
                 recap != null && current -> {
                     Text(recap.text, style = AppTheme.typography.body, color = colors.label)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        recap.untilPage?.let {
-                            Text(
-                                stringResource(R.string.recap_until, it),
-                                style = AppTheme.typography.footnote,
-                                color = colors.secondaryLabel,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                        Text(
+                            stringResource(R.string.recap_until, recap.untilPage),
+                            style = AppTheme.typography.footnote,
+                            color = colors.secondaryLabel,
+                            modifier = Modifier.weight(1f)
+                        )
                         PlainButton(stringResource(R.string.ai_regenerate), {
                             viewModel.requestRecap(page)
                         }, icon = Icons.Outlined.Refresh)
@@ -158,9 +157,12 @@ internal fun CatchUpSheet(
                 )
                 Column(Modifier.clip(RoundedCornerShape(Radius.cell)).background(colors.surface)) {
                     previous.forEachIndexed { i, chapter ->
-                        val summary = state.summaries.firstOrNull {
-                            it.chapterId == chapter.id &&
-                                it.kind == SummaryKind.CHAPTER_SHORT
+                        val keyPoints = state.keyPoints[chapter.id]
+                        val preview = when (keyPoints?.status) {
+                            null -> stringResource(R.string.recap_chapter_pending)
+                            KeyPointsStatus.REFUSED -> stringResource(R.string.key_points_refused)
+                            KeyPointsStatus.EMPTY -> stringResource(R.string.key_points_empty)
+                            KeyPointsStatus.READY -> keyPoints.points.joinToString("\n") { "• ${it.text}" }
                         }
                         Column(
                             Modifier
@@ -170,7 +172,7 @@ internal fun CatchUpSheet(
                         ) {
                             Text(chapter.title, style = AppTheme.typography.body, color = colors.label)
                             Text(
-                                summary?.text ?: stringResource(R.string.recap_chapter_pending),
+                                preview,
                                 style = AppTheme.typography.footnote,
                                 color = colors.secondaryLabel,
                                 maxLines = 4,

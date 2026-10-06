@@ -13,17 +13,23 @@ import dev.joseramos.aireader.ai.models.ModelManager
 import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.ai.rag.AskBook
 import dev.joseramos.aireader.ai.rag.AskEvent
+import dev.joseramos.aireader.ai.rag.AskStage
 import dev.joseramos.aireader.ai.rag.HybridRetriever
 import dev.joseramos.aireader.ai.rag.ReadingContext
 import dev.joseramos.aireader.core.common.ApplicationScope
 import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.book.Book
+import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
+import dev.joseramos.aireader.core.data.book.Chapter
+import dev.joseramos.aireader.core.data.book.ChapterKeyPoints
 import dev.joseramos.aireader.core.data.book.ChatMessage
 import dev.joseramos.aireader.core.data.book.ChatRepository
+import dev.joseramos.aireader.core.data.book.KeyPointsRepository
 import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.settings.BudgetLevel
+import dev.joseramos.aireader.core.data.settings.CostConfirmation
 import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
@@ -32,6 +38,7 @@ import dev.joseramos.aireader.indexing.IndexScheduler
 import dev.joseramos.aireader.indexing.StageCrashGuard
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -49,17 +56,27 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Capítulos del libro con sus hechos clave (`null` si aún no se han generado), para el menú del chat. */
+data class KeyPointsOverview(val chapters: List<Pair<Chapter, ChapterKeyPoints?>> = emptyList()) {
+    val ready: Int get() = chapters.count { it.second != null }
+}
+
 data class ChatUiState(
     val book: Book? = null,
     val messages: List<ChatMessage> = emptyList(),
     val streaming: String? = null,
+    /** Qué está haciendo el chat mientras aún no llega el texto de la respuesta. */
+    val stage: AskStage? = null,
     val answering: Boolean = false,
     val error: String? = null,
     val availability: ChatAvailability = ChatAvailability.Loading,
     val usage: DailyUsage = DailyUsage(),
     /** Anti-spoilers: las respuestas no revelan nada posterior a [spoilerLimit] (la página más avanzada leída). */
     val antiSpoilers: Boolean = true,
-    val spoilerLimit: Int = 1
+    val spoilerLimit: Int = 1,
+    val keyPoints: KeyPointsOverview = KeyPointsOverview(),
+    /** Generar los hechos clave que necesita la pregunta no cabe en el presupuesto de hoy: pendiente de confirmar. */
+    val costConfirmation: CostConfirmation? = null
 )
 
 private data class Spoilers(val enabled: Boolean, val limit: Int)
@@ -72,13 +89,21 @@ private data class ChatInputs(
     val hasChunks: Boolean
 )
 
-private data class Transient(val streaming: String? = null, val answering: Boolean = false, val error: String? = null)
+private data class Transient(
+    val streaming: String? = null,
+    val stage: AskStage? = null,
+    val answering: Boolean = false,
+    val error: String? = null,
+    val costConfirmation: CostConfirmation? = null
+)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     books: BookRepository,
+    content: BookContentRepository,
+    keyPoints: KeyPointsRepository,
     private val scheduler: IndexScheduler,
     private val crashGuard: StageCrashGuard,
     private val secrets: SecretStore,
@@ -96,6 +121,7 @@ class ChatViewModel @Inject constructor(
     private val threadId = MutableStateFlow<Long?>(null)
     private val transient = MutableStateFlow(Transient())
     private var answerJob: Job? = null
+    private var pendingConfirmation: CompletableDeferred<Boolean>? = null
 
     private val messages = threadId.filterNotNull().flatMapLatest {
         chat.observeMessages(it)
@@ -115,12 +141,24 @@ class ChatViewModel @Inject constructor(
         Spoilers(on, maxOf(1, max))
     }
 
-    val state: StateFlow<ChatUiState> = combine(inputs, messages, transient, spoilers) { input, messages, t, spoilers ->
+    private val keyPointsOverview =
+        combine(content.observeChapters(bookId), keyPoints.observe(bookId)) { chapters, saved ->
+            KeyPointsOverview(chapters.map { it to saved[it.id] })
+        }
+
+    val state: StateFlow<ChatUiState> = combine(
+        inputs,
+        messages,
+        transient,
+        spoilers,
+        keyPointsOverview
+    ) { input, messages, t, spoilers, overview ->
         val book = input.book
         ChatUiState(
             book = book,
             messages = messages,
             streaming = t.streaming,
+            stage = t.stage,
             answering = t.answering,
             error = t.error,
             availability = chatAvailability(
@@ -132,7 +170,9 @@ class ChatViewModel @Inject constructor(
             ),
             usage = input.usage,
             antiSpoilers = spoilers.enabled,
-            spoilerLimit = spoilers.limit
+            spoilerLimit = spoilers.limit,
+            keyPoints = overview,
+            costConfirmation = t.costConfirmation
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUiState())
 
@@ -153,12 +193,13 @@ class ChatViewModel @Inject constructor(
         answerJob = viewModelScope.launch {
             transient.value = Transient(streaming = "", answering = true)
             try {
-                askBook.ask(bookId, thread, text, readingContext()).collect { event ->
+                askBook.ask(bookId, thread, text, readingContext(), ::confirmCost).collect { event ->
                     when (event) {
+                        is AskEvent.Stage -> transient.update { it.copy(stage = event.stage) }
                         is AskEvent.Delta -> transient.update {
-                            it.copy(streaming = (it.streaming ?: "") + event.text)
+                            it.copy(streaming = (it.streaming ?: "") + event.text, stage = null)
                         }
-                        is AskEvent.Completed -> transient.update { it.copy(streaming = null) }
+                        is AskEvent.Completed -> transient.update { it.copy(streaming = null, stage = null) }
                     }
                 }
                 transient.value = Transient()
@@ -176,6 +217,26 @@ class ChatViewModel @Inject constructor(
                 transient.value = Transient(error = GENERIC_ERROR)
             }
         }
+    }
+
+    /**
+     * Pregunta si se generan los hechos clave que necesita la pregunta aunque no quepan en el presupuesto
+     * de hoy, y espera la respuesta (ver [resolveCostConfirmation]). Si no, se responde con el texto.
+     */
+    private suspend fun confirmCost(confirmation: CostConfirmation): Boolean {
+        val answer = CompletableDeferred<Boolean>()
+        pendingConfirmation = answer
+        transient.update { it.copy(costConfirmation = confirmation) }
+        return try {
+            answer.await()
+        } finally {
+            pendingConfirmation = null
+            transient.update { it.copy(costConfirmation = null) }
+        }
+    }
+
+    fun resolveCostConfirmation(confirmed: Boolean) {
+        pendingConfirmation?.complete(confirmed)
     }
 
     /** Activa o desactiva anti-spoilers para este libro (se recuerda). */

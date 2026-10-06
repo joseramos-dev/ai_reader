@@ -45,7 +45,7 @@ object DataModule {
 
     @Provides fun chunkEmbeddingDao(db: AppDatabase) = db.chunkEmbeddingDao()
 
-    @Provides fun summaryDao(db: AppDatabase) = db.summaryDao()
+    @Provides fun keyPointsDao(db: AppDatabase) = db.keyPointsDao()
 
     @Provides fun readingPositionDao(db: AppDatabase) = db.readingPositionDao()
 

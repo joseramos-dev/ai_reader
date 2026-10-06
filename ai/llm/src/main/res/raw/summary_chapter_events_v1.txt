@@ -1,7 +1,0 @@
-Enumera los hechos más importantes del capítulo «{{chapter}}» del libro «{{book}}»: los que hacen avanzar la historia y que un lector usaría para situarse en ella («el crimen», «cuando conoce a Sonia», «la muerte del padre»). Deja fuera los hechos menores (comidas, paseos, conversaciones sin consecuencias).
-
-Escribe entre 2 y 8 hechos, en el orden en que ocurren, uno por línea y empezando cada línea por «- ». Cada hecho, en una frase breve con los nombres de los personajes. Nada más: sin títulos, introducciones ni comentarios.
-
-<capitulo>
-{{text}}
-</capitulo>

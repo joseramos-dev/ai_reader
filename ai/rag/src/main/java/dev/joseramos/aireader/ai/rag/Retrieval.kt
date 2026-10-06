@@ -75,7 +75,7 @@ fun dropWeakMatches(fused: List<Long>, candidates: Candidates): List<Long> {
 
 /**
  * [k] elementos repartidos por igual a lo largo de [ids] (el primero incluido). Si ninguna búsqueda
- * encuentra nada (por ejemplo, «¿de qué trata?» sin vectores ni resúmenes), da una muestra de todo el libro.
+ * encuentra nada (por ejemplo, «¿de qué trata?» sin vectores ni hechos clave), da una muestra de todo el libro.
  */
 fun <T> evenlySpaced(ids: List<T>, k: Int): List<T> {
     if (k <= 0 || ids.isEmpty()) return emptyList()
@@ -112,7 +112,7 @@ object FtsQuery {
     }
 }
 
-/** Tipo de pregunta: sobre el libro en conjunto (se responde con resúmenes) o sobre algo concreto. */
+/** Tipo de pregunta: sobre el libro en conjunto (se responde con los hechos clave) o sobre algo concreto. */
 enum class QueryScope { GLOBAL, SPECIFIC }
 
 object QueryRouter {
@@ -154,7 +154,7 @@ object QueryRouter {
 
     /**
      * Si la pregunta pide un resumen o que se cuente lo que pasa («resume…», «¿qué pasó en…?»): de
-     * una parte del libro se responde con sus resúmenes o con fragmentos repartidos por ella, no
+     * una parte del libro se responde con sus hechos clave o con fragmentos repartidos por ella, no
      * buscando por relevancia. Dónde está esa parte lo dicen las [LocationRules].
      */
     fun isSummary(question: String): Boolean {
@@ -295,8 +295,8 @@ sealed interface ChapterRef {
 }
 
 /**
- * Fragmento enviado al modelo, numerado, con sus páginas. [summary]: es el resumen de un capítulo, no
- * texto del libro (el prompt lo presenta como tal).
+ * Fragmento enviado al modelo, numerado, con sus páginas. [keyPoints]: son los hechos clave de un
+ * capítulo, no texto del libro (el prompt los presenta como tales).
  */
 data class Fragment(
     val number: Int,
@@ -304,7 +304,7 @@ data class Fragment(
     val startPage: Int,
     val endPage: Int,
     val chapter: String?,
-    val summary: Boolean = false
+    val keyPoints: Boolean = false
 )
 
 /** Respuesta con las citas `[p. N]` comprobadas contra los fragmentos enviados. */

@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Confirma el tipo de documento con el modelo de resúmenes (Gemini Flash-Lite por defecto) cuando la
+ * Confirma el tipo de documento con el modelo de análisis (Gemini Flash-Lite por defecto) cuando la
  * heurística local no es concluyente. Recibe título, capítulos y unas 3.000 palabras del principio.
  */
 class AiDocumentClassification @Inject constructor(
@@ -27,7 +27,7 @@ class AiDocumentClassification @Inject constructor(
         if (!llm.hasApiKey()) return null
         val answer = llm.complete(
             LlmRequest(
-                model = settings.settings.first().summaryModel,
+                model = settings.settings.first().analysisModel,
                 messages = listOf(
                     LlmMessage(
                         LlmRole.USER,

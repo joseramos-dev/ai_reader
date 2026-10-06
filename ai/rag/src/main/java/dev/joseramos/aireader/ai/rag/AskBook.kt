@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.ai.rag
 
+import dev.joseramos.aireader.ai.llm.KeyPointsGenerator
 import dev.joseramos.aireader.ai.llm.LlmClient
 import dev.joseramos.aireader.ai.llm.LlmEvent
 import dev.joseramos.aireader.ai.llm.LlmMessage
@@ -11,15 +12,16 @@ import dev.joseramos.aireader.ai.llm.Thinking
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Chapter
+import dev.joseramos.aireader.core.data.book.ChapterKeyPoints
 import dev.joseramos.aireader.core.data.book.ChatMessage
 import dev.joseramos.aireader.core.data.book.ChatRepository
 import dev.joseramos.aireader.core.data.book.ChatSource
 import dev.joseramos.aireader.core.data.book.SourceKind
-import dev.joseramos.aireader.core.data.book.SummaryRepository
 import dev.joseramos.aireader.core.data.db.ChatRole
 import dev.joseramos.aireader.core.data.db.ChunkEntity
-import dev.joseramos.aireader.core.data.db.SummaryKind
+import dev.joseramos.aireader.core.data.settings.CostConfirmation
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
+import dev.joseramos.aireader.core.data.settings.UsageRepository
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -27,7 +29,25 @@ import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 
+/** Qué está haciendo el chat antes de que llegue la respuesta, para mostrarlo. */
+sealed interface AskStage {
+    /** Situando la pregunta en el libro y buscando los fragmentos. */
+    data object Searching : AskStage
+
+    /** Generando los hechos clave que faltan: [done] de [total] capítulos. */
+    data class LoadingKeyPoints(val done: Int, val total: Int) : AskStage
+
+    /** Enviando la pregunta al modelo. */
+    data object Sending : AskStage
+
+    /** El modelo la ha recibido y está preparando la respuesta. */
+    data object Waiting : AskStage
+}
+
 sealed interface AskEvent {
+    /** Fase en la que está la respuesta (hasta que empieza a llegar el texto). */
+    data class Stage(val stage: AskStage) : AskEvent
+
     /** Fragmento de la respuesta según llega. */
     data class Delta(val text: String) : AskEvent
 
@@ -45,15 +65,16 @@ data class ReadingContext(val currentPage: Int = 1, val spoilerLimit: Int? = nul
  * Responde una pregunta sobre un libro (RAG):
  * 1. Sitúa la pregunta en el libro si habla de una parte de él («el capítulo 2», «al final del
  *    libro», «después del crimen»: [BookLocator]) y, con historial, la reformula para que se entienda
- *    sola (modelo de resúmenes).
- * 2. Resumen de una parte del libro («resume este capítulo», «¿qué pasa al final?») → resúmenes
- *    guardados o fragmentos repartidos por ella; otras preguntas sobre una parte → búsqueda híbrida
- *    solo en sus páginas; globales → resúmenes de capítulo; concretas → búsqueda híbrida (top 8).
+ *    sola (modelo de análisis).
+ * 2. Resumen de una parte del libro («resume este capítulo», «¿qué pasa al final?») y preguntas
+ *    globales → hechos clave de sus capítulos, con su página ([KeyPointsGenerator] genera los que
+ *    falten); otras preguntas sobre una parte → búsqueda híbrida solo en sus páginas; concretas →
+ *    búsqueda híbrida (top 8).
  * 3. Prompt: instrucciones + contexto del libro (prefijo estable, que aprovecha la caché implícita de
  *    Gemini) + reglas anti-spoilers si toca + fragmentos numerados y la posición del lector.
  * 4. Respuesta en streaming con el modelo del chat (Gemini Flash) y validación de las citas `[p. N]`.
  *
- * Con anti-spoilers, todo lo que se envía al modelo (fragmentos, resúmenes y lista de capítulos)
+ * Con anti-spoilers, todo lo que se envía al modelo (fragmentos, hechos clave y lista de capítulos)
  * llega como mucho hasta [ReadingContext.spoilerLimit].
  */
 class AskBook @Inject constructor(
@@ -63,9 +84,10 @@ class AskBook @Inject constructor(
     private val prompts: Prompts,
     private val books: BookRepository,
     private val content: BookContentRepository,
-    private val summaries: SummaryRepository,
+    private val keyPoints: KeyPointsGenerator,
     private val chat: ChatRepository,
-    private val settings: SettingsRepository
+    private val settings: SettingsRepository,
+    private val usage: UsageRepository
 ) {
     /**
      * Lo que se busca para una pregunta: [question] (la reformulada, si hizo falta), [query] (sin la
@@ -73,16 +95,25 @@ class AskBook @Inject constructor(
      */
     private data class Search(val question: String, val query: String, val located: LocatedQuestion?)
 
+    /** Avisos de la respuesta a quien pregunta: la fase ([stage]) y la confirmación de un coste alto. */
+    private class Hooks(val stage: suspend (AskStage) -> Unit, val confirmCost: suspend (CostConfirmation) -> Boolean)
+
+    /**
+     * [confirmCost]: si generar los hechos clave que faltan no cabe en lo que queda del presupuesto de
+     * hoy, se pregunta; sin confirmar, se responde con el texto del libro.
+     */
     fun ask(
         bookId: String,
         threadId: Long,
         question: String,
-        reading: ReadingContext = ReadingContext()
+        reading: ReadingContext = ReadingContext(),
+        confirmCost: suspend (CostConfirmation) -> Boolean = { false }
     ): Flow<AskEvent> = flow {
         val history = chat.messages(threadId).takeLast(MAX_HISTORY_MESSAGES)
         chat.add(threadId, ChatRole.USER, question)
         try {
-            askAndRespond(bookId, threadId, question, history, reading)
+            val hooks = Hooks({ emit(AskEvent.Stage(it)) }, confirmCost)
+            askAndRespond(bookId, threadId, question, history, reading, hooks)
         } catch (e: CancellationException) {
             throw e
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
@@ -98,8 +129,10 @@ class AskBook @Inject constructor(
         threadId: Long,
         question: String,
         history: List<ChatMessage>,
-        reading: ReadingContext
+        reading: ReadingContext,
+        hooks: Hooks
     ) {
+        hooks.stage(AskStage.Searching)
         val config = settings.settings.first()
         val chapters = content.chapters(bookId)
         val limit = reading.spoilerLimit
@@ -108,8 +141,8 @@ class AskBook @Inject constructor(
         val book = books.getBook(bookId)
         val pageCount = book?.pageCount ?: chapters.maxOfOrNull { it.endPage } ?: 0
         val context = LocationContext(chapters, pageCount, book?.isLiterature == true, reading)
-        val search = search(bookId, question, history, context, config.summaryModel)
-        val fragments = fragmentsFor(bookId, search, context)
+        val search = search(bookId, question, history, context, config.analysisModel, hooks)
+        val fragments = fragmentsFor(bookId, search, context, hooks)
         val system = buildList {
             add(SystemBlock(prompts.render(R.raw.rag_system_v1)))
             add(SystemBlock(bookContext(bookId, visibleChapters)))
@@ -136,7 +169,7 @@ class AskBook @Inject constructor(
                     LlmRole.USER,
                     prompts.render(
                         R.raw.rag_question_v1,
-                        "fragments" to render(fragments),
+                        "fragments" to render(fragments, context.literature),
                         "position" to position(reading, visibleChapters, search.located),
                         "question" to question
                     )
@@ -144,11 +177,16 @@ class AskBook @Inject constructor(
             maxTokens = ANSWER_MAX_TOKENS
         )
 
+        hooks.stage(AskStage.Sending)
         val answer = StringBuilder()
         llm.streamChat(request).collect { event ->
-            if (event is LlmEvent.Text) {
-                answer.append(event.delta)
-                emit(AskEvent.Delta(event.delta))
+            when (event) {
+                LlmEvent.Sent -> hooks.stage(AskStage.Waiting)
+                is LlmEvent.Text -> {
+                    answer.append(event.delta)
+                    emit(AskEvent.Delta(event.delta))
+                }
+                is LlmEvent.Done -> Unit
             }
         }
         val cited = CitationParser.validate(answer.toString(), fragments)
@@ -167,9 +205,14 @@ class AskBook @Inject constructor(
         question: String,
         history: List<ChatMessage>,
         context: LocationContext,
-        model: String
+        model: String,
+        hooks: Hooks
     ): Search {
-        val original = locator.locate(bookId, question, context)
+        // Para situar una pregunta respecto a un hecho («después del crimen»), los hechos clave que falten.
+        val prepareEvents: suspend (List<Chapter>) -> Unit = { chapters ->
+            if (prepareKeyPoints(bookId, chapters, hooks) != null) hooks.stage(AskStage.Searching)
+        }
+        val original = locator.locate(bookId, question, context, prepareEvents)
         val summaryOfPart = original != null && QueryRouter.isSummary(question)
         if (history.isEmpty() || !QueryRouter.needsContext(question) || summaryOfPart) {
             return Search(question, original?.query ?: question, original)
@@ -181,48 +224,60 @@ class AskBook @Inject constructor(
         // de eso?» lo dice con la conversación); si hablaba y se descartó («al principio de su mano»),
         // reformularla no debe resucitarlo.
         val located = if (LocationRules.detect(question, context.literature) == null) {
-            locator.locate(bookId, standalone, context)
+            locator.locate(bookId, standalone, context, prepareEvents)
         } else {
             null
         }
         return Search(standalone, located?.query ?: standalone, located)
     }
 
-    private suspend fun fragmentsFor(bookId: String, search: Search, context: LocationContext): List<Fragment> {
-        search.located?.let { return locatedFragments(bookId, search, it, context) }
+    private suspend fun fragmentsFor(
+        bookId: String,
+        search: Search,
+        context: LocationContext,
+        hooks: Hooks
+    ): List<Fragment> {
+        search.located?.let { return locatedFragments(bookId, search, it, context, hooks) }
         val question = search.question
         val limit = context.reading.spoilerLimit
         if (QueryRouter.route(question) == QueryScope.GLOBAL) {
-            val saved = shortSummaries(bookId)
-            val byChapter = context.chapters.filter { limit == null || it.endPage <= limit }.mapNotNull { chapter ->
-                saved[chapter.id]?.let { chapter to it }
-            }
-            if (byChapter.isNotEmpty()) return byChapter.toSummaryFragments()
+            // Sobre el libro en conjunto: los hechos clave de todo lo leído.
+            val read = context.chapters.filter { limit == null || it.startPage <= limit }
+            keyPointFragments(bookId, read, null, limit, hooks)?.takeIf { it.isNotEmpty() }?.let { return it }
         }
         val k = if (QueryRouter.route(question) == QueryScope.GLOBAL) GLOBAL_K else SPECIFIC_K
         return retriever.retrieve(bookId, question, k, limit?.let { listOf(1..it) }).toFragments(context.chapters)
     }
 
     /**
-     * Pregunta sobre una parte del libro. Si pide un resumen: el del capítulo, si es uno entero, o los
-     * de los capítulos de esa parte (o fragmentos repartidos por ella); si no, la búsqueda híbrida solo
-     * en sus páginas. Si el lector aún no ha llegado ahí (anti-spoilers), nada.
+     * Pregunta sobre una parte del libro. Si pide un resumen: los hechos clave de esa parte (de todo el
+     * capítulo, si es uno entero; si no, solo los que ocurren en sus páginas); si no, la búsqueda híbrida
+     * solo en sus páginas. Si el lector aún no ha llegado ahí (anti-spoilers), nada.
      */
     private suspend fun locatedFragments(
         bookId: String,
         search: Search,
         located: LocatedQuestion,
-        context: LocationContext
+        context: LocationContext,
+        hooks: Hooks
     ): List<Fragment> {
         val summary = QueryRouter.isSummary(search.question) || QueryRouter.route(search.question) == QueryScope.GLOBAL
-        return when {
-            located.pages.isEmpty() -> emptyList()
-            !summary -> retriever.retrieve(bookId, search.query, SPECIFIC_K, located.pages)
-                .toFragments(context.chapters)
-            else -> wholeChapter(located.location, context)
-                ?.let { chapterFragments(bookId, it, context.reading.spoilerLimit) }
-                ?: rangeFragments(bookId, located.pages, context.chapters)
+        val limit = context.reading.spoilerLimit
+        if (located.pages.isEmpty()) return emptyList()
+        if (!summary) {
+            return retriever.retrieve(bookId, search.query, SPECIFIC_K, located.pages).toFragments(context.chapters)
         }
+        val chapter = wholeChapter(located.location, context)
+        if (chapter != null) {
+            if (limit != null && chapter.startPage > limit) return emptyList()
+            return keyPointFragments(bookId, listOf(chapter), null, limit, hooks)
+                ?: spreadFragments(bookId, chapter, limit, CHAPTER_K)
+        }
+        val inside = context.chapters.filter { c ->
+            located.pages.any { c.startPage <= it.last && c.endPage >= it.first }
+        }
+        return keyPointFragments(bookId, inside, located.pages, limit, hooks)?.takeIf { it.isNotEmpty() }
+            ?: retriever.spread(bookId, located.pages, CHAPTER_K).toFragments(context.chapters)
     }
 
     /** El capítulo, si la pregunta es sobre uno solo y entero («resume el capítulo 3»). */
@@ -233,46 +288,53 @@ class AskBook @Inject constructor(
     }
 
     /**
-     * Para resumir una parte del libro: los resúmenes breves de los capítulos que caen enteros en
-     * ella, si están todos; si no, fragmentos repartidos por sus páginas.
+     * Los hechos clave de [chapters] que ocurren en [pages] (todas, si es `null`) y, con anti-spoilers,
+     * hasta [limit]: un fragmento por capítulo, generando antes los que falten (avisando del progreso).
+     * Si generarlos no cabe en lo que queda del presupuesto de hoy y no se confirma, `null`: se responde
+     * con el texto. Los capítulos que se quedan sin ellos (Gemini se negó o falló) aportan unos
+     * fragmentos repartidos de su texto.
      */
-    private suspend fun rangeFragments(bookId: String, pages: List<IntRange>, chapters: List<Chapter>): List<Fragment> {
-        val inside = chapters.filter { chapter ->
-            pages.any { chapter.startPage >= it.first && chapter.endPage <= it.last }
+    private suspend fun keyPointFragments(
+        bookId: String,
+        chapters: List<Chapter>,
+        pages: List<IntRange>?,
+        limit: Int?,
+        hooks: Hooks
+    ): List<Fragment>? {
+        val saved = prepareKeyPoints(bookId, chapters, hooks) ?: return null
+        val plan = KeyPointFragments.plan(chapters, saved, limit) { point ->
+            pages == null ||
+                pages.any { point.page in it }
         }
-        val saved = shortSummaries(bookId)
-        val byChapter = inside.mapNotNull { chapter -> saved[chapter.id]?.let { chapter to it } }
-        return if (byChapter.isNotEmpty() && byChapter.size == inside.size) {
-            byChapter.toSummaryFragments()
-        } else {
-            retriever.spread(bookId, pages, CHAPTER_K).toFragments(chapters)
-        }
-    }
-
-    /** Resúmenes breves guardados, por id de capítulo. */
-    private suspend fun shortSummaries(bookId: String): Map<Long?, String> =
-        summaries.all(bookId).filter { it.kind == SummaryKind.CHAPTER_SHORT }.associate { it.chapterId to it.text }
-
-    private fun List<Pair<Chapter, String>>.toSummaryFragments() = mapIndexed { i, (chapter, text) ->
-        Fragment(i + 1, text, chapter.startPage, chapter.endPage, chapter.title, summary = true)
+        val byChapter = plan.fragments.associate { (chapter, fragment) -> chapter.id to listOf(fragment) } +
+            plan.withoutKeyPoints.associate { it.id to spreadFragments(bookId, it, limit, FALLBACK_K) }
+        return chapters.flatMap { byChapter[it.id].orEmpty() }.mapIndexed { i, f -> f.copy(number = i + 1) }
     }
 
     /**
-     * Para resumir un capítulo: su resumen breve si ya existe (y se ha leído entero, con
-     * anti-spoilers); si no, fragmentos repartidos por todo él, hasta donde se ha leído. Un capítulo
-     * que aún no se ha empezado no aporta nada: la respuesta dirá que no lo ha encontrado.
+     * Los hechos clave de [chapters], generando antes los que falten (avisando del progreso). Si generarlos
+     * no cabe en lo que queda del presupuesto de hoy y no se confirma, `null`.
      */
-    private suspend fun chapterFragments(bookId: String, chapter: Chapter, limit: Int?): List<Fragment> {
-        if (limit != null && chapter.startPage > limit) return emptyList()
-        if (limit == null || chapter.endPage <= limit) {
-            summaries.get(bookId, chapter.id, SummaryKind.CHAPTER_SHORT)?.let {
-                return listOf(
-                    Fragment(1, it.text, chapter.startPage, chapter.endPage, chapter.title, summary = true)
-                )
-            }
+    private suspend fun prepareKeyPoints(
+        bookId: String,
+        chapters: List<Chapter>,
+        hooks: Hooks
+    ): Map<Long, ChapterKeyPoints>? {
+        val cost = keyPoints.estimate(bookId, chapters).total
+        if (cost > 0) {
+            val confirmation = usage.today.first().confirmationFor(cost)
+            if (confirmation != null && !hooks.confirmCost(confirmation)) return null
         }
+        return keyPoints.ensure(bookId, chapters) { done, total ->
+            hooks.stage(AskStage.LoadingKeyPoints(done, total))
+        }
+    }
+
+    /** Fragmentos repartidos por [chapter], hasta donde se ha leído; nada si aún no se ha empezado. */
+    private suspend fun spreadFragments(bookId: String, chapter: Chapter, limit: Int?, k: Int): List<Fragment> {
         val end = if (limit == null) chapter.endPage else minOf(chapter.endPage, limit)
-        return retriever.spread(bookId, chapter.startPage, end, CHAPTER_K).toFragments(listOf(chapter))
+        if (end < chapter.startPage) return emptyList()
+        return retriever.spread(bookId, chapter.startPage, end, k).toFragments(listOf(chapter))
     }
 
     /** Fragmentos para el modelo: los trozos seguidos del libro se unen en uno ([ChunkMerger]). */
@@ -324,17 +386,18 @@ class AskBook @Inject constructor(
         return "«${chapter.title}»" + (part?.let { " de «$it»" } ?: "") + pages
     }
 
-    private fun render(fragments: List<Fragment>): String = fragments.joinToString("\n") { f ->
+    private fun render(fragments: List<Fragment>, literature: Boolean): String = fragments.joinToString("\n") { f ->
         val pages = if (f.startPage == f.endPage) "${f.startPage}" else "${f.startPage}-${f.endPage}"
         val chapter = f.chapter?.let { " capitulo=\"${it.replace("\"", "'")}\"" }.orEmpty()
-        val text = if (f.summary) "Resumen del capítulo: ${f.text}" else f.text
+        val heading = if (literature) "Hechos clave del capítulo" else "Ideas clave del capítulo"
+        val text = if (f.keyPoints) "$heading (con la página de cada uno):\n${f.text}" else f.text
         "<fragmento id=\"${f.number}\" paginas=\"$pages\"$chapter>\n$text\n</fragmento>"
     }
 
     /** Para la sección «Fuentes» de la respuesta: el fragmento tal cual se envió. */
     private fun Fragment.toSource() = ChatSource(
         number = number,
-        kind = if (summary) SourceKind.SUMMARY else SourceKind.BOOK,
+        kind = if (keyPoints) SourceKind.KEY_POINTS else SourceKind.BOOK,
         text = text,
         startPage = startPage,
         endPage = endPage,
@@ -384,6 +447,9 @@ class AskBook @Inject constructor(
         const val SPECIFIC_K = 8
         const val GLOBAL_K = 12
         const val CHAPTER_K = 16
+
+        /** Fragmentos de texto de un capítulo que se ha quedado sin hechos clave. */
+        const val FALLBACK_K = 2
         const val ANSWER_MAX_TOKENS = 16_000L
         const val REWRITE_CONTEXT = 4
         const val REWRITE_CHARS = 600

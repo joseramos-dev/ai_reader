@@ -478,13 +478,3 @@ object LocationResolver {
         return merged
     }
 }
-
-/** Los hechos de un resumen de hechos ([dev.joseramos.aireader.core.data.db.SummaryKind.CHAPTER_EVENTS]). */
-object EventLines {
-    private val BULLET = Regex("""^\s*(?:[-•*·]|\d+[.)])\s+""")
-
-    /** Las líneas que empiezan por «- » (o «• », «1.»…), sin la viñeta. Un aviso sin viñetas no da hechos. */
-    fun parse(text: String): List<String> = text.lines().mapNotNull { line ->
-        BULLET.find(line)?.let { line.substring(it.range.last + 1).trim() }?.takeIf { it.isNotEmpty() }
-    }
-}

@@ -11,8 +11,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** De dónde sale una fuente: texto del libro o el resumen (generado) de un capítulo. */
-enum class SourceKind { BOOK, SUMMARY }
+/** De dónde sale una fuente: texto del libro o los hechos clave (generados) de un capítulo. */
+enum class SourceKind { BOOK, KEY_POINTS }
 
 /**
  * Fragmento enviado al modelo para responder, tal cual se le mandó: [number] es su id en el prompt

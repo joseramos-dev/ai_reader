@@ -67,7 +67,7 @@ data class ReaderUiState(
     val opened: Boolean = false,
     val pageSizes: List<Size> = emptyList(),
     val currentPage: Int = 1,
-    /** Capítulos (nivel 0): los que se resumen y por los que salta la voz. */
+    /** Capítulos (nivel 0): los que tienen hechos clave y por los que salta la voz. */
     val chapters: List<Chapter> = emptyList(),
     /** Índice completo, con los apartados de cada capítulo, para el menú. */
     val contents: List<Chapter> = emptyList(),

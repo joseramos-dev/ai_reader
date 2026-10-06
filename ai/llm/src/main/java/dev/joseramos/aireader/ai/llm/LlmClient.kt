@@ -52,6 +52,9 @@ data class LlmRequest(
 data class LlmUsage(val inputTokens: Long = 0, val outputTokens: Long = 0, val cacheReadTokens: Long = 0)
 
 sealed interface LlmEvent {
+    /** La petición ya se ha enviado: el modelo está preparando la respuesta (aún sin texto). */
+    data object Sent : LlmEvent
+
     data class Text(val delta: String) : LlmEvent
 
     data class Done(val usage: LlmUsage) : LlmEvent
@@ -91,7 +94,7 @@ sealed class LlmException(message: String, cause: Throwable? = null) : Exception
 
 /** Cliente de un modelo de lenguaje. La app usa Gemini, pero la UI solo conoce esta interfaz. */
 interface LlmClient {
-    /** Respuesta en streaming: varios [LlmEvent.Text] y un [LlmEvent.Done] al final. */
+    /** Respuesta en streaming: [LlmEvent.Sent], varios [LlmEvent.Text] y un [LlmEvent.Done] al final. */
     fun streamChat(request: LlmRequest): Flow<LlmEvent>
 
     suspend fun complete(request: LlmRequest): LlmResponse

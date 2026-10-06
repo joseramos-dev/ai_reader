@@ -169,14 +169,4 @@ class BookLocationRulesTest {
         assertEquals(1, LocationText.partNumber("PARTE 1. CAPÍTULO 1"))
         assertNull(LocationText.partNumber("CAPÍTULO 2"))
     }
-
-    @Test
-    fun eventLinesKeepOnlyTheBullets() {
-        assertEquals(
-            listOf("Raskólnikov mata a la usurera.", "Huye sin que lo vean."),
-            EventLines.parse("- Raskólnikov mata a la usurera.\n• Huye sin que lo vean.\n\nNada más.")
-        )
-        assertEquals(listOf("Uno", "Dos"), EventLines.parse("1. Uno\n2) Dos"))
-        assertTrue(EventLines.parse("El modelo no ha querido enumerar los hechos de este capítulo.").isEmpty())
-    }
 }

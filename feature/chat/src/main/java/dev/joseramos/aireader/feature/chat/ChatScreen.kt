@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.FactCheck
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.AlertDialog
@@ -67,6 +68,7 @@ import dev.joseramos.aireader.core.designsystem.component.ApiKeySheet
 import dev.joseramos.aireader.core.designsystem.component.BarIconButton
 import dev.joseramos.aireader.core.designsystem.component.BudgetAlertBanner
 import dev.joseramos.aireader.core.designsystem.component.BudgetAlertKind
+import dev.joseramos.aireader.core.designsystem.component.CostConfirmDialog
 import dev.joseramos.aireader.core.designsystem.component.EmptyState
 import dev.joseramos.aireader.core.designsystem.component.PrimaryButton
 import dev.joseramos.aireader.core.designsystem.component.UsageRing
@@ -109,7 +111,8 @@ fun NavGraphBuilder.chatScreen(
             onRetryIndexing = viewModel::retryIndexing,
             onSetAntiSpoilers = viewModel::setAntiSpoilers,
             onDismissError = viewModel::dismissError,
-            onDismissBudgetAlert = viewModel::dismissBudgetAlert
+            onDismissBudgetAlert = viewModel::dismissBudgetAlert,
+            onResolveCost = viewModel::resolveCostConfirmation
         )
         // La clave se pide aquí mismo: al guardarla, el chat se habilita sin salir del libro.
         if (askKey) ApiKeySheet(onSave = viewModel::saveApiKey, onDismiss = { askKey = false })
@@ -130,9 +133,12 @@ private fun ChatScreen(
     onRetryIndexing: () -> Unit,
     onSetAntiSpoilers: (Boolean) -> Unit,
     onDismissError: () -> Unit,
-    onDismissBudgetAlert: (BudgetLevel) -> Unit
+    onDismissBudgetAlert: (BudgetLevel) -> Unit,
+    onResolveCost: (Boolean) -> Unit
 ) {
     val colors = AppTheme.colors
+    val literature = state.book?.isLiterature == true
+    var showKeyPoints by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val itemCount = state.messages.size + if (state.streaming != null) 1 else 0
     LaunchedEffect(itemCount, state.streaming?.length) {
@@ -148,7 +154,7 @@ private fun ChatScreen(
                 Modifier.align(Alignment.CenterStart)
             )
             Column(
-                Modifier.align(Alignment.Center).padding(horizontal = 64.dp),
+                Modifier.align(Alignment.Center).padding(horizontal = TITLE_PADDING),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(stringResource(R.string.chat_title), style = AppTheme.typography.headline, color = colors.label)
@@ -175,6 +181,11 @@ private fun ChatScreen(
                     ),
                     size = 22.dp
                 )
+                BarIconButton(
+                    Icons.Outlined.FactCheck,
+                    stringResource(R.string.chat_key_points_open),
+                    { showKeyPoints = true }
+                )
                 if (state.messages.isNotEmpty()) {
                     BarIconButton(Icons.Outlined.EditNote, stringResource(R.string.chat_new), onNewConversation)
                 }
@@ -190,14 +201,22 @@ private fun ChatScreen(
             if (state.messages.isEmpty() && state.streaming == null) {
                 item { EmptyChat(enabled = state.availability is ChatAvailability.Ready, onSend = onSend) }
             }
-            items(state.messages, key = { it.id }) { message -> MessageBubble(message, onOpenPage, onOpenSource) }
+            items(state.messages, key = { it.id }) { message ->
+                MessageBubble(message, literature, onOpenPage, onOpenSource)
+            }
             state.streaming?.let { partial ->
                 item(key = "streaming") {
-                    MessageBubble(
-                        ChatMessage(-1, ChatRole.ASSISTANT, partial.ifEmpty { "…" }, emptyList()),
-                        onOpenPage,
-                        onOpenSource
-                    )
+                    // Hasta que llega el texto, lo que se está haciendo (preparar hechos clave, esperar…).
+                    if (partial.isEmpty()) {
+                        StageBubble(state.stage, literature)
+                    } else {
+                        MessageBubble(
+                            ChatMessage(-1, ChatRole.ASSISTANT, partial, emptyList()),
+                            literature,
+                            onOpenPage,
+                            onOpenSource
+                        )
+                    }
                 }
             }
             state.error?.let { error ->
@@ -236,6 +255,17 @@ private fun ChatScreen(
                 else -> AvailabilityBanner(availability, onOpenSettings, onRetryIndexing)
             }
         }
+    }
+    if (showKeyPoints) {
+        KeyPointsSheet(state.keyPoints, literature, onOpenPage = onOpenPage, onDismiss = { showKeyPoints = false })
+    }
+    state.costConfirmation?.let { cost ->
+        CostConfirmDialog(
+            estimatedTokens = cost.estimatedTokens,
+            remainingTokens = cost.remainingTokens,
+            onConfirm = { onResolveCost(true) },
+            onDismiss = { onResolveCost(false) }
+        )
     }
 }
 
@@ -343,6 +373,7 @@ private fun EmptyChat(enabled: Boolean, onSend: (String) -> Unit) {
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
+    literature: Boolean,
     onOpenPage: (Int) -> Unit,
     onOpenSource: (ChatMessage, ChatSource) -> Unit
 ) {
@@ -379,8 +410,8 @@ private fun MessageBubble(
             }
         }
         if (message.sources.isNotEmpty()) {
-            Sources(message) { source ->
-                // Un resumen no está en el libro: se abre el principio de su capítulo.
+            Sources(message, literature) { source ->
+                // Los hechos clave no son texto del libro: se abre el principio de su capítulo.
                 if (source.kind == SourceKind.BOOK) onOpenSource(message, source) else onOpenPage(source.startPage)
             }
         }
@@ -548,4 +579,7 @@ private fun NoticeAction(text: String, onClick: () -> Unit) {
 }
 
 private const val PERCENT = 100
+
+/** Margen del título de la barra, para que no pise los botones de los lados. */
+private val TITLE_PADDING = 112.dp
 private const val BYTES_PER_MB = 1_000_000

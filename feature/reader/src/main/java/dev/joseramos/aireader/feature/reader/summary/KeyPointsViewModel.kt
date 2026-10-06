@@ -5,13 +5,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.joseramos.aireader.ai.llm.SummaryGenerator
-import dev.joseramos.aireader.ai.llm.SummaryJob
-import dev.joseramos.aireader.ai.llm.SummaryKey
+import dev.joseramos.aireader.ai.llm.KeyPointsGenerator
+import dev.joseramos.aireader.ai.llm.KeyPointsJob
+import dev.joseramos.aireader.ai.llm.KeyPointsJobKey
+import dev.joseramos.aireader.ai.llm.Recap
 import dev.joseramos.aireader.core.data.book.Chapter
-import dev.joseramos.aireader.core.data.book.Summary
-import dev.joseramos.aireader.core.data.book.SummaryRepository
-import dev.joseramos.aireader.core.data.db.SummaryKind
+import dev.joseramos.aireader.core.data.book.ChapterKeyPoints
+import dev.joseramos.aireader.core.data.book.KeyPointsRepository
 import dev.joseramos.aireader.core.data.settings.BudgetLevel
 import dev.joseramos.aireader.core.data.settings.CostConfirmation
 import dev.joseramos.aireader.core.data.settings.DailyUsage
@@ -27,19 +27,21 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** Resumen de un capítulo que se está mostrando: breve, detallado o sus hechos importantes. */
-data class SummaryTarget(val chapter: Chapter, val kind: SummaryKind = SummaryKind.CHAPTER_SHORT)
-
-data class SummariesUiState(
-    val summaries: List<Summary> = emptyList(),
-    val jobs: Map<SummaryKey, SummaryJob> = emptyMap()
+/**
+ * Hechos clave de los capítulos del libro (por id de capítulo), los trabajos de IA en curso o fallidos
+ * y el último repaso «Hasta ahora…».
+ */
+data class KeyPointsUiState(
+    val keyPoints: Map<Long, ChapterKeyPoints> = emptyMap(),
+    val jobs: Map<KeyPointsJobKey, KeyPointsJob> = emptyMap(),
+    val recap: Recap? = null
 )
 
 @HiltViewModel
-class SummaryViewModel @Inject constructor(
+class KeyPointsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    repository: SummaryRepository,
-    private val generator: SummaryGenerator,
+    repository: KeyPointsRepository,
+    private val generator: KeyPointsGenerator,
     private val secrets: SecretStore,
     private val usage: UsageRepository
 ) : ViewModel() {
@@ -53,26 +55,24 @@ class SummaryViewModel @Inject constructor(
 
     private val bookId = savedStateHandle.toRoute<ReaderRoute>().bookId
 
-    val state: StateFlow<SummariesUiState> = combine(repository.observe(bookId), generator.jobs) { summaries, jobs ->
-        SummariesUiState(summaries, jobs.filterKeys { it.bookId == bookId })
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SummariesUiState())
+    val state: StateFlow<KeyPointsUiState> = combine(
+        repository.observe(bookId),
+        generator.jobs,
+        generator.recaps
+    ) { keyPoints, jobs, recaps ->
+        KeyPointsUiState(keyPoints, jobs.filterKeys { it.bookId == bookId }, recaps[bookId])
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), KeyPointsUiState())
 
-    fun summaryFor(state: SummariesUiState, target: SummaryTarget): Summary? =
-        state.summaries.firstOrNull { it.chapterId == target.chapter.id && it.kind == target.kind }
+    fun jobFor(state: KeyPointsUiState, chapter: Chapter): KeyPointsJob? =
+        state.jobs[KeyPointsJobKey(bookId, chapter.id)]
 
-    fun jobFor(state: SummariesUiState, target: SummaryTarget): SummaryJob? =
-        state.jobs[SummaryKey(bookId, target.chapter.id, target.kind)]
-
-    /** Repaso «Hasta ahora…» guardado, si lo hay. */
-    fun recapFor(state: SummariesUiState): Summary? = state.summaries.firstOrNull { it.kind == SummaryKind.RECAP }
-
-    fun recapJob(state: SummariesUiState): SummaryJob? = state.jobs[SummaryKey(bookId, null, SummaryKind.RECAP)]
+    fun recapJob(state: KeyPointsUiState): KeyPointsJob? = state.jobs[KeyPointsJobKey(bookId, null)]
 
     /**
      * El repaso sirve mientras no cubra páginas por delante de [page] y no se haya avanzado más de
      * un capítulo desde que se hizo; si no, hay que generar otro.
      */
-    fun recapIsCurrent(recap: Summary?, chapters: List<Chapter>, page: Int): Boolean {
+    fun recapIsCurrent(recap: Recap?, chapters: List<Chapter>, page: Int): Boolean {
         val until = recap?.untilPage ?: return false
         if (until > page) return false
         val chapterOf = { p: Int -> chapters.indexOfLast { p >= it.startPage } }
@@ -84,7 +84,10 @@ class SummaryViewModel @Inject constructor(
     /** Repaso (página y estimación) que no cabe en lo que queda del presupuesto de hoy: pendiente de confirmar. */
     val costConfirmation: StateFlow<Pair<Int, CostConfirmation>?> = _costConfirmation
 
-    /** Genera el repaso hasta [page] o, si no cabe en lo que queda del presupuesto de hoy, pide confirmación. */
+    /**
+     * Genera el repaso hasta [page] (con los hechos clave que falten) o, si no cabe en lo que queda del
+     * presupuesto de hoy, pide confirmación.
+     */
     fun requestRecap(page: Int) {
         viewModelScope.launch {
             val confirmation = usage.today.first().confirmationFor(generator.estimateRecap(bookId, page).total)
@@ -113,5 +116,6 @@ class SummaryViewModel @Inject constructor(
         }
     }
 
-    fun generate(target: SummaryTarget) = generator.summarizeChapter(bookId, target.chapter, target.kind)
+    /** Genera los hechos clave de [chapter] si faltan, o de nuevo con [replace]. */
+    fun generate(chapter: Chapter, replace: Boolean = false) = generator.generate(bookId, chapter, replace)
 }

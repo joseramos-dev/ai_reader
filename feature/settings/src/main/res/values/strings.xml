@@ -23,7 +23,7 @@
     <string name="settings_api_key">Clave de API</string>
     <string name="settings_api_key_set">Configurada</string>
     <string name="settings_api_key_unset">Sin configurar</string>
-    <string name="settings_summary_model">Modelo de resúmenes</string>
+    <string name="settings_analysis_model">Modelo de análisis</string>
     <string name="settings_model_not_installed">Para el chat · No descargado · %1$d MB</string>
     <string name="settings_model_installed">Para el chat · Descargado · %1$d MB</string>
     <string name="settings_characters">Análisis de personajes</string>

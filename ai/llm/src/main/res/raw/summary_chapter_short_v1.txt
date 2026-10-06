@@ -1,5 +1,0 @@
-Resume el capítulo «{{chapter}}» del libro «{{book}}» en un párrafo de entre 3 y 6 frases.
-
-<capitulo>
-{{text}}
-</capitulo>

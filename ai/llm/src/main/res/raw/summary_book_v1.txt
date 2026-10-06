@@ -1,5 +1,0 @@
-Estos son los resúmenes de los capítulos del libro «{{book}}», en orden. Escribe un resumen del libro completo en 3 o 4 párrafos: de qué trata, cómo se desarrolla y cuáles son sus ideas o hechos principales.
-
-<capitulos>
-{{text}}
-</capitulos>

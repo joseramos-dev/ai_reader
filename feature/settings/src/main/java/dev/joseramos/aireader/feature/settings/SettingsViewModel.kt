@@ -81,7 +81,7 @@ class SettingsViewModel @Inject constructor(
 
     fun setSpeed(speed: Float) = launch { settingsRepository.setReadingSpeed(speed) }
 
-    fun setSummaryModel(model: String) = launch { settingsRepository.setSummaryModel(model) }
+    fun setAnalysisModel(model: String) = launch { settingsRepository.setAnalysisModel(model) }
 
     fun setAutoCharacterAnalysis(enabled: Boolean) = launch { settingsRepository.setAutoCharacterAnalysis(enabled) }
 

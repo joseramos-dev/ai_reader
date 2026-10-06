@@ -44,7 +44,7 @@ class SettingsAndSecretsTest {
         val repository = SettingsRepository(store("settings"))
         assertEquals(AppSettings(), repository.settings.first())
         assertEquals("gemini-3.8-flash", repository.settings.first().chatModel)
-        assertEquals("gemini-3.1-flash-lite", repository.settings.first().summaryModel)
+        assertEquals("gemini-3.1-flash-lite", repository.settings.first().analysisModel)
 
         repository.setThemeMode(ThemeMode.DARK)
         repository.setReadingSpeed(5f)
@@ -144,10 +144,10 @@ class SettingsAndSecretsTest {
         val dataStore = store("settings")
         val repository = SettingsRepository(dataStore)
         repository.setChatModel("claude-sonnet-5-5")
-        repository.setSummaryModel("gemini-3.8-flash")
+        repository.setAnalysisModel("gemini-3.8-flash")
 
         val settings = repository.settings.first()
         assertEquals(AppSettings.DEFAULT_CHAT_MODEL, settings.chatModel)
-        assertEquals("gemini-3.8-flash", settings.summaryModel)
+        assertEquals("gemini-3.8-flash", settings.analysisModel)
     }
 }

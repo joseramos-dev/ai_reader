@@ -17,13 +17,13 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
+import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.designsystem.component.ApiKeySheet
 import dev.joseramos.aireader.feature.characters.CharacterSheet
 import dev.joseramos.aireader.feature.reader.summary.AiActionsSheet
 import dev.joseramos.aireader.feature.reader.summary.CatchUpSheet
-import dev.joseramos.aireader.feature.reader.summary.SummarySheet
-import dev.joseramos.aireader.feature.reader.summary.SummaryTarget
-import dev.joseramos.aireader.feature.reader.summary.SummaryViewModel
+import dev.joseramos.aireader.feature.reader.summary.KeyPointsSheet
+import dev.joseramos.aireader.feature.reader.summary.KeyPointsViewModel
 import kotlinx.serialization.Serializable
 
 /**
@@ -54,14 +54,14 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
     val extras by viewModel.extras.collectAsStateWithLifecycle()
     val playback by viewModel.playback.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val summaryViewModel: SummaryViewModel = hiltViewModel()
+    val keyPointsViewModel: KeyPointsViewModel = hiltViewModel()
     var aiSheet by remember { mutableStateOf(false) }
-    val aiUsage by summaryViewModel.today.collectAsStateWithLifecycle()
-    val hasApiKey by summaryViewModel.hasApiKey.collectAsStateWithLifecycle()
+    val aiUsage by keyPointsViewModel.today.collectAsStateWithLifecycle()
+    val hasApiKey by keyPointsViewModel.hasApiKey.collectAsStateWithLifecycle()
 
     // Clave de API pedida desde una hoja de IA: al guardarla se reintenta lo que se estaba haciendo.
     var retryAfterKey by remember { mutableStateOf<(() -> Unit)?>(null) }
-    var summaryTarget by remember { mutableStateOf<SummaryTarget?>(null) }
+    var keyPointsChapter by remember { mutableStateOf<Chapter?>(null) }
     var catchUp by remember { mutableStateOf(false) }
     var characterId by remember { mutableStateOf<Long?>(null) }
     val literature = state.book?.isLiterature == true
@@ -131,7 +131,7 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
             currentPage = state.currentPage,
             hasApiKey = hasApiKey,
             usage = aiUsage,
-            onDismissBudgetAlert = summaryViewModel::dismissBudgetAlert,
+            onDismissBudgetAlert = keyPointsViewModel::dismissBudgetAlert,
             onCatchUp = {
                 aiSheet = false
                 catchUp = true
@@ -160,12 +160,12 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
         CatchUpSheet(
             page = state.currentPage,
             chapters = state.chapters,
-            viewModel = summaryViewModel,
+            viewModel = keyPointsViewModel,
             onOpenChapter = {
                 catchUp = false
-                summaryTarget = SummaryTarget(it)
+                keyPointsChapter = it
             },
-            onAddApiKey = { retryAfterKey = { summaryViewModel.requestRecap(state.currentPage) } },
+            onAddApiKey = { retryAfterKey = { keyPointsViewModel.requestRecap(state.currentPage) } },
             onDismiss = { catchUp = false }
         )
     }
@@ -181,20 +181,23 @@ private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, 
             onDismiss = { characterId = null }
         )
     }
-    summaryTarget?.let { target ->
-        SummarySheet(
-            target = target,
+    keyPointsChapter?.let { chapter ->
+        KeyPointsSheet(
+            chapter = chapter,
             literature = literature,
-            viewModel = summaryViewModel,
-            onChangeTarget = { summaryTarget = it },
-            onAddApiKey = { retryAfterKey = { summaryViewModel.generate(target) } },
-            onDismiss = { summaryTarget = null }
+            viewModel = keyPointsViewModel,
+            onOpenPage = { page ->
+                keyPointsChapter = null
+                viewModel.jumpTo(page)
+            },
+            onAddApiKey = { retryAfterKey = { keyPointsViewModel.generate(chapter) } },
+            onDismiss = { keyPointsChapter = null }
         )
     }
 
     retryAfterKey?.let { retry ->
         ApiKeySheet(
-            onSave = { key -> summaryViewModel.saveApiKey(key, retry) },
+            onSave = { key -> keyPointsViewModel.saveApiKey(key, retry) },
             onDismiss = { retryAfterKey = null }
         )
     }

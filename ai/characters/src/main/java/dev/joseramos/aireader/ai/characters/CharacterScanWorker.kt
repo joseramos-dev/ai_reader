@@ -16,7 +16,6 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dev.joseramos.aireader.ai.llm.LlmClient
 import dev.joseramos.aireader.ai.llm.LlmException
-import dev.joseramos.aireader.ai.llm.SummaryGenerator
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Chapter
@@ -26,10 +25,8 @@ import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import kotlinx.coroutines.flow.first
 
 /**
- * Recorre los capítulos de una novela en orden, extrae sus personajes y genera sus hechos
- * importantes (los que usa «Pregunta al libro» para situar preguntas como «¿qué hace después del
- * crimen?»). Cada capítulo terminado se apunta en `character_scans` y los hechos se guardan como un
- * resumen más, así que si el trabajo se interrumpe continúa por donde iba.
+ * Recorre los capítulos de una novela en orden y extrae sus personajes. Cada capítulo terminado se
+ * apunta en `character_scans`, así que si el trabajo se interrumpe continúa por donde iba.
  */
 @HiltWorker
 class CharacterScanWorker @AssistedInject constructor(
@@ -39,7 +36,6 @@ class CharacterScanWorker @AssistedInject constructor(
     private val content: BookContentRepository,
     private val dao: CharacterDao,
     private val extractor: CharacterExtractor,
-    private val summaries: SummaryGenerator,
     private val llm: LlmClient,
     private val settings: SettingsRepository
 ) : CoroutineWorker(context, params) {
@@ -50,13 +46,12 @@ class CharacterScanWorker @AssistedInject constructor(
         if (!llm.hasApiKey()) return apiKeyFailure()
         runCatching { setForeground(foregroundInfo(book.title)) }
 
-        val model = settings.settings.first().summaryModel
+        val model = settings.settings.first().analysisModel
         val chapters = content.chapters(bookId)
         val done = dao.scannedChapterIds(bookId).toSet()
         for (chapter in chapters) {
             try {
                 if (chapter.id !in done) scan(bookId, book.title, chapter, model)
-                summaries.chapterEvents(bookId, chapter)
             } catch (e: LlmException.RateLimited) {
                 // El nivel gratuito de Gemini limita las peticiones por minuto y por día: se espera y se
                 // sigue por el mismo capítulo (WorkManager reintenta con espera creciente).

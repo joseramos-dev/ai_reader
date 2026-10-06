@@ -41,19 +41,27 @@ import dev.joseramos.aireader.core.designsystem.theme.Spacing
 
 /**
  * «Fuentes»: desplegable bajo la respuesta con los fragmentos que se enviaron a la IA para darla. El
- * título dice si son texto del libro o resúmenes de los capítulos, y se marcan los que la respuesta
- * cita. Tocar uno llama a [onOpen].
+ * título dice si son texto del libro o hechos clave de los capítulos (ideas clave si no es una novela:
+ * [literature]), y se marcan los que la respuesta cita. Tocar uno llama a [onOpen].
  */
 @Composable
-internal fun Sources(message: ChatMessage, onOpen: (ChatSource) -> Unit) {
+internal fun Sources(message: ChatMessage, literature: Boolean, onOpen: (ChatSource) -> Unit) {
     val colors = AppTheme.colors
     var expanded by rememberSaveable(message.id) { mutableStateOf(false) }
     val fromBook = message.sources.count { it.kind == SourceKind.BOOK }
-    val fromSummaries = message.sources.size - fromBook
+    val fromKeyPoints = message.sources.size - fromBook
     val origin = when {
-        fromSummaries == 0 -> pluralStringResource(R.plurals.chat_sources_book, fromBook, fromBook)
-        fromBook == 0 -> pluralStringResource(R.plurals.chat_sources_summaries, fromSummaries, fromSummaries)
-        else -> stringResource(R.string.chat_sources_mixed, fromBook, fromSummaries)
+        fromKeyPoints == 0 -> pluralStringResource(R.plurals.chat_sources_book, fromBook, fromBook)
+        fromBook == 0 -> pluralStringResource(
+            if (literature) R.plurals.chat_sources_key_events else R.plurals.chat_sources_key_ideas,
+            fromKeyPoints,
+            fromKeyPoints
+        )
+        else -> stringResource(
+            if (literature) R.string.chat_sources_mixed_events else R.string.chat_sources_mixed_ideas,
+            fromBook,
+            fromKeyPoints
+        )
     }
     Column(Modifier.widthIn(max = 320.dp).padding(top = Spacing.xxs)) {
         Row(
@@ -95,7 +103,7 @@ internal fun Sources(message: ChatMessage, onOpen: (ChatSource) -> Unit) {
             ) {
                 message.sources.forEach { source ->
                     key(source.number) {
-                        SourceCard(source, cited = source.isCitedBy(message.citations)) { onOpen(source) }
+                        SourceCard(source, literature, cited = source.isCitedBy(message.citations)) { onOpen(source) }
                     }
                 }
             }
@@ -104,13 +112,13 @@ internal fun Sources(message: ChatMessage, onOpen: (ChatSource) -> Unit) {
 }
 
 /**
- * Un fragmento enviado a la IA: de dónde sale (libro o resumen), sus páginas y capítulo, si la respuesta
+ * Un fragmento enviado a la IA: de dónde sale (libro o hechos clave), sus páginas y capítulo, si la respuesta
  * lo cita, y su texto, recortado a unas líneas con «Ver todo».
  */
 @Composable
-private fun SourceCard(source: ChatSource, cited: Boolean, onOpen: () -> Unit) {
+private fun SourceCard(source: ChatSource, literature: Boolean, cited: Boolean, onOpen: () -> Unit) {
     val colors = AppTheme.colors
-    val summary = source.kind == SourceKind.SUMMARY
+    val keyPoints = source.kind == SourceKind.KEY_POINTS
     var full by rememberSaveable { mutableStateOf(false) }
     var overflows by remember { mutableStateOf(false) }
     val pages = if (source.startPage == source.endPage) {
@@ -126,7 +134,7 @@ private fun SourceCard(source: ChatSource, cited: Boolean, onOpen: () -> Unit) {
             .clickable(
                 role = Role.Button,
                 onClickLabel = stringResource(
-                    if (summary) R.string.chat_source_open_chapter else R.string.chat_source_open_passage
+                    if (keyPoints) R.string.chat_source_open_chapter else R.string.chat_source_open_passage
                 ),
                 onClick = onOpen
             )
@@ -135,13 +143,19 @@ private fun SourceCard(source: ChatSource, cited: Boolean, onOpen: () -> Unit) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             Text(
-                stringResource(if (summary) R.string.chat_source_summary else R.string.chat_source_book),
+                stringResource(
+                    when {
+                        !keyPoints -> R.string.chat_source_book
+                        literature -> R.string.chat_source_key_events
+                        else -> R.string.chat_source_key_ideas
+                    }
+                ),
                 style = AppTheme.typography.caption,
                 fontWeight = FontWeight.SemiBold,
-                color = if (summary) colors.label else colors.accentText,
+                color = if (keyPoints) colors.label else colors.accentText,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(if (summary) colors.fill else colors.accentFill)
+                    .background(if (keyPoints) colors.fill else colors.accentFill)
                     .padding(horizontal = Spacing.xs, vertical = 1.dp)
             )
             Text(

@@ -20,7 +20,7 @@ data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val readingSpeed: Float = 1.0f,
     val chatModel: String = DEFAULT_CHAT_MODEL,
-    val summaryModel: String = DEFAULT_SUMMARY_MODEL,
+    val analysisModel: String = DEFAULT_ANALYSIS_MODEL,
     /** Escala de letra del modo lectura de texto. */
     val textScale: Float = 1.0f,
     /** Analizar los personajes de las novelas al indexarlas; si no, solo cuando se pide. */
@@ -28,9 +28,9 @@ data class AppSettings(
 ) {
     companion object {
         // Gemini en lugar de Claude (docs/02-diseno-tecnico.md §10): Flash para el chat y Flash-Lite,
-        // con más margen en el nivel gratuito, para resúmenes, personajes y tareas por volumen.
+        // con más margen en el nivel gratuito, para hechos clave, personajes y tareas por volumen.
         const val DEFAULT_CHAT_MODEL = "gemini-3.8-flash"
-        const val DEFAULT_SUMMARY_MODEL = "gemini-3.1-flash-lite"
+        const val DEFAULT_ANALYSIS_MODEL = "gemini-3.1-flash-lite"
         private const val MODEL_PREFIX = "gemini-"
 
         /** Los modelos de Claude que pudiera haber guardados de versiones anteriores ya no sirven. */
@@ -49,7 +49,7 @@ class SettingsRepository @Inject constructor(@Named(SETTINGS_STORE) private val 
             themeMode = prefs[THEME]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,
             readingSpeed = prefs[SPEED] ?: 1.0f,
             chatModel = AppSettings.validModel(prefs[CHAT_MODEL], AppSettings.DEFAULT_CHAT_MODEL),
-            summaryModel = AppSettings.validModel(prefs[SUMMARY_MODEL], AppSettings.DEFAULT_SUMMARY_MODEL),
+            analysisModel = AppSettings.validModel(prefs[ANALYSIS_MODEL], AppSettings.DEFAULT_ANALYSIS_MODEL),
             textScale = prefs[TEXT_SCALE] ?: 1.0f,
             autoCharacterAnalysis = prefs[AUTO_CHARACTERS] ?: true
         )
@@ -67,8 +67,8 @@ class SettingsRepository @Inject constructor(@Named(SETTINGS_STORE) private val 
         dataStore.edit { it[CHAT_MODEL] = model }
     }
 
-    suspend fun setSummaryModel(model: String) {
-        dataStore.edit { it[SUMMARY_MODEL] = model }
+    suspend fun setAnalysisModel(model: String) {
+        dataStore.edit { it[ANALYSIS_MODEL] = model }
     }
 
     suspend fun setTextScale(scale: Float) {
@@ -98,7 +98,9 @@ class SettingsRepository @Inject constructor(@Named(SETTINGS_STORE) private val 
         private val THEME = stringPreferencesKey("theme_mode")
         private val SPEED = floatPreferencesKey("reading_speed")
         private val CHAT_MODEL = stringPreferencesKey("chat_model")
-        private val SUMMARY_MODEL = stringPreferencesKey("summary_model")
+
+        // Se llamaba «modelo de resúmenes»: la clave se conserva para no perder lo que se eligió.
+        private val ANALYSIS_MODEL = stringPreferencesKey("summary_model")
         private val TEXT_SCALE = floatPreferencesKey("text_scale")
         private val AUTO_CHARACTERS = booleanPreferencesKey("auto_character_analysis")
         private val SPOILERS_ALLOWED = stringSetPreferencesKey("spoilers_allowed_books")

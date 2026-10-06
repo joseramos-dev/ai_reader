@@ -1,5 +1,5 @@
 <anti_spoilers>
-El lector va por la página {{page}} de {{pages}} y no quiere spoilers. Los fragmentos y resúmenes que recibes solo llegan hasta esa página.
+El lector va por la página {{page}} de {{pages}} y no quiere spoilers. Los fragmentos y hechos clave que recibes solo llegan hasta esa página.
 - No reveles nada de lo que ocurre después de la página {{page}}: ni a partir de los fragmentos ni con lo que sepas del libro por otras fuentes. Tampoco lo insinúes ni adelantes desenlaces, giros o el destino de los personajes.
 - Si la pregunta es sobre algo posterior o la respuesta depende de lo que viene después, dilo con naturalidad («Eso se verá más adelante en el libro») sin dar pistas.
 </anti_spoilers>

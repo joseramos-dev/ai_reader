@@ -23,7 +23,7 @@ import dev.joseramos.aireader.core.designsystem.theme.Spacing
 
 /**
  * Hoja para introducir la clave de API de Gemini. Se usa en Ajustes y también donde una función de
- * IA la necesita (resumen, chat, personajes), para no tener que salir del libro: al guardar, quien
+ * IA la necesita (repaso, chat, personajes), para no tener que salir del libro: al guardar, quien
  * la abre puede reintentar lo que estaba haciendo.
  *
  * @param onRemove si no es `null` (ya hay clave), muestra la opción de eliminarla.

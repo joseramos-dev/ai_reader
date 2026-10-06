@@ -34,7 +34,7 @@ interface LocationJudge {
 }
 
 /**
- * [LocationJudge] con el modelo de resúmenes (Gemini Flash-Lite por defecto): una llamada corta, con
+ * [LocationJudge] con el modelo de análisis (Gemini Flash-Lite por defecto): una llamada corta, con
  * respuesta JSON y sin razonamiento. Si falla (sin clave, sin red, respuesta rara) no decide, y la
  * pregunta se responde como si no hablara de ninguna parte del libro.
  */
@@ -66,7 +66,7 @@ class GeminiLocationJudge @Inject constructor(
         }
     }
 
-    private suspend fun model() = settings.settings.first().summaryModel
+    private suspend fun model() = settings.settings.first().analysisModel
 
     @Suppress("TooGenericExceptionCaught") // Un fallo de la llamada deja la pregunta sin situar, no la rompe.
     private suspend fun <T> safely(block: suspend () -> T?): T? {

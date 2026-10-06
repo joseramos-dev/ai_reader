@@ -1,0 +1,11 @@
+Enumera los hechos clave del capítulo «{{chapter}}» de la novela «{{book}}»{{part}}: los que hacen avanzar la historia y que un lector usaría para recordarla o situarse en ella («el crimen», «cuando conoce a Sonia», «la muerte del padre»). Deja fuera los hechos menores (comidas, paseos, conversaciones sin consecuencias).
+
+El texto lleva una marca [p. N] donde empieza cada página. Para cada hecho:
+- "texto": una frase breve y esquemática, con los nombres de los personajes.
+- "pagina": el número de la marca [p. N] de la página donde ocurre.
+
+Escribe entre {{min}} y {{max}} hechos, en el orden en que ocurren. Cada hecho cuenta solo lo que pasa en su página: no adelantes nada de lo que ocurre después.
+
+<capitulo>
+{{text}}
+</capitulo>

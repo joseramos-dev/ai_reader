@@ -76,7 +76,7 @@ private enum class Sheet {
     THEME,
     SPEED,
     API_KEY,
-    SUMMARY_MODEL,
+    ANALYSIS_MODEL,
     DAILY_BUDGET
 }
 
@@ -156,12 +156,12 @@ private fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel)
                 }
                 row {
                     Cell(
-                        title = stringResource(R.string.settings_summary_model),
+                        title = stringResource(R.string.settings_analysis_model),
                         icon = Icons.Outlined.Summarize,
                         iconBackground = Color(0xFF34C759),
-                        value = modelName(settings.summaryModel),
+                        value = modelName(settings.analysisModel),
                         showChevron = true,
-                        onClick = { sheet = Sheet.SUMMARY_MODEL }
+                        onClick = { sheet = Sheet.ANALYSIS_MODEL }
                     )
                 }
                 row { SearchModelCell(state.searchModel, viewModel) }
@@ -259,11 +259,11 @@ private fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel)
             onSelect = viewModel::setTheme,
             onDismiss = { sheet = null }
         )
-        Sheet.SUMMARY_MODEL -> OptionsSheet(
-            title = stringResource(R.string.settings_summary_model),
+        Sheet.ANALYSIS_MODEL -> OptionsSheet(
+            title = stringResource(R.string.settings_analysis_model),
             options = geminiModels,
-            selected = settings.summaryModel,
-            onSelect = viewModel::setSummaryModel,
+            selected = settings.analysisModel,
+            onSelect = viewModel::setAnalysisModel,
             onDismiss = { sheet = null }
         )
         Sheet.DAILY_BUDGET -> OptionsSheet(

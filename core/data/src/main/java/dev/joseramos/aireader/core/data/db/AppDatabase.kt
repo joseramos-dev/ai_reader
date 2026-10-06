@@ -2,6 +2,7 @@ package dev.joseramos.aireader.core.data.db
 
 import androidx.room.AutoMigration
 import androidx.room.Database
+import androidx.room.DeleteTable
 import androidx.room.RoomDatabase
 import androidx.room.migration.AutoMigrationSpec
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -17,6 +18,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * - v6: subrayados de texto (`highlights`).
  * - v7: `chunks_fts` con el tokenizador `unicode61` sin diacríticos (migración manual: reconstruye el índice).
  * - v8: fragmentos enviados al modelo en cada respuesta del chat (`sourcesJson`), para la sección «Fuentes».
+ * - v9: los resúmenes (`summaries`) dejan paso a los hechos clave de cada capítulo, con su página
+ *   (`chapter_key_points`).
  */
 @Database(
     entities = [
@@ -27,7 +30,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ChunkEntity::class,
         ChunkFtsEntity::class,
         ChunkEmbeddingEntity::class,
-        SummaryEntity::class,
+        ChapterKeyPointsEntity::class,
         ReadingPositionEntity::class,
         ChatThreadEntity::class,
         ChatMessageEntity::class,
@@ -40,7 +43,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CharacterScanEntity::class,
         HighlightEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2, spec = AppDatabase.Migration1To2::class),
@@ -48,7 +51,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6),
-        AutoMigration(from = 7, to = 8)
+        AutoMigration(from = 7, to = 8),
+        AutoMigration(from = 8, to = 9, spec = AppDatabase.DeleteSummaries::class)
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -64,7 +68,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun chunkEmbeddingDao(): ChunkEmbeddingDao
 
-    abstract fun summaryDao(): SummaryDao
+    abstract fun keyPointsDao(): KeyPointsDao
 
     abstract fun readingPositionDao(): ReadingPositionDao
 
@@ -84,6 +88,10 @@ abstract class AppDatabase : RoomDatabase() {
             db.execSQL("UPDATE reading_positions SET maxPage = page")
         }
     }
+
+    /** Los resúmenes guardados se descartan: ahora se generan, cuando se piden, a partir de los hechos clave. */
+    @DeleteTable(tableName = "summaries")
+    class DeleteSummaries : AutoMigrationSpec
 
     companion object {
         const val NAME = "aireader.db"

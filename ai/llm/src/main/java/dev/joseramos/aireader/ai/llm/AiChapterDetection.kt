@@ -32,7 +32,7 @@ class AiChapterDetection @Inject constructor(
             if (attempt > 0) delay(RETRY_DELAY_MS)
             val answer = llm.complete(
                 LlmRequest(
-                    model = settings.settings.first().summaryModel,
+                    model = settings.settings.first().analysisModel,
                     messages = listOf(LlmMessage(LlmRole.USER, prompt)),
                     maxTokens = MAX_TOKENS,
                     jsonSchema = SCHEMA

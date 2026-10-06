@@ -1,0 +1,7 @@
+Estoy leyendo «{{book}}» y voy por la página {{page}}. Escribe un repaso de lo leído hasta aquí, para retomar la lectura después de unos días.
+
+Empieza por «Hasta ahora…» y usa entre 2 y 4 párrafos breves, en orden. Usa solo los {{kind}} de abajo (cada uno con su página): no adelantes, no insinúes ni supongas nada de lo que viene después de la página {{page}}.
+
+<{{tag}}>
+{{points}}
+</{{tag}}>

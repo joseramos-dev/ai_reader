@@ -18,7 +18,7 @@
     <string name="library_open">Abrir</string>
     <string name="library_delete">Eliminar libro</string>
     <string name="library_delete_title">¿Eliminar «%1$s»?</string>
-    <string name="library_delete_message">Se borrarán el PDF, su texto, los resúmenes y el chat. No se puede deshacer.</string>
+    <string name="library_delete_message">Se borrarán el PDF, su texto, los hechos clave y el chat. No se puede deshacer.</string>
     <string name="library_cancel">Cancelar</string>
     <string name="library_info_pages">Páginas</string>
     <string name="library_info_imported">Importado</string>
@@ -36,5 +36,5 @@
     <string name="library_type_scientific">Científico</string>
     <string name="library_type_educational">Educativo</string>
     <string name="library_type_generic">Documento general</string>
-    <string name="library_type_footer">El tipo cambia el estilo de los resúmenes. Personajes y relaciones solo están disponibles en literatura. Si lo eliges tú, no se vuelve a calcular.</string>
+    <string name="library_type_footer">El tipo decide si se sacan hechos clave (literatura) o ideas clave. Personajes y relaciones solo están disponibles en literatura. Si lo eliges tú, no se vuelve a calcular.</string>
 </resources>

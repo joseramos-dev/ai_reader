@@ -22,11 +22,11 @@ enum class IndexStatus { PENDING, EXTRACTING_TEXT, TEXT_READY, EMBEDDING, READY,
 enum class ChapterSource { OUTLINE, HEURISTIC, LLM, BLOCKS }
 
 /**
- * [RECAP]: repaso «Hasta ahora…» de lo leído hasta [SummaryEntity.untilPage]. [CHAPTER_EVENTS]: los
- * hechos importantes de un capítulo, uno por línea; sitúan en el libro preguntas como «¿qué hace
- * después del crimen?». Room guarda el nombre, así que añadir tipos no necesita migración.
+ * Cómo quedaron los hechos clave de un capítulo: [READY], generados; [REFUSED], el modelo no quiso
+ * enumerarlos (contenido bloqueado); [EMPTY], el capítulo no tiene texto extraíble. Sin fila, aún no
+ * se han generado.
  */
-enum class SummaryKind { CHAPTER_SHORT, CHAPTER_LONG, BOOK, RECAP, CHAPTER_EVENTS }
+enum class KeyPointsStatus { READY, REFUSED, EMPTY }
 
 enum class ChatRole { USER, ASSISTANT }
 
@@ -36,7 +36,7 @@ enum class ChatRole { USER, ASSISTANT }
  */
 enum class ModelKind { TTS_VOICE, EMBEDDING }
 
-/** Clase de documento: decide el estilo de los resúmenes y si hay personajes (docs/02 §6.4). */
+/** Clase de documento: decide si se sacan hechos clave (literatura) o ideas clave y si hay personajes. */
 enum class DocumentType { LITERATURE, SCIENTIFIC, EDUCATIONAL, GENERIC }
 
 /** [USER]: el tipo lo eligió el usuario y la indexación no lo vuelve a calcular. */
@@ -72,7 +72,7 @@ data class BookEntity(
 )
 
 /**
- * Entrada del índice del libro. [level] 0 son los capítulos (o temas), que son los que se resumen y
+ * Entrada del índice del libro. [level] 0 son los capítulos (o temas), que son los que tienen hechos clave y
  * por los que salta la voz; 1 y 2 son sus apartados y subapartados, que solo aparecen en el menú. Los
  * apartados llevan el [number] de su capítulo.
  */
@@ -175,24 +175,27 @@ data class ChunkEmbeddingEntity(
     override fun hashCode() = 31 * chunkId.hashCode() + vector.contentHashCode()
 }
 
+/**
+ * Hechos clave (novelas) o ideas clave (el resto) de un capítulo: frases esquemáticas, en orden, cada
+ * una con la página donde ocurre, como array JSON de `KeyPoint` en [pointsJson]. Se generan solo cuando
+ * hacen falta (al preguntar al libro, en un repaso o al abrir el capítulo): que un capítulo no tenga
+ * fila es que aún no se han generado.
+ */
 @Entity(
-    tableName = "summaries",
+    tableName = "chapter_key_points",
     foreignKeys = [
         ForeignKey(BookEntity::class, ["id"], ["bookId"], onDelete = CASCADE),
         ForeignKey(ChapterEntity::class, ["id"], ["chapterId"], onDelete = CASCADE)
     ],
-    indices = [Index("bookId"), Index("chapterId")]
+    indices = [Index("bookId")]
 )
-data class SummaryEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+data class ChapterKeyPointsEntity(
+    @PrimaryKey val chapterId: Long,
     val bookId: String,
-    val chapterId: Long?,
-    val kind: SummaryKind,
-    val text: String,
+    val status: KeyPointsStatus,
+    val pointsJson: String,
     val model: String,
-    val createdAt: Long,
-    /** Última página que cubre un repaso ([SummaryKind.RECAP]); `null` en los demás. */
-    val untilPage: Int? = null
+    val createdAt: Long
 )
 
 @Entity(

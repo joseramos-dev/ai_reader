@@ -19,19 +19,44 @@
         <item quantity="one">%1$d fragmento del libro</item>
         <item quantity="other">%1$d fragmentos del libro</item>
     </plurals>
-    <plurals name="chat_sources_summaries">
-        <item quantity="one">resumen de %1$d capítulo</item>
-        <item quantity="other">resúmenes de %1$d capítulos</item>
+    <plurals name="chat_sources_key_events">
+        <item quantity="one">hechos clave de %1$d capítulo</item>
+        <item quantity="other">hechos clave de %1$d capítulos</item>
     </plurals>
-    <string name="chat_sources_mixed">%1$d del libro y %2$d de resúmenes</string>
+    <plurals name="chat_sources_key_ideas">
+        <item quantity="one">ideas clave de %1$d capítulo</item>
+        <item quantity="other">ideas clave de %1$d capítulos</item>
+    </plurals>
+    <string name="chat_sources_mixed_events">%1$d del libro y %2$d con hechos clave</string>
+    <string name="chat_sources_mixed_ideas">%1$d del libro y %2$d con ideas clave</string>
     <string name="chat_sources_show">Mostrar las fuentes</string>
     <string name="chat_sources_hide">Ocultar las fuentes</string>
     <string name="chat_source_book">Libro</string>
-    <string name="chat_source_summary">Resumen</string>
+    <string name="chat_source_key_events">Hechos clave</string>
+    <string name="chat_source_key_ideas">Ideas clave</string>
     <string name="chat_source_cited">Citado</string>
     <string name="chat_source_open_passage">Abrir el pasaje en el libro</string>
     <string name="chat_source_open_chapter">Abrir el capítulo en el libro</string>
     <string name="chat_source_more">Ver todo</string>
+    <string name="chat_stage_searching">Buscando en el libro…</string>
+    <string name="chat_stage_key_events">Preparando los hechos clave (%1$d de %2$d capítulos)…</string>
+    <string name="chat_stage_key_ideas">Preparando las ideas clave (%1$d de %2$d capítulos)…</string>
+    <string name="chat_stage_sending">Enviando la pregunta…</string>
+    <string name="chat_stage_waiting">Esperando la respuesta…</string>
+    <string name="chat_key_points_open">Capítulos con hechos clave</string>
+    <string name="chat_key_points_ready">%1$d de %2$d capítulos preparados</string>
+    <string name="chat_key_points_help">Se preparan solo cuando una pregunta los necesita («¿De qué trata el libro?», «Resume el capítulo 3»…) y se guardan para las siguientes.</string>
+    <string name="chat_key_points_pending">Sin preparar</string>
+    <string name="chat_key_points_refused">El modelo no quiso enumerarlos</string>
+    <string name="chat_key_points_empty">Sin texto</string>
+    <plurals name="chat_key_points_count_events">
+        <item quantity="one">%1$d hecho</item>
+        <item quantity="other">%1$d hechos</item>
+    </plurals>
+    <plurals name="chat_key_points_count_ideas">
+        <item quantity="one">%1$d idea</item>
+        <item quantity="other">%1$d ideas</item>
+    </plurals>
     <string name="chat_source_less">Ver menos</string>
     <string name="chat_no_key">Para preguntar al libro hace falta tu clave de API de Gemini (gratis en Google AI Studio).</string>
     <string name="chat_add_key">Añadir clave</string>

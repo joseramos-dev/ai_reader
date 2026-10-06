@@ -25,7 +25,7 @@ import dev.joseramos.aireader.core.designsystem.theme.Spacing
 
 /**
  * Hoja inferior con asa, esquinas de 20 dp y título opcional. Es la forma de mostrar
- * capítulos, voz, resúmenes y opciones sin cambiar de pantalla.
+ * capítulos, voz, hechos clave y opciones sin cambiar de pantalla.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -12,5 +12,9 @@ data class TokenEstimate(val input: Long = 0, val output: Long = 0) {
     companion object {
         /** Instrucciones del sistema y plantilla que acompañan a cada petición. */
         const val PROMPT_OVERHEAD_TOKENS = 1_000L
+        private const val CHARS_PER_TOKEN = 4
+
+        /** Tokens de [text], a grandes rasgos (≈4 caracteres por token en español). */
+        fun tokensIn(text: String): Int = text.length / CHARS_PER_TOKEN
     }
 }

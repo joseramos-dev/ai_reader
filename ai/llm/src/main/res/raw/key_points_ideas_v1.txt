@@ -1,0 +1,11 @@
+Enumera las ideas clave del capítulo «{{chapter}}» del documento «{{book}}»{{part}}: {{focus}}. Deja fuera los detalles menores y los ejemplos que no aporten nada nuevo.
+
+El texto lleva una marca [p. N] donde empieza cada página. Para cada idea:
+- "texto": una frase breve y esquemática, que se entienda sola y conserve los términos del original.
+- "pagina": el número de la marca [p. N] de la página donde aparece.
+
+Escribe entre {{min}} y {{max}} ideas, en el orden en que aparecen.
+
+<capitulo>
+{{text}}
+</capitulo>

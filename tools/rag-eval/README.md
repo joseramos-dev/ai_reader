@@ -36,7 +36,7 @@ manual), mezclando:
 - Alguna pregunta cuya respuesta está repartida en dos páginas.
 
 Las preguntas globales («¿de qué trata el libro?») no sirven aquí: el chat las responde con los
-resúmenes, no con la búsqueda.
+hechos clave de los capítulos, no con la búsqueda.
 
 ## Cómo leer el resultado
 

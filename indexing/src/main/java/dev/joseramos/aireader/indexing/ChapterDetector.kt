@@ -41,7 +41,7 @@ class ChapterDetector @Inject constructor(
 ) {
     /**
      * [upgrade]: el texto se acaba de volver a procesar en un libro que ya tenía capítulos. Entonces
-     * se añaden los apartados que falten sin perder los resúmenes ya generados de cada capítulo.
+     * se añaden los apartados que falten sin perder los hechos clave ya generados de cada capítulo.
      * [retryWithAi]: ahora hay clave de API y antes no; si el índice se quedó en bloques de páginas
      * (sin IA), se vuelve a intentar con ella.
      */
@@ -74,7 +74,7 @@ class ChapterDetector @Inject constructor(
                 chapterDao.insertAll(toEntities(book, entries, source))
                 chapterDao.remapChunks(book.id)
             }
-            // Hay resúmenes o personajes colgando de los capítulos actuales: se conservan y lo nuevo
+            // Hay hechos clave o personajes colgando de los capítulos actuales: se conservan y lo nuevo
             // entra como apartados suyos.
             else -> insertSections(
                 book,

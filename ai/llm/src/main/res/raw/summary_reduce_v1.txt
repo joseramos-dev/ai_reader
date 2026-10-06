@@ -1,5 +1,0 @@
-Estos son los resúmenes, en orden, de los fragmentos del capítulo «{{chapter}}» del libro «{{book}}». Combínalos en un único resumen del capítulo ({{length}}), sin repetir ideas.
-
-<resumenes>
-{{text}}
-</resumenes>

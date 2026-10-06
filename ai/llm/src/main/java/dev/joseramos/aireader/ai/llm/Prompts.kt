@@ -22,8 +22,6 @@ class Prompts @Inject constructor(@ApplicationContext private val context: Conte
         return fill(template, *values)
     }
 
-    val summarySystem: String get() = render(R.raw.summary_system_v1)
-
     companion object {
         // Una sola pasada sobre la plantilla original: si un valor insertado (texto del libro, por
         // ejemplo) contiene literalmente "{{otraClave}}", no se vuelve a sustituir por error.

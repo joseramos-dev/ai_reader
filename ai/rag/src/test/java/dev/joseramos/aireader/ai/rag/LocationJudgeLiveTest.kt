@@ -45,7 +45,7 @@ import org.junit.Test
  */
 class LocationJudgeLiveTest {
     private val key: String? = System.getenv("GEMINI_API_KEY")?.takeIf { it.isNotBlank() }
-    private val model = System.getenv("GEMINI_MODEL")?.takeIf { it.isNotBlank() } ?: AppSettings.DEFAULT_SUMMARY_MODEL
+    private val model = System.getenv("GEMINI_MODEL")?.takeIf { it.isNotBlank() } ?: AppSettings.DEFAULT_ANALYSIS_MODEL
 
     @Before
     fun requireKey() = assumeTrue("Sin GEMINI_API_KEY: no se llama a Gemini", key != null)

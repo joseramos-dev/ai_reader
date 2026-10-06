@@ -5,6 +5,8 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import dev.joseramos.aireader.core.data.book.ChatRepository
 import dev.joseramos.aireader.core.data.book.ChatSource
+import dev.joseramos.aireader.core.data.book.KeyPoint
+import dev.joseramos.aireader.core.data.book.KeyPointsRepository
 import dev.joseramos.aireader.core.data.book.SourceKind
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -124,16 +126,7 @@ class AppDatabaseTest {
         db.chunkEmbeddingDao().insertAll(listOf(ChunkEmbeddingEntity(chunkId, "e5", 2, ByteArray(8))))
         db.pageTextDao().upsert(PageTextEntity("a", 1, "raw", "clean", "[]", false, 1))
         db.readingPositionDao().upsert(ReadingPositionEntity("a", 3, 0, 0, 1))
-        db.summaryDao().upsert(
-            SummaryEntity(
-                bookId = "a",
-                chapterId = chapterId,
-                kind = SummaryKind.CHAPTER_SHORT,
-                text = "r",
-                model = "m",
-                createdAt = 1
-            )
-        )
+        db.keyPointsDao().upsert(ChapterKeyPointsEntity(chapterId, "a", KeyPointsStatus.READY, "[]", "m", 1))
         val threadId = db.chatDao().insertThread(ChatThreadEntity(bookId = "a", createdAt = 1))
         db.chatDao().insertMessage(
             ChatMessageEntity(
@@ -152,7 +145,7 @@ class AppDatabaseTest {
         assertTrue(db.chunkEmbeddingDao().getVectors("a", "e5").isEmpty())
         assertNull(db.pageTextDao().get("a", 1))
         assertNull(db.readingPositionDao().get("a"))
-        assertTrue(db.summaryDao().observeByBook("a").first().isEmpty())
+        assertTrue(db.keyPointsDao().getByBook("a").isEmpty())
         assertNull(db.chatDao().latestThread("a"))
     }
 
@@ -163,7 +156,7 @@ class AppDatabaseTest {
         val thread = chat.currentThread("a")
         val sources = listOf(
             ChatSource(1, SourceKind.BOOK, "Raskólnikov salió.", 12, 13, "Capítulo 1"),
-            ChatSource(2, SourceKind.SUMMARY, "Resumen breve.", 20, 30)
+            ChatSource(2, SourceKind.KEY_POINTS, "- Hecho clave [p. 21]", 20, 30)
         )
         chat.add(thread, ChatRole.USER, "¿Qué hace?")
         val answer = chat.add(thread, ChatRole.ASSISTANT, "Sale [p. 12].", listOf(12), sources)
@@ -174,6 +167,33 @@ class AppDatabaseTest {
         assertTrue(messages.last().sources.first().isCitedBy(messages.last().citations))
         assertEquals(sources[1], chat.source(answer, 2))
         assertNull(chat.source(answer, 3))
+    }
+
+    @Test
+    fun keyPointsKeepTheirPagesAndStatus() = runTest {
+        db.bookDao().upsert(book("a", importedAt = 1))
+        fun chapter(number: Int, start: Int, end: Int) = ChapterEntity(
+            bookId = "a",
+            number = number,
+            title = "$number",
+            startPage = start,
+            endPage = end,
+            source = ChapterSource.OUTLINE
+        )
+        val (one, two) = db.chapterDao().insertAll(listOf(chapter(1, 1, 5), chapter(2, 6, 9)))
+        val repository = KeyPointsRepository(db.keyPointsDao())
+        val points = listOf(KeyPoint("Raskólnikov sale de casa.", 2), KeyPoint("Visita a la usurera.", 4))
+        repository.save("a", one, KeyPointsStatus.READY, points, "modelo")
+        repository.save("a", two, KeyPointsStatus.REFUSED, emptyList(), "modelo")
+
+        val saved = repository.all("a")
+        assertEquals(points, saved.getValue(one).points)
+        assertEquals(listOf(points[0]), saved.getValue(one).until(3))
+        assertEquals(KeyPointsStatus.REFUSED, saved.getValue(two).status)
+        assertEquals(2, db.chapterDao().countDependents("a"))
+
+        repository.delete(one)
+        assertNull(repository.get(one))
     }
 
     @Test

@@ -8,7 +8,7 @@ android {
     namespace = "dev.joseramos.aireader.ai.llm"
 }
 
-// Cliente de la API de Gemini (REST con OkHttp), prompts y resúmenes.
+// Cliente de la API de Gemini (REST con OkHttp), prompts, hechos clave y repasos.
 dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:data"))

@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import okhttp3.Call
+import okhttp3.EventListener
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -48,10 +49,18 @@ class GeminiLlmClient @Inject constructor(
 
     override fun streamChat(request: LlmRequest): Flow<LlmEvent> = callbackFlow {
         var activeCall: Call? = null
+        // Se avisa en cuanto la pregunta ha salido: Gemini no manda ni las cabeceras hasta que empieza a
+        // responder, y mientras tanto (puede ser mucho rato) la fase debe ser «esperando», no «enviando».
+        val sent = object : EventListener() {
+            override fun requestBodyEnd(call: Call, byteCount: Long) {
+                trySend(LlmEvent.Sent)
+            }
+        }
+        val client = http.newBuilder().eventListener(sent).build()
         val job = launch(io) {
             try {
                 withOverloadRetry {
-                    val call = http.newCall(httpRequest(request, apiKey(), stream = true))
+                    val call = client.newCall(httpRequest(request, apiKey(), stream = true))
                     activeCall = call
                     call.execute().use { response ->
                         ensureSuccess(response)

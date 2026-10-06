@@ -93,10 +93,10 @@ interface ChapterDao {
     @Query("DELETE FROM chapters WHERE bookId = :bookId")
     suspend fun deleteByBook(bookId: String)
 
-    /** Resúmenes de capítulo y análisis de personajes que se perderían al rehacer los capítulos. */
+    /** Hechos clave y análisis de personajes que se perderían al rehacer los capítulos. */
     @Query(
         """
-        SELECT (SELECT COUNT(*) FROM summaries WHERE bookId = :bookId AND chapterId IS NOT NULL) +
+        SELECT (SELECT COUNT(*) FROM chapter_key_points WHERE bookId = :bookId) +
             (SELECT COUNT(*) FROM character_scans WHERE bookId = :bookId)
         """
     )
@@ -297,22 +297,21 @@ interface ChunkEmbeddingDao {
 }
 
 @Dao
-interface SummaryDao {
-    @Query("SELECT * FROM summaries WHERE bookId = :bookId ORDER BY chapterId")
-    fun observeByBook(bookId: String): Flow<List<SummaryEntity>>
+interface KeyPointsDao {
+    @Query("SELECT * FROM chapter_key_points WHERE bookId = :bookId")
+    fun observeByBook(bookId: String): Flow<List<ChapterKeyPointsEntity>>
 
-    @Query("SELECT * FROM summaries WHERE bookId = :bookId ORDER BY chapterId")
-    suspend fun getByBook(bookId: String): List<SummaryEntity>
+    @Query("SELECT * FROM chapter_key_points WHERE bookId = :bookId")
+    suspend fun getByBook(bookId: String): List<ChapterKeyPointsEntity>
 
-    /** `IS` compara bien con `NULL` (resumen del libro, sin capítulo). */
-    @Query("SELECT * FROM summaries WHERE bookId = :bookId AND chapterId IS :chapterId AND kind = :kind LIMIT 1")
-    suspend fun get(bookId: String, chapterId: Long?, kind: SummaryKind): SummaryEntity?
-
-    @Query("DELETE FROM summaries WHERE bookId = :bookId AND chapterId IS :chapterId AND kind = :kind")
-    suspend fun delete(bookId: String, chapterId: Long?, kind: SummaryKind)
+    @Query("SELECT * FROM chapter_key_points WHERE chapterId = :chapterId")
+    suspend fun get(chapterId: Long): ChapterKeyPointsEntity?
 
     @Upsert
-    suspend fun upsert(summary: SummaryEntity): Long
+    suspend fun upsert(keyPoints: ChapterKeyPointsEntity)
+
+    @Query("DELETE FROM chapter_key_points WHERE chapterId = :chapterId")
+    suspend fun delete(chapterId: Long)
 }
 
 @Dao

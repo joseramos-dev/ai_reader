@@ -1,5 +1,7 @@
 package dev.joseramos.aireader.feature.reader.summary
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -7,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -14,9 +17,6 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,12 +24,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.joseramos.aireader.ai.llm.SummaryJob
-import dev.joseramos.aireader.core.data.db.SummaryKind
+import dev.joseramos.aireader.ai.llm.KeyPointsJob
+import dev.joseramos.aireader.core.data.book.Chapter
+import dev.joseramos.aireader.core.data.book.KeyPoint
+import dev.joseramos.aireader.core.data.db.KeyPointsStatus
 import dev.joseramos.aireader.core.data.settings.BudgetLevel
 import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.designsystem.component.AiUsageRow
@@ -47,8 +51,8 @@ import dev.joseramos.aireader.feature.reader.R
 
 /**
  * Hoja ✦ del lector: las acciones de IA disponibles para el libro. Los resúmenes (de un capítulo o
- * del libro) se piden en «Pregunta al libro». Sin clave de API las acciones se muestran bloqueadas,
- * con un aviso para introducirla ([onAddApiKey]).
+ * del libro) se piden en «Pregunta al libro», que los escribe a partir de los hechos clave. Sin clave
+ * de API las acciones se muestran bloqueadas, con un aviso para introducirla ([onAddApiKey]).
  */
 @Composable
 internal fun AiActionsSheet(
@@ -151,64 +155,41 @@ internal fun budgetAlertKind(usage: DailyUsage, level: BudgetLevel): BudgetAlert
 private const val LOCKED_ALPHA = 0.4f
 
 /**
- * Resumen de un capítulo, que se abre desde «Ponerme al día». Si no existe, se genera al abrir la hoja. Los errores se
- * explican con una acción (por ejemplo, ir a Ajustes si falta la clave). En novelas ([literature]) ofrece también sus
- * hechos importantes, que el análisis de personajes suele tener ya generados.
+ * Hechos clave de un capítulo (ideas clave si no es una novela: [literature]), que se abre desde
+ * «Ponerme al día»: frases esquemáticas, cada una con su página, que se abre al tocarla ([onOpenPage]).
+ * Si aún no los tiene, se generan al abrir la hoja. Los errores se explican con una acción (por ejemplo,
+ * ir a Ajustes si falta la clave).
  */
 @Composable
-internal fun SummarySheet(
-    target: SummaryTarget,
+internal fun KeyPointsSheet(
+    chapter: Chapter,
     literature: Boolean,
-    viewModel: SummaryViewModel,
-    onChangeTarget: (SummaryTarget) -> Unit,
+    viewModel: KeyPointsViewModel,
+    onOpenPage: (Int) -> Unit,
     onAddApiKey: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val summary = viewModel.summaryFor(state, target)
-    val job = viewModel.jobFor(state, target)
-    // Si no hay resumen, se genera al abrir; también si un intento anterior falló (por ejemplo, por
-    // falta de clave), para que no se quede mostrando un error ya resuelto.
-    LaunchedEffect(target) {
-        if (viewModel.summaryFor(viewModel.state.value, target) == null &&
-            viewModel.jobFor(viewModel.state.value, target) !is SummaryJob.Running
-        ) {
-            viewModel.generate(target)
+    val keyPoints = state.keyPoints[chapter.id]
+    val job = viewModel.jobFor(state, chapter)
+    // Si faltan, se generan al abrir; también si un intento anterior falló (por ejemplo, por falta de
+    // clave), para que no se quede mostrando un error ya resuelto.
+    LaunchedEffect(chapter.id) {
+        val now = viewModel.state.value
+        if (now.keyPoints[chapter.id] == null && viewModel.jobFor(now, chapter) !is KeyPointsJob.Running) {
+            viewModel.generate(chapter)
         }
     }
     val colors = AppTheme.colors
-    AppBottomSheet(
-        onDismissRequest = onDismiss,
-        title = target.chapter.title,
-        skipPartiallyExpanded = false
-    ) {
+    AppBottomSheet(onDismissRequest = onDismiss, title = chapter.title, skipPartiallyExpanded = false) {
         Column(Modifier.padding(horizontal = Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-            val kinds = listOfNotNull(
-                SummaryKind.CHAPTER_SHORT,
-                SummaryKind.CHAPTER_LONG,
-                SummaryKind.CHAPTER_EVENTS.takeIf { literature }
+            Text(
+                stringResource(if (literature) R.string.key_points_events else R.string.key_points_ideas).uppercase(),
+                style = AppTheme.typography.footnote,
+                color = colors.secondaryLabel
             )
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                kinds.forEachIndexed { i, kind ->
-                    SegmentedButton(
-                        selected = target.kind == kind,
-                        onClick = { onChangeTarget(target.copy(kind = kind)) },
-                        shape = SegmentedButtonDefaults.itemShape(i, kinds.size)
-                    ) {
-                        Text(
-                            stringResource(
-                                when (kind) {
-                                    SummaryKind.CHAPTER_LONG -> R.string.ai_detailed
-                                    SummaryKind.CHAPTER_EVENTS -> R.string.ai_events
-                                    else -> R.string.ai_brief
-                                }
-                            )
-                        )
-                    }
-                }
-            }
             when {
-                job is SummaryJob.Running -> Row(
+                job is KeyPointsJob.Running -> Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s)
                 ) {
@@ -218,34 +199,35 @@ internal fun SummarySheet(
                         strokeWidth = 2.dp
                     )
                     Text(
-                        stringResource(R.string.ai_generating),
+                        stringResource(
+                            if (literature) {
+                                R.string.key_points_generating_events
+                            } else {
+                                R.string.key_points_generating_ideas
+                            }
+                        ),
                         style = AppTheme.typography.subheadline,
                         color = colors.secondaryLabel
                     )
                 }
-                job is SummaryJob.Failed -> {
+                job is KeyPointsJob.Failed -> {
                     Text(job.message, style = AppTheme.typography.subheadline, color = colors.destructive)
                     if (job.needsApiKey) {
-                        PrimaryButton(
-                            stringResource(R.string.ai_open_settings),
-                            onAddApiKey,
-                            Modifier.fillMaxWidth()
-                        )
+                        PrimaryButton(stringResource(R.string.ai_open_settings), onAddApiKey, Modifier.fillMaxWidth())
                     } else {
                         PrimaryButton(stringResource(R.string.ai_retry), {
-                            viewModel.generate(target)
+                            viewModel.generate(chapter)
                         }, Modifier.fillMaxWidth())
                     }
                 }
-                summary != null -> {
-                    Text(
-                        summary.text,
-                        style = AppTheme.typography.body,
-                        color = colors.label,
-                        modifier = Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())
-                    )
+                keyPoints != null -> {
+                    when (keyPoints.status) {
+                        KeyPointsStatus.READY -> KeyPointsList(keyPoints.points, onOpenPage)
+                        KeyPointsStatus.REFUSED -> Notice(stringResource(R.string.key_points_refused))
+                        KeyPointsStatus.EMPTY -> Notice(stringResource(R.string.key_points_empty))
+                    }
                     PlainButton(stringResource(R.string.ai_regenerate), {
-                        viewModel.generate(target)
+                        viewModel.generate(chapter, replace = true)
                     }, icon = Icons.Outlined.Refresh)
                 }
             }
@@ -256,4 +238,36 @@ internal fun SummarySheet(
             )
         }
     }
+}
+
+/** Los puntos, uno por fila: la página (que abre el libro en ella) y la frase. */
+@Composable
+private fun KeyPointsList(points: List<KeyPoint>, onOpenPage: (Int) -> Unit) {
+    val colors = AppTheme.colors
+    Column(
+        Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+    ) {
+        points.forEach { point ->
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
+                val openPage = stringResource(R.string.key_points_open_page, point.page)
+                Text(
+                    stringResource(R.string.key_points_page, point.page),
+                    style = AppTheme.typography.footnote,
+                    color = colors.accentText,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(colors.accentFill)
+                        .clickable(role = Role.Button, onClickLabel = openPage) { onOpenPage(point.page) }
+                        .padding(horizontal = Spacing.xs, vertical = 2.dp)
+                )
+                Text(point.text, style = AppTheme.typography.body, color = colors.label, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun Notice(text: String) {
+    Text(text, style = AppTheme.typography.subheadline, color = AppTheme.colors.secondaryLabel)
 }

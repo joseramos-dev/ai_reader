@@ -7,7 +7,6 @@ import dev.joseramos.aireader.ai.llm.LlmException
 import dev.joseramos.aireader.ai.llm.LlmMessage
 import dev.joseramos.aireader.ai.llm.LlmRequest
 import dev.joseramos.aireader.ai.llm.LlmRole
-import dev.joseramos.aireader.ai.llm.SummaryGenerator
 import dev.joseramos.aireader.ai.llm.TokenEstimate
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.Chapter
@@ -18,7 +17,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.delay
 
 /**
- * Analiza un capítulo con el modelo de resúmenes (Gemini Flash-Lite por defecto): le pasa el texto,
+ * Analiza un capítulo con el modelo de análisis (Gemini Flash-Lite por defecto): le pasa el texto,
  * con la página marcada, y la lista compacta de personajes ya conocidos, para que reutilice sus ids
  * en vez de duplicarlos.
  * Los capítulos largos van por bloques, y cada bloque ya conoce lo extraído en el anterior.
@@ -60,13 +59,13 @@ class CharacterExtractor @Inject constructor(
      */
     suspend fun estimate(bookId: String): TokenEstimate {
         val done = dao.scannedChapterIds(bookId).toSet()
-        val templateTokens = SummaryGenerator.estimateTokens(template)
+        val templateTokens = TokenEstimate.tokensIn(template)
         var estimate = TokenEstimate()
         for (chapter in content.chapters(bookId).filter { it.id !in done }) {
             val pages = content.pagesFrom(bookId, chapter.startPage, chapter.endPage - chapter.startPage + 1)
             for (block in blocks(pages)) {
-                val input = templateTokens + SummaryGenerator.estimateTokens(block) +
-                    SummaryGenerator.estimateTokens(known(bookId, block))
+                val input = templateTokens + TokenEstimate.tokensIn(block) +
+                    TokenEstimate.tokensIn(known(bookId, block))
                 estimate += TokenEstimate(input.toLong(), ESTIMATED_OUTPUT_TOKENS)
             }
         }

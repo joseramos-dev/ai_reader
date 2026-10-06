@@ -230,4 +230,46 @@ class MigrationTest {
         }
         db.close()
     }
+
+    @Test
+    fun migrate8To9ReplacesSummariesWithKeyPoints() {
+        helper.createDatabase(8).apply {
+            execSQL(
+                """
+                INSERT INTO books (id, title, author, fileName, filePath, pageCount, coverPath, importedAt,
+                    lastOpenedAt, indexStatus, indexProgress, cleanerVersion, documentTypeSource, aiPrepared)
+                VALUES ('a', 'Libro', NULL, 'a.pdf', '/a.pdf', 10, NULL, 1, NULL, 'READY', 1.0, 1, 'AUTO', 0)
+                """.trimIndent()
+            )
+            execSQL(
+                "INSERT INTO chapters (id, bookId, number, title, startPage, endPage, source, level) " +
+                    "VALUES (1, 'a', 1, 'Uno', 1, 10, 'OUTLINE', 0)"
+            )
+            execSQL(
+                "INSERT INTO summaries (id, bookId, chapterId, kind, text, model, createdAt, untilPage) " +
+                    "VALUES (1, 'a', 1, 'CHAPTER_SHORT', 'Resumen', 'm', 1, NULL)"
+            )
+            execSQL("INSERT INTO chat_threads (id, bookId, createdAt) VALUES (1, 'a', 1)")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(9, emptyList())
+        db.prepare("SELECT COUNT(*) FROM sqlite_master WHERE name = 'summaries'").use {
+            assertTrue(it.step())
+            assertEquals(0, it.getInt(0))
+        }
+        db.execSQL(
+            "INSERT INTO chapter_key_points (chapterId, bookId, status, pointsJson, model, createdAt) " +
+                "VALUES (1, 'a', 'READY', '[]', 'm', 2)"
+        )
+        db.prepare("SELECT status FROM chapter_key_points WHERE chapterId = 1").use {
+            assertTrue(it.step())
+            assertEquals("READY", it.getText(0))
+        }
+        db.prepare("SELECT COUNT(*) FROM chat_threads").use {
+            assertTrue(it.step())
+            assertEquals(1, it.getInt(0))
+        }
+        db.close()
+    }
 }
