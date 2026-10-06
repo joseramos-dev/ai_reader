@@ -79,6 +79,13 @@ sealed class LlmException(message: String, cause: Throwable? = null) : Exception
 
     class Refused : LlmException("El modelo no ha podido responder a esta petición.")
 
+    /**
+     * La respuesta se cortó antes de terminar: llegó al límite de salida, Gemini falló con ella a medias
+     * o la conexión se cerró sin el final. Lo recibido no se debe usar como si estuviera completo.
+     */
+    class Incomplete(cause: Throwable? = null) :
+        LlmException("La respuesta se cortó antes de terminar. Prueba de nuevo.", cause)
+
     class Failed(message: String, cause: Throwable? = null) : LlmException(message, cause)
 }
 

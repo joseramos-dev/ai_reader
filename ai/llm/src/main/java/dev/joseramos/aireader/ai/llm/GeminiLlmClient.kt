@@ -55,11 +55,20 @@ class GeminiLlmClient @Inject constructor(
                     activeCall = call
                     call.execute().use { response ->
                         ensureSuccess(response)
-                        val (totals, blocked, blockReason) = readEvents(response) { send(LlmEvent.Text(it)) }
-                        val tokens = record(totals)
-                        if (blocked) {
-                            Log.w(TAG, "Gemini bloqueó la respuesta del chat: $blockReason")
+                        val source = response.body.source()
+                        val end = readGeminiStream(source::readUtf8Line) { send(LlmEvent.Text(it)) }
+                        val tokens = record(end.usage)
+                        if (end.blockReason != null) {
+                            Log.w(TAG, "Gemini bloqueó la respuesta del chat: ${end.blockReason}")
                             throw LlmException.Refused()
+                        }
+                        // Sin el evento final con «STOP», lo recibido es solo el principio de la respuesta.
+                        if (end.finishReason != FINISH_STOP) {
+                            Log.w(
+                                TAG,
+                                "La respuesta del chat se cortó: ${end.finishReason ?: "stream cerrado sin final"}"
+                            )
+                            throw LlmException.Incomplete()
                         }
                         send(LlmEvent.Done(tokens))
                     }
@@ -104,6 +113,10 @@ class GeminiLlmClient @Inject constructor(
                 Log.w(TAG, "Gemini bloqueó la respuesta: ${parsed.blockReason}")
                 throw LlmException.Refused()
             }
+            // Cortada por el límite de salida u otro motivo. Quien la pide decide: un JSON cortado no se
+            // podrá leer y se reintenta; aquí solo se deja constancia para poder diagnosticarlo.
+            val reason = parsed.finishReason
+            if (!parsed.blocked && reason != null && reason != FINISH_STOP) Log.w(TAG, "La respuesta se cortó: $reason")
             LlmResponse(parsed.text, tokens)
         }
     }
@@ -123,32 +136,6 @@ class GeminiLlmClient @Inject constructor(
             }
         }
         return block()
-    }
-
-    /**
-     * Lee los eventos SSE (`data: {...}`, uno por fragmento) y pasa el texto a [onText]. Devuelve el
-     * uso de tokens del último evento, si la respuesta se ha bloqueado y, si es así, el motivo.
-     */
-    private suspend fun readEvents(
-        response: Response,
-        onText: suspend (String) -> Unit
-    ): Triple<GeminiUsage, Boolean, String?> {
-        var totals = GeminiUsage()
-        var blocked = false
-        var blockReason: String? = null
-        val source = response.body.source()
-        var line = source.readUtf8Line()
-        while (line != null) {
-            if (line.startsWith(SSE_DATA)) {
-                val chunk = parseGeminiResponse(line.removePrefix(SSE_DATA).trim())
-                if (chunk.blocked && !blocked) blockReason = chunk.blockReason
-                blocked = blocked || chunk.blocked
-                if (chunk.text.isNotEmpty()) onText(chunk.text)
-                chunk.usageMetadata?.let { totals = it }
-            }
-            line = source.readUtf8Line()
-        }
-        return Triple(totals, blocked, blockReason)
     }
 
     private suspend fun apiKey(): String = secrets.apiKey() ?: throw LlmException.NoApiKey()
@@ -206,7 +193,6 @@ class GeminiLlmClient @Inject constructor(
     private companion object {
         const val TAG = "GeminiLlmClient"
         const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-        const val SSE_DATA = "data:"
         const val CONNECT_TIMEOUT_S = 30L
         const val READ_TIMEOUT_S = 180L
 
