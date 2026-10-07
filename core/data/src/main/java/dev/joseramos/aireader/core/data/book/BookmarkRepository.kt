@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.core.data.book
 
+import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.db.BookmarkDao
 import dev.joseramos.aireader.core.data.db.BookmarkEntity
 import kotlinx.coroutines.flow.Flow
@@ -20,7 +21,7 @@ class BookmarkRepository(private val dao: BookmarkDao) {
             dao.delete(existing.id)
         } else {
             dao.upsert(
-                BookmarkEntity(bookId = bookId, page = page, note = null, createdAt = System.currentTimeMillis())
+                BookmarkEntity(bookId = bookId, page = page, note = null, createdAt = currentTimeMillis())
             )
         }
     }
@@ -31,7 +32,7 @@ class BookmarkRepository(private val dao: BookmarkDao) {
         val clean = note?.trim()?.takeIf { it.isNotEmpty() }
         dao.upsert(
             existing?.copy(note = clean)
-                ?: BookmarkEntity(bookId = bookId, page = page, note = clean, createdAt = System.currentTimeMillis())
+                ?: BookmarkEntity(bookId = bookId, page = page, note = clean, createdAt = currentTimeMillis())
         )
     }
 

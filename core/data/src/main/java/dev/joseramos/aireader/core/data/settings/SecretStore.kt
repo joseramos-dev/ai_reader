@@ -1,11 +1,11 @@
 package dev.joseramos.aireader.core.data.settings
 
-import android.util.Base64
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.google.crypto.tink.Aead
+import kotlin.io.encoding.Base64
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -37,10 +37,9 @@ class SecretStore(private val dataStore: DataStore<Preferences>, private val aea
     }
 
     private fun encrypt(plain: String): String =
-        Base64.encodeToString(aead.encrypt(plain.toByteArray(), GEMINI_ASSOCIATED_DATA), Base64.NO_WRAP)
+        Base64.encode(aead.encrypt(plain.toByteArray(), GEMINI_ASSOCIATED_DATA))
 
-    private fun decrypt(stored: String): String =
-        String(aead.decrypt(Base64.decode(stored, Base64.NO_WRAP), GEMINI_ASSOCIATED_DATA))
+    private fun decrypt(stored: String): String = String(aead.decrypt(Base64.decode(stored), GEMINI_ASSOCIATED_DATA))
 
     companion object {
         const val SECRETS_STORE = "secrets"

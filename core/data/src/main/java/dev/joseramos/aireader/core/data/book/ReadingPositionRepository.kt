@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.core.data.book
 
+import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.db.ReadingPositionDao
 import dev.joseramos.aireader.core.data.db.ReadingPositionEntity
 import kotlinx.coroutines.flow.Flow
@@ -24,7 +25,7 @@ class ReadingPositionRepository(private val dao: ReadingPositionDao) {
                 page = position.page,
                 paragraphIndex = position.paragraph,
                 phraseIndex = position.phrase,
-                updatedAt = System.currentTimeMillis(),
+                updatedAt = currentTimeMillis(),
                 maxPage = if (markRead) maxOf(previousMax, position.page) else previousMax
             )
         )

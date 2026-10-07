@@ -7,6 +7,7 @@ import dev.joseramos.aireader.ai.llm.LlmMessage
 import dev.joseramos.aireader.ai.llm.LlmRequest
 import dev.joseramos.aireader.ai.llm.LlmRole
 import dev.joseramos.aireader.ai.llm.TokenEstimate
+import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.book.PageText
@@ -48,7 +49,7 @@ class CharacterExtractor(
             )
             extract(prompt, model)?.let { merger.merge(bookId, chapter, it) }
         }
-        dao.upsertScan(CharacterScanEntity(bookId, chapter.id, model, System.currentTimeMillis()))
+        dao.upsertScan(CharacterScanEntity(bookId, chapter.id, model, currentTimeMillis()))
     }
 
     /**

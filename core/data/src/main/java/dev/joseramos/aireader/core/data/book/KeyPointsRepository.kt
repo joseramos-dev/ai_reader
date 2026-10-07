@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.core.data.book
 
+import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.db.ChapterKeyPointsEntity
 import dev.joseramos.aireader.core.data.db.KeyPointsDao
 import dev.joseramos.aireader.core.data.db.KeyPointsStatus
@@ -39,7 +40,7 @@ class KeyPointsRepository(private val dao: KeyPointsDao) {
                 status = status,
                 pointsJson = Json.encodeToString(points),
                 model = model,
-                createdAt = System.currentTimeMillis()
+                createdAt = currentTimeMillis()
             )
         )
 

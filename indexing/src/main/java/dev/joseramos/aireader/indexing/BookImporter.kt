@@ -3,13 +3,14 @@ package dev.joseramos.aireader.indexing
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.pdf.PdfPageRenderer
 import java.io.File
 import java.io.IOException
-import java.util.UUID
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 
@@ -27,7 +28,7 @@ class BookImporter(
 ) {
     /** Devuelve el id del libro importado. */
     suspend fun import(uri: Uri): String = withContext(io) {
-        val id = UUID.randomUUID().toString()
+        val id = Uuid.random().toString()
         val fileName = displayName(uri) ?: DEFAULT_NAME
         val pdf = File(context.filesDir, "$BOOKS_DIR/$id.pdf").apply { parentFile?.mkdirs() }
         val input =
@@ -54,7 +55,7 @@ class BookImporter(
                 filePath = pdf.absolutePath,
                 pageCount = pageCount,
                 coverPath = cover.absolutePath,
-                importedAt = System.currentTimeMillis(),
+                importedAt = currentTimeMillis(),
                 lastOpenedAt = null,
                 indexStatus = IndexStatus.PENDING,
                 indexProgress = 0f,

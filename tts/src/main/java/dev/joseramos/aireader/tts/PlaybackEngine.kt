@@ -5,6 +5,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.PowerManager
 import dev.joseramos.aireader.core.common.Log
+import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Chapter
@@ -281,7 +282,7 @@ class PlaybackEngine(
         sleepChapterEnd = null
         val applied = when (timer) {
             is SleepTimer.Minutes -> {
-                val endsAt = System.currentTimeMillis() + timer.minutes * MINUTE_MS
+                val endsAt = currentTimeMillis() + timer.minutes * MINUTE_MS
                 sleepJob = scope.launch {
                     delay(timer.minutes * MINUTE_MS)
                     pause()
@@ -473,7 +474,7 @@ class PlaybackEngine(
         val current = _state.value
         val bookId = current.bookId ?: return
         val position = current.position ?: return
-        val now = System.currentTimeMillis()
+        val now = currentTimeMillis()
         if (!force && now - lastSavedAt < SAVE_INTERVAL_MS) return
         lastSavedAt = now
         // Lo que ya ha sonado cuenta como leído (para las reglas sin spoilers).

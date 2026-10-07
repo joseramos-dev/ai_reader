@@ -13,6 +13,7 @@ import androidx.work.workDataOf
 import dev.joseramos.aireader.ai.llm.LlmClient
 import dev.joseramos.aireader.ai.llm.LlmException
 import dev.joseramos.aireader.core.common.Log
+import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Chapter
@@ -68,7 +69,7 @@ class CharacterScanWorker(
         } catch (e: LlmException.Refused) {
             // Un capítulo que el modelo no quiere analizar no debe bloquear el resto.
             Log.w(TAG, "Capítulo ${chapter.number} rechazado", e)
-            dao.upsertScan(CharacterScanEntity(bookId, chapter.id, model, System.currentTimeMillis()))
+            dao.upsertScan(CharacterScanEntity(bookId, chapter.id, model, currentTimeMillis()))
         }
     }
 

@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.core.data.book
 
+import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.db.HighlightDao
 import dev.joseramos.aireader.core.data.db.HighlightEntity
 import kotlinx.coroutines.flow.Flow
@@ -31,7 +32,7 @@ class HighlightRepository(private val dao: HighlightDao) {
                 startOffset = range.first,
                 endOffset = range.last + 1,
                 note = note?.trim()?.takeIf { it.isNotEmpty() },
-                createdAt = System.currentTimeMillis()
+                createdAt = currentTimeMillis()
             )
         )
 

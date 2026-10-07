@@ -1,7 +1,7 @@
 package dev.joseramos.aireader.ai.embeddings
 
 import java.io.File
-import java.util.Base64
+import kotlin.io.encoding.Base64
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
@@ -176,7 +176,9 @@ internal class UnigramTokenizer(
             checkPipeline(config)
             val charsMap = config.normalizer["normalizers"]!!.jsonArray[0].jsonObject
                 .string("precompiled_charsmap")
-                .let { PrecompiledCharsMap(Base64.getDecoder().decode(it)) }
+                .let {
+                    PrecompiledCharsMap(Base64.Default.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL).decode(it!!))
+                }
             val special = config.addedTokens.filter { it.special }.map { it.content to it.id }
             val specialIds = config.postProcessor["special_tokens"]!!.jsonObject
             fun specialId(token: String) = specialIds[token]!!.jsonObject["ids"]!!.jsonArray.single().jsonPrimitive.int

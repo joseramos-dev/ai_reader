@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.core.data.book
 
+import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.db.ChatDao
 import dev.joseramos.aireader.core.data.db.ChatMessageEntity
 import dev.joseramos.aireader.core.data.db.ChatRole
@@ -46,7 +47,7 @@ class ChatRepository(private val dao: ChatDao) {
     suspend fun currentThread(bookId: String): Long = dao.latestThread(bookId)?.id ?: newThread(bookId)
 
     suspend fun newThread(bookId: String): Long =
-        dao.insertThread(ChatThreadEntity(bookId = bookId, createdAt = System.currentTimeMillis()))
+        dao.insertThread(ChatThreadEntity(bookId = bookId, createdAt = currentTimeMillis()))
 
     fun observeMessages(threadId: Long): Flow<List<ChatMessage>> =
         dao.observeMessages(threadId).map { list -> list.map { it.toMessage() } }
@@ -69,7 +70,7 @@ class ChatRepository(private val dao: ChatDao) {
             role = role,
             text = text,
             citationsJson = Json.encodeToString(citations),
-            createdAt = System.currentTimeMillis(),
+            createdAt = currentTimeMillis(),
             sourcesJson = Json.encodeToString(sources)
         )
     )

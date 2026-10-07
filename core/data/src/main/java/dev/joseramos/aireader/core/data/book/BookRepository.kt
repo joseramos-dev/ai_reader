@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.core.data.book
 
+import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.DocumentType
@@ -45,7 +46,7 @@ class BookRepository(private val bookDao: BookDao, private val io: CoroutineDisp
 
     suspend fun getBook(id: String): Book? = bookDao.get(id)?.toBook()
 
-    suspend fun markOpened(id: String) = bookDao.markOpened(id, System.currentTimeMillis())
+    suspend fun markOpened(id: String) = bookDao.markOpened(id, currentTimeMillis())
 
     /** Tipo elegido por el usuario: la indexación ya no lo vuelve a calcular. */
     suspend fun setDocumentType(id: String, type: DocumentType) =

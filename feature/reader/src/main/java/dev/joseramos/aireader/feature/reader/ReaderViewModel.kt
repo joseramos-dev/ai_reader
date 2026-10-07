@@ -12,6 +12,7 @@ import dev.joseramos.aireader.ai.characters.CharacterAnalysis
 import dev.joseramos.aireader.ai.characters.CharacterBrowser
 import dev.joseramos.aireader.ai.characters.CharactersSnapshot
 import dev.joseramos.aireader.core.common.Log
+import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.book.Book
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
@@ -265,7 +266,7 @@ class ReaderViewModel(
             meta.update { it.copy(opened = true, pageSizes = sizes, currentPage = start) }
 
             val lastBookmark = bookmarks.observe(bookId).first().maxByOrNull { it.createdAt }
-            val longBreak = book.lastOpenedAt?.let { System.currentTimeMillis() - it > RECAP_AFTER_MS } == true
+            val longBreak = book.lastOpenedAt?.let { currentTimeMillis() - it > RECAP_AFTER_MS } == true
             prompts.value = OpeningPrompts(
                 bookmarkSuggestion = lastBookmark?.page?.takeIf { route.page == null && it != start },
                 offerRecap = longBreak && route.page == null && (saved?.page ?: 1) > 1

@@ -2,6 +2,7 @@ package dev.joseramos.aireader.ai.models
 
 import android.content.Context
 import dev.joseramos.aireader.core.common.Log
+import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.db.DownloadedModelDao
 import dev.joseramos.aireader.core.data.db.DownloadedModelEntity
 import java.io.File
@@ -170,7 +171,7 @@ class ModelManager(
                 path = installed.absolutePath,
                 sizeBytes = installed.walkBottomUp().filter { it.isFile }.sumOf { it.length() },
                 sha256 = model.files.joinToString(",") { it.sha256 },
-                downloadedAt = System.currentTimeMillis()
+                downloadedAt = currentTimeMillis()
             )
         )
     }
