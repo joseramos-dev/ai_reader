@@ -18,6 +18,8 @@ kotlin {
 dependencies {
     compileOnly(libs.android.gradlePlugin)
     compileOnly(libs.compose.gradlePlugin)
+    compileOnly(libs.compose.multiplatform.gradlePlugin)
+    compileOnly(libs.kotlin.gradlePlugin)
     compileOnly(libs.ksp.gradlePlugin)
     compileOnly(libs.room.gradlePlugin)
 }
@@ -43,6 +45,14 @@ gradlePlugin {
         register("androidRoom") {
             id = "aireader.android.room"
             implementationClass = "AndroidRoomConventionPlugin"
+        }
+        register("kmpLibrary") {
+            id = "aireader.kmp.library"
+            implementationClass = "KmpLibraryConventionPlugin"
+        }
+        register("kmpCompose") {
+            id = "aireader.kmp.compose"
+            implementationClass = "KmpComposeConventionPlugin"
         }
         register("hilt") {
             id = "aireader.hilt"

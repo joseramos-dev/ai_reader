@@ -25,6 +25,10 @@ rootProject.name = "AIReader"
 
 include(":app")
 
+// Escritorio (Windows) y código compartido entre plataformas.
+include(":desktopApp")
+include(":shared")
+
 // Núcleo
 include(":core:common")
 include(":core:designsystem")
