@@ -131,7 +131,11 @@ internal suspend fun readGeminiStream(nextLine: () -> String?, onText: suspend (
             val chunk = parseGeminiResponse(line.removePrefix(SSE_DATA).trim())
             chunk.error?.let { error ->
                 val cause = GeminiApiException(error.code, error.status, error.message)
-                throw if (emitted) LlmException.Incomplete(cause) else translateGeminiError(cause)
+                throw if (emitted) {
+                    LlmException.Incomplete(cause, overloaded = error.code >= HTTP_SERVER_ERROR)
+                } else {
+                    translateGeminiError(cause)
+                }
             }
             if (blockReason == null) blockReason = chunk.blockReason
             if (chunk.text.isNotEmpty()) {

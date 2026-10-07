@@ -5,8 +5,12 @@ import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.UsageRepository
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -55,27 +59,30 @@ class GeminiLlmClient(
         val client = http.newBuilder().eventListener(sent).build()
         val job = launch(io) {
             try {
-                withOverloadRetry {
+                val retrying: suspend (Int) -> Unit = { attempt -> send(LlmEvent.Retrying(attempt, MAX_ATTEMPTS)) }
+                withOverloadRetry("Chat con", request.model, onRetry = retrying) {
+                    val started = TimeSource.Monotonic.markNow()
                     val call = client.newCall(httpRequest(request, apiKey(), stream = true))
                     activeCall = call
-                    call.execute().use { response ->
-                        ensureSuccess(response)
-                        val source = response.body.source()
-                        val end = readGeminiStream(source::readUtf8Line) { send(LlmEvent.Text(it)) }
-                        val tokens = record(end.usage)
-                        if (end.blockReason != null) {
-                            Log.w(TAG, "Gemini bloqueó la respuesta del chat: ${end.blockReason}")
-                            throw LlmException.Refused()
+                    val fragments = AtomicInteger()
+                    val stalled = AtomicBoolean()
+                    // Saturado, Gemini puede tener la petición minutos sin responder y acabar con un 503: si en
+                    // [FIRST_TEXT_TIMEOUT_MS] no llega ni una palabra, se corta y se vuelve a intentar.
+                    val watchdog = launch {
+                        delay(FIRST_TEXT_TIMEOUT_MS)
+                        if (fragments.get() == 0) {
+                            stalled.set(true)
+                            call.cancel()
                         }
-                        // Sin el evento final con «STOP», lo recibido es solo el principio de la respuesta.
-                        if (end.finishReason != FINISH_STOP) {
-                            Log.w(
-                                TAG,
-                                "La respuesta del chat se cortó: ${end.finishReason ?: "stream cerrado sin final"}"
-                            )
-                            throw LlmException.Incomplete()
-                        }
-                        send(LlmEvent.Done(tokens))
+                    }
+                    try {
+                        streamAttempt(call, request.model, started, fragments)
+                    } catch (e: IOException) {
+                        if (!stalled.get()) throw e
+                        val seconds = FIRST_TEXT_TIMEOUT_MS / MS_PER_SECOND
+                        throw LlmException.Overloaded(IOException("Sin respuesta en $seconds s", e))
+                    } finally {
+                        watchdog.cancel()
                     }
                 }
                 close()
@@ -97,8 +104,49 @@ class GeminiLlmClient(
         }
     }
 
+    /** Un intento del chat: lee el stream, avisando de cada trozo de texto, y comprueba que terminó bien. */
+    private suspend fun ProducerScope<LlmEvent>.streamAttempt(
+        call: Call,
+        model: String,
+        started: TimeSource.Monotonic.ValueTimeMark,
+        fragments: AtomicInteger
+    ) {
+        call.execute().use { response ->
+            Log.i(
+                TAG,
+                "Chat con $model: HTTP ${response.code} a los ${started.elapsedNow().inWholeMilliseconds} ms " +
+                    "(${response.protocol})"
+            )
+            ensureSuccess(response)
+            val source = response.body.source()
+            val end = readGeminiStream(source::readUtf8Line) {
+                if (fragments.getAndIncrement() == 0) {
+                    Log.i(TAG, "Chat con $model: primer texto a los ${started.elapsedNow().inWholeMilliseconds} ms")
+                }
+                send(LlmEvent.Text(it))
+            }
+            Log.i(
+                TAG,
+                "Chat con $model: fin a los ${started.elapsedNow().inWholeMilliseconds} ms, ${fragments.get()} " +
+                    "fragmentos de texto; ${describe(end.usage)}; final ${end.finishReason ?: "ninguno"}"
+            )
+            val tokens = record(end.usage)
+            if (end.blockReason != null) {
+                Log.w(TAG, "Gemini bloqueó la respuesta del chat: ${end.blockReason}")
+                throw LlmException.Refused()
+            }
+            // Sin el evento final con «STOP», lo recibido es solo el principio de la respuesta.
+            if (end.finishReason != FINISH_STOP) {
+                Log.w(TAG, "La respuesta del chat se cortó: ${end.finishReason ?: "stream cerrado sin final"}")
+                throw LlmException.Incomplete()
+            }
+            send(LlmEvent.Done(tokens))
+        }
+    }
+
     override suspend fun complete(request: LlmRequest): LlmResponse = withContext(io) {
-        withOverloadRetry {
+        withOverloadRetry("Petición a", request.model) {
+            val started = TimeSource.Monotonic.markNow()
             val call = http.newCall(httpRequest(request, apiKey(), stream = false))
             val body = try {
                 call.execute().use { response ->
@@ -113,7 +161,13 @@ class GeminiLlmClient(
             } catch (e: SerializationException) {
                 throw LlmException.Failed("Respuesta inesperada de Gemini.", e)
             }
-            val tokens = record(parsed.usageMetadata ?: GeminiUsage())
+            val usageMetadata = parsed.usageMetadata ?: GeminiUsage()
+            Log.i(
+                TAG,
+                "Petición a ${request.model}: ${started.elapsedNow().inWholeMilliseconds} ms; " +
+                    "${describe(usageMetadata)}; final ${parsed.finishReason ?: "ninguno"}"
+            )
+            val tokens = record(usageMetadata)
             if (parsed.blocked && parsed.text.isBlank()) {
                 Log.w(TAG, "Gemini bloqueó la respuesta: ${parsed.blockReason}")
                 throw LlmException.Refused()
@@ -126,22 +180,10 @@ class GeminiLlmClient(
         }
     }
 
-    /**
-     * Reintenta [block] con una pequeña espera si Gemini responde que está saturado (503): es
-     * frecuente e intermitente en el nivel gratuito. Solo se reintenta antes de que [block] haya
-     * emitido nada (aquí, antes del primer fragmento de texto), para no duplicar una respuesta a medias.
-     */
-    private suspend fun <T> withOverloadRetry(block: suspend () -> T): T {
-        repeat(MAX_ATTEMPTS - 1) { attempt ->
-            try {
-                return block()
-            } catch (e: LlmException.Overloaded) {
-                Log.w(TAG, "Gemini saturado, reintentando (${attempt + 1}/${MAX_ATTEMPTS - 1})", e)
-                delay(RETRY_DELAY_MS * (attempt + 1))
-            }
-        }
-        return block()
-    }
+    /** Los tokens que cuenta Gemini, para el registro. */
+    private fun describe(usage: GeminiUsage) =
+        "entrada ${usage.promptTokenCount} tokens (${usage.cachedContentTokenCount} en caché), " +
+            "salida ${usage.candidatesTokenCount}, razonamiento ${usage.thoughtsTokenCount}"
 
     private suspend fun apiKey(): String = secrets.apiKey() ?: throw LlmException.NoApiKey()
 
@@ -201,9 +243,12 @@ class GeminiLlmClient(
         const val CONNECT_TIMEOUT_S = 30L
         const val READ_TIMEOUT_S = 180L
 
-        // Un 503 de Gemini («El servicio está saturado») suele ser intermitente: merece la pena reintentar.
-        const val MAX_ATTEMPTS = 3
-        const val RETRY_DELAY_MS = 1_000L
+        /**
+         * Lo que se espera al primer texto del chat. Con el razonamiento bajo suele llegar en segundos; saturado,
+         * Gemini llegó a tener la petición 2,5 minutos para acabar en 503 (medido el 2026-10-07).
+         */
+        const val FIRST_TEXT_TIMEOUT_MS = 60_000L
+        const val MS_PER_SECOND = 1_000L
         val JSON = "application/json; charset=utf-8".toMediaType()
     }
 }

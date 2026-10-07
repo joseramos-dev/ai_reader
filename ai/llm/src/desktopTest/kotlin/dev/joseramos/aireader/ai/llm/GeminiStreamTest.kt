@@ -58,8 +58,9 @@ class GeminiStreamTest {
             read(text("A partir de los fragmentos"), overloaded)
             fail("Debería haber lanzado Incomplete")
         } catch (e: LlmException.Incomplete) {
-            // No es Overloaded: reintentar repetiría el texto que ya se ha mostrado.
+            // No es Overloaded: reintentar repetiría el texto que ya se ha mostrado. Pero sí dice que fue la saturación.
             assertEquals(503, (e.cause as GeminiApiException).code)
+            assertTrue(e.message.orEmpty().contains("satur"))
         }
     }
 

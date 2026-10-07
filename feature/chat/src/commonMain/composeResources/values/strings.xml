@@ -43,6 +43,9 @@
     <string name="chat_stage_key_ideas">Preparando las ideas clave (%1$d de %2$d capítulos)…</string>
     <string name="chat_stage_sending">Enviando la pregunta…</string>
     <string name="chat_stage_waiting">Esperando la respuesta…</string>
+    <string name="chat_stage_waiting_seconds">Esperando la respuesta… %1$d s</string>
+    <string name="chat_stage_retrying">Gemini está saturado. Reintentando (%1$d de %2$d)…</string>
+    <string name="chat_stage_waiting_retry">Gemini está saturado. Intento %1$d de %2$d… %3$d s</string>
     <string name="chat_key_points_open">Capítulos con hechos clave</string>
     <string name="chat_key_points_ready">%1$d de %2$d capítulos preparados</string>
     <string name="chat_key_points_help">Se preparan solo cuando una pregunta los necesita («¿De qué trata el libro?», «Resume el capítulo 3»…) y se guardan para las siguientes.</string>

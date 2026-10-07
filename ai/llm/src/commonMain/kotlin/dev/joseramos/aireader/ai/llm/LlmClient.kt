@@ -55,6 +55,12 @@ sealed interface LlmEvent {
     /** La petición ya se ha enviado: el modelo está preparando la respuesta (aún sin texto). */
     data object Sent : LlmEvent
 
+    /**
+     * El modelo está saturado y se vuelve a pedir: va por el intento [attempt] de [maxAttempts]. Solo antes de que
+     * llegue texto, así que no hay nada que descartar.
+     */
+    data class Retrying(val attempt: Int, val maxAttempts: Int) : LlmEvent
+
     data class Text(val delta: String) : LlmEvent
 
     data class Done(val usage: LlmUsage) : LlmEvent
@@ -75,8 +81,16 @@ sealed class LlmException(message: String, cause: Throwable? = null) : Exception
             cause
         )
 
-    class Overloaded(cause: Throwable) :
-        LlmException("El servicio está saturado. Prueba de nuevo en un momento.", cause)
+    /** El modelo está saturado (Gemini responde 5xx o no responde): con [model], se dice cuál. */
+    class Overloaded(cause: Throwable, model: String? = null) :
+        LlmException(
+            if (model == null) {
+                "El servicio está saturado. Prueba de nuevo en un momento."
+            } else {
+                "Gemini está saturado ahora mismo ($model). Prueba de nuevo en unos minutos o elige otro modelo en Ajustes."
+            },
+            cause
+        )
 
     class Network(cause: Throwable) : LlmException("No hay conexión con el servicio de IA.", cause)
 
@@ -86,8 +100,15 @@ sealed class LlmException(message: String, cause: Throwable? = null) : Exception
      * La respuesta se cortó antes de terminar: llegó al límite de salida, Gemini falló con ella a medias
      * o la conexión se cerró sin el final. Lo recibido no se debe usar como si estuviera completo.
      */
-    class Incomplete(cause: Throwable? = null) :
-        LlmException("La respuesta se cortó antes de terminar. Prueba de nuevo.", cause)
+    class Incomplete(cause: Throwable? = null, overloaded: Boolean = false) :
+        LlmException(
+            if (overloaded) {
+                "Gemini se saturó a mitad de la respuesta. Prueba de nuevo en un momento."
+            } else {
+                "La respuesta se cortó antes de terminar. Prueba de nuevo."
+            },
+            cause
+        )
 
     class Failed(message: String, cause: Throwable? = null) : LlmException(message, cause)
 }

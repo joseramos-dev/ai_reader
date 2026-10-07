@@ -21,8 +21,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,9 +56,13 @@ import dev.joseramos.aireader.feature.chat.generated.resources.chat_source_key_e
 import dev.joseramos.aireader.feature.chat.generated.resources.chat_source_key_ideas
 import dev.joseramos.aireader.feature.chat.generated.resources.chat_stage_key_events
 import dev.joseramos.aireader.feature.chat.generated.resources.chat_stage_key_ideas
+import dev.joseramos.aireader.feature.chat.generated.resources.chat_stage_retrying
 import dev.joseramos.aireader.feature.chat.generated.resources.chat_stage_searching
 import dev.joseramos.aireader.feature.chat.generated.resources.chat_stage_sending
 import dev.joseramos.aireader.feature.chat.generated.resources.chat_stage_waiting
+import dev.joseramos.aireader.feature.chat.generated.resources.chat_stage_waiting_retry
+import dev.joseramos.aireader.feature.chat.generated.resources.chat_stage_waiting_seconds
+import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -66,6 +73,14 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun StageBubble(stage: AskStage?, literature: Boolean) {
     val colors = AppTheme.colors
+    // Los segundos que lleva en esta fase: si Gemini tarda, que se vea que sigue esperando.
+    var seconds by remember(stage) { mutableIntStateOf(0) }
+    LaunchedEffect(stage) {
+        while (true) {
+            delay(SECOND_MS)
+            seconds++
+        }
+    }
     val text = when (stage) {
         is AskStage.LoadingKeyPoints -> stringResource(
             if (literature) Res.string.chat_stage_key_events else Res.string.chat_stage_key_ideas,
@@ -73,7 +88,13 @@ internal fun StageBubble(stage: AskStage?, literature: Boolean) {
             stage.total
         )
         AskStage.Sending -> stringResource(Res.string.chat_stage_sending)
-        AskStage.Waiting -> stringResource(Res.string.chat_stage_waiting)
+        is AskStage.Waiting -> when {
+            stage.attempt > 1 ->
+                stringResource(Res.string.chat_stage_waiting_retry, stage.attempt, stage.maxAttempts, seconds)
+            seconds >= SHOW_SECONDS_AFTER -> stringResource(Res.string.chat_stage_waiting_seconds, seconds)
+            else -> stringResource(Res.string.chat_stage_waiting)
+        }
+        is AskStage.Retrying -> stringResource(Res.string.chat_stage_retrying, stage.attempt, stage.maxAttempts)
         AskStage.Searching, null -> stringResource(Res.string.chat_stage_searching)
     }
     Row(
@@ -200,3 +221,8 @@ private fun ChapterRow(chapter: Chapter, keyPoints: ChapterKeyPoints?, literatur
         }
     }
 }
+
+private const val SECOND_MS = 1_000L
+
+/** Hasta este segundo de espera no se muestra la cuenta: casi siempre responde antes. */
+private const val SHOW_SECONDS_AFTER = 5

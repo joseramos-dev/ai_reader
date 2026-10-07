@@ -9,6 +9,8 @@ import dev.joseramos.aireader.ai.llm.LlmRole
 import dev.joseramos.aireader.ai.llm.Prompts
 import dev.joseramos.aireader.ai.llm.SystemBlock
 import dev.joseramos.aireader.ai.llm.Thinking
+import dev.joseramos.aireader.ai.llm.TokenEstimate
+import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Chapter
@@ -39,8 +41,14 @@ sealed interface AskStage {
     /** Enviando la pregunta al modelo. */
     data object Sending : AskStage
 
-    /** El modelo la ha recibido y está preparando la respuesta. */
-    data object Waiting : AskStage
+    /**
+     * El modelo la ha recibido y está preparando la respuesta, en el intento [attempt] de [maxAttempts] (más de uno
+     * si estaba saturado).
+     */
+    data class Waiting(val attempt: Int = 1, val maxAttempts: Int = 1) : AskStage
+
+    /** El modelo está saturado: se espera un momento antes del intento [attempt] de [maxAttempts]. */
+    data class Retrying(val attempt: Int, val maxAttempts: Int) : AskStage
 }
 
 sealed interface AskEvent {
@@ -142,6 +150,7 @@ class AskBook(
         val context = LocationContext(chapters, pageCount, book?.isLiterature == true, reading)
         val search = search(bookId, question, history, context, config.analysisModel, hooks)
         val fragments = fragmentsFor(bookId, search, context, hooks)
+        val renderedFragments = render(fragments, context.literature)
         val system = buildList {
             add(SystemBlock(prompts.render("rag_system_v1")))
             add(SystemBlock(bookContext(bookId, visibleChapters)))
@@ -168,19 +177,35 @@ class AskBook(
                     LlmRole.USER,
                     prompts.render(
                         "rag_question_v1",
-                        "fragments" to render(fragments, context.literature),
+                        "fragments" to renderedFragments,
                         "position" to position(reading, visibleChapters, search.located),
                         "question" to question
                     )
                 ),
             maxTokens = ANSWER_MAX_TOKENS
         )
+        logRequest(search, fragments, renderedFragments.length, request)
+        val answer = streamAnswer(request, hooks)
+        val cited = CitationParser.validate(answer, fragments)
+        chat.add(threadId, ChatRole.ASSISTANT, cited.text, cited.pages, fragments.map { it.toSource() })
+        emit(AskEvent.Completed(cited))
+    }
 
+    /**
+     * Pide la respuesta al modelo del chat y la va emitiendo según llega, con la fase mientras tanto: enviando,
+     * esperando y, si el modelo está saturado, reintentando (y el intento por el que va).
+     */
+    private suspend fun FlowCollector<AskEvent>.streamAnswer(request: LlmRequest, hooks: Hooks): String {
         hooks.stage(AskStage.Sending)
         val answer = StringBuilder()
+        var waiting = AskStage.Waiting()
         llm.streamChat(request).collect { event ->
             when (event) {
-                LlmEvent.Sent -> hooks.stage(AskStage.Waiting)
+                LlmEvent.Sent -> hooks.stage(waiting)
+                is LlmEvent.Retrying -> {
+                    waiting = AskStage.Waiting(event.attempt, event.maxAttempts)
+                    hooks.stage(AskStage.Retrying(event.attempt, event.maxAttempts))
+                }
                 is LlmEvent.Text -> {
                     answer.append(event.delta)
                     emit(AskEvent.Delta(event.delta))
@@ -188,9 +213,7 @@ class AskBook(
                 is LlmEvent.Done -> Unit
             }
         }
-        val cited = CitationParser.validate(answer.toString(), fragments)
-        chat.add(threadId, ChatRole.ASSISTANT, cited.text, cited.pages, fragments.map { it.toSource() })
-        emit(AskEvent.Completed(cited))
+        return answer.toString()
     }
 
     /**
@@ -336,6 +359,31 @@ class AskBook(
         return retriever.spread(bookId, chapter.startPage, end, k).toFragments(listOf(chapter))
     }
 
+    /**
+     * Deja en el registro cuánto texto se envía al modelo del chat y de dónde sale, para poder comprobar que no se
+     * manda más de la cuenta. Solo tamaños: nunca el texto del libro ni la pregunta.
+     */
+    private fun logRequest(search: Search, fragments: List<Fragment>, fragmentChars: Int, request: LlmRequest) {
+        val route = search.located?.let { located ->
+            "situada en p. " + located.pages.joinToString(", ") { "${it.first}–${it.last}" }
+        } ?: if (QueryRouter.route(search.question) == QueryScope.GLOBAL) "global" else "concreta"
+        val keyPoints = fragments.count { it.keyPoints }
+        val history = request.messages.dropLast(1)
+        val chars = request.system.sumOf { it.text.length } + request.messages.sumOf { it.text.length }
+        val tokens = request.system.sumOf { TokenEstimate.tokensIn(it.text) } +
+            request.messages.sumOf { TokenEstimate.tokensIn(it.text) }
+        Log.i(
+            TAG,
+            "Pregunta $route: ${fragments.size} fragmentos ($keyPoints de hechos clave, " +
+                "${fragments.size - keyPoints} del libro; $fragmentChars caracteres). " +
+                "Sistema ${request.system.joinToString(" + ") { it.text.length.toString() }}, " +
+                "historial ${history.sumOf { it.text.length }} (${history.size} mensajes), " +
+                "pregunta con fragmentos ${request.messages.last().text.length}. " +
+                "Total $chars caracteres (~$tokens tokens) a ${request.model}, " +
+                "maxTokens ${request.maxTokens}, razonamiento ${request.thinking}"
+        )
+    }
+
     /** Fragmentos para el modelo: los trozos seguidos del libro se unen en uno ([ChunkMerger]). */
     private fun List<ChunkEntity>.toFragments(chapters: List<Chapter>) =
         ChunkMerger.merge(this).mapIndexed { i, chunk ->
@@ -441,6 +489,7 @@ class AskBook(
     }.getOrDefault(question)
 
     private companion object {
+        const val TAG = "AskBook"
         const val FAILED_ANSWER = "No se ha podido responder a esta pregunta."
         const val MAX_HISTORY_MESSAGES = 6
         const val SPECIFIC_K = 8
