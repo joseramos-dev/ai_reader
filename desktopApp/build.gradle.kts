@@ -27,6 +27,15 @@ dependencies {
     implementation(libs.koin.compose.viewmodel)
 }
 
+// El modelo de embeddings que `:app` ya descarga (src/main/assets/bundled_models) viaja también en el instalador:
+// lo que haya en `appResources/common` se copia a la carpeta de recursos (`compose.application.resources.dir`).
+// Si todavía no se ha descargado, el instalador sale sin él y la app lo baja la primera vez.
+val copyBundledModels = tasks.register<Copy>("copyBundledModels") {
+    from(layout.projectDirectory.dir("../app/src/main/assets/bundled_models"))
+    into(layout.buildDirectory.dir("appResources/common/bundled_models"))
+}
+tasks.matching { it.name.startsWith("prepareAppResources") }.configureEach { dependsOn(copyBundledModels) }
+
 compose.desktop {
     application {
         mainClass = "dev.joseramos.aireader.desktop.MainKt"
@@ -36,6 +45,7 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
+            appResourcesRootDir.set(layout.buildDirectory.dir("appResources"))
             packageName = "AIReader"
             packageVersion = "0.1.0"
             description = "Lector de PDF con IA"
@@ -44,6 +54,7 @@ compose.desktop {
             includeAllModules = true
             windows {
                 menuGroup = "AI Reader"
+                iconFile.set(project.file("src/main/resources/icon.ico"))
                 shortcut = true
                 dirChooser = true
                 // Identificador fijo para que una versión nueva actualice a la anterior en vez de instalarse al lado.

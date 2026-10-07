@@ -9,6 +9,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.res.loadImageBitmap
+import androidx.compose.ui.res.useResource
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -57,7 +60,8 @@ fun main(args: Array<String>) {
 
     application {
         val windowState = rememberWindowState(size = DpSize(WINDOW_WIDTH.dp, WINDOW_HEIGHT.dp))
-        Window(onCloseRequest = ::exitApplication, state = windowState, title = "AI Reader") {
+        val icon = remember { BitmapPainter(useResource("icon.png", ::loadImageBitmap)) }
+        Window(onCloseRequest = ::exitApplication, state = windowState, title = "AI Reader", icon = icon) {
             val viewModel: MainViewModel = koinViewModel()
             // Los PDF pasados por línea de comandos («Abrir con») se importan y se abren en el lector.
             LaunchedEffect(viewModel) {
