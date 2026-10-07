@@ -1,6 +1,5 @@
 package dev.joseramos.aireader.indexing
 
-import android.content.Context
 import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
@@ -9,6 +8,7 @@ import dev.joseramos.aireader.core.data.db.PageLayoutEntity
 import dev.joseramos.aireader.core.data.db.PageTextDao
 import dev.joseramos.aireader.core.data.db.PageTextEntity
 import dev.joseramos.aireader.pdf.PdfTextDocument
+import dev.joseramos.aireader.pdf.PdfTextDocumentFactory
 import dev.joseramos.aireader.text.LayoutAnalyzer
 import dev.joseramos.aireader.text.TextBlock
 import dev.joseramos.aireader.text.TextCleaner
@@ -30,7 +30,7 @@ import kotlinx.serialization.json.Json
  * poderse leer: el texto anterior se mantiene hasta que se sustituye.
  */
 class TextIndexer(
-    private val context: Context,
+    private val pdfs: PdfTextDocumentFactory,
     private val bookDao: BookDao,
     private val pageTextDao: PageTextDao,
     private val pageLayoutDao: PageLayoutDao
@@ -82,7 +82,7 @@ class TextIndexer(
             pendingTexts.clear()
             pendingLayouts.clear()
         }
-        PdfTextDocument.open(context, File(book.filePath)).use { pdf ->
+        pdfs.open(File(book.filePath)).use { pdf ->
             updateMetadata(book, pdf)
             for (page in 1..book.pageCount) {
                 coroutineContext.ensureActive()

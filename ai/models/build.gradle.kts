@@ -1,14 +1,21 @@
 plugins {
-    alias(libs.plugins.aireader.android.library)
+    alias(libs.plugins.aireader.kmp.library)
 }
 
-android {
-    namespace = "dev.joseramos.aireader.ai.models"
-}
+kotlin {
+    android {
+        namespace = "dev.joseramos.aireader.ai.models"
+    }
 
-dependencies {
-    implementation(project(":core:common"))
-    implementation(project(":core:data"))
-    implementation(libs.okhttp)
-    testImplementation(libs.okhttp.mockwebserver)
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":core:common"))
+            implementation(project(":core:data"))
+            implementation(libs.okhttp)
+        }
+        getByName("desktopTest").dependencies {
+            implementation(libs.junit)
+            implementation(libs.okhttp.mockwebserver)
+        }
+    }
 }

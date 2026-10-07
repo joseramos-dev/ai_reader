@@ -14,6 +14,7 @@ import dev.joseramos.aireader.feature.library.libraryModule
 import dev.joseramos.aireader.feature.reader.readerModule
 import dev.joseramos.aireader.feature.settings.settingsModule
 import dev.joseramos.aireader.indexing.indexingModule
+import dev.joseramos.aireader.pdf.pdfModule
 import dev.joseramos.aireader.tts.ttsModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.viewModelOf
@@ -35,6 +36,7 @@ val appModules = listOf(
     dataModule,
     modelsModule,
     embeddingsModule,
+    pdfModule,
     indexingModule,
     llmModule,
     ragModule,

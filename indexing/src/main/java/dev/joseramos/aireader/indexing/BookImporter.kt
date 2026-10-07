@@ -7,7 +7,7 @@ import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.IndexStatus
-import dev.joseramos.aireader.pdf.PdfPageRenderer
+import dev.joseramos.aireader.pdf.PdfRendererFactory
 import java.io.File
 import java.io.IOException
 import kotlin.uuid.Uuid
@@ -22,6 +22,7 @@ class ImportException(message: String, cause: Throwable? = null) : IOException(m
  */
 class BookImporter(
     private val context: Context,
+    private val renderers: PdfRendererFactory,
     private val bookDao: BookDao,
     private val scheduler: IndexScheduler,
     private val io: CoroutineDispatcher
@@ -37,7 +38,7 @@ class BookImporter(
 
         val cover = File(context.filesDir, "$COVERS_DIR/$id.png")
         val pageCount = try {
-            PdfPageRenderer.writeCover(pdf, cover, COVER_WIDTH_PX)
+            renderers.writeCover(pdf, cover, COVER_WIDTH_PX)
         } catch (e: IOException) {
             pdf.delete()
             throw ImportException("El archivo no es un PDF válido.", e)

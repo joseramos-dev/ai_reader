@@ -26,6 +26,7 @@ val readerModule = module {
             get(),
             get(),
             get(),
+            get(),
             get(IoDispatcher),
             get(ApplicationScope)
         )

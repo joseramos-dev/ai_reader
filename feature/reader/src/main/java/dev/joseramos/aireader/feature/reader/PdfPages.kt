@@ -1,7 +1,5 @@
 package dev.joseramos.aireader.feature.reader
 
-import android.graphics.Bitmap
-import android.util.Size
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -31,12 +29,12 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size as GeometrySize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
+import dev.joseramos.aireader.pdf.PageSize
 import kotlin.math.roundToInt
 
 private const val MAX_ZOOM = 4f
@@ -57,8 +55,8 @@ private val PASSAGE_UNDERLINE = 1.5.dp
 @Composable
 internal fun PdfPages(
     listState: LazyListState,
-    pageSizes: List<Size>,
-    render: suspend (index: Int, widthPx: Int) -> Bitmap?,
+    pageSizes: List<PageSize>,
+    render: suspend (index: Int, widthPx: Int) -> ImageBitmap?,
     contentPadding: PaddingValues,
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
@@ -116,9 +114,15 @@ internal fun PdfPages(
 }
 
 @Composable
-private fun PdfPage(index: Int, size: Size, widthPx: Int, render: suspend (Int, Int) -> Bitmap?, passage: List<Rect>) {
+private fun PdfPage(
+    index: Int,
+    size: PageSize,
+    widthPx: Int,
+    render: suspend (Int, Int) -> ImageBitmap?,
+    passage: List<Rect>
+) {
     val bitmap by produceState<ImageBitmap?>(null, index, widthPx) {
-        value = render(index, widthPx)?.asImageBitmap()
+        value = render(index, widthPx)
     }
     val accent = AppTheme.colors.accent
     Box(

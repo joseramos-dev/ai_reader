@@ -1,9 +1,6 @@
 package dev.joseramos.aireader.feature.reader
 
-import android.content.Context
-import android.graphics.Bitmap
-import android.os.SystemClock
-import android.util.Size
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,6 +8,7 @@ import androidx.navigation.toRoute
 import dev.joseramos.aireader.ai.characters.CharacterAnalysis
 import dev.joseramos.aireader.ai.characters.CharacterBrowser
 import dev.joseramos.aireader.ai.characters.CharactersSnapshot
+import dev.joseramos.aireader.core.common.AppDirs
 import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.book.Book
@@ -28,10 +26,13 @@ import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
 import dev.joseramos.aireader.core.data.book.SourceKind
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
+import dev.joseramos.aireader.pdf.PageSize
 import dev.joseramos.aireader.pdf.PdfPageRenderer
+import dev.joseramos.aireader.pdf.PdfRendererFactory
 import dev.joseramos.aireader.tts.PlaybackController
 import java.io.File
 import java.io.IOException
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -61,7 +62,7 @@ enum class ReaderMode { PDF, TEXT }
 data class ReaderUiState(
     val book: Book? = null,
     val opened: Boolean = false,
-    val pageSizes: List<Size> = emptyList(),
+    val pageSizes: List<PageSize> = emptyList(),
     val currentPage: Int = 1,
     /** Capítulos (nivel 0): los que tienen hechos clave y por los que salta la voz. */
     val chapters: List<Chapter> = emptyList(),
@@ -98,7 +99,7 @@ data class ReaderExtras(
 
 private data class ReaderMeta(
     val opened: Boolean = false,
-    val pageSizes: List<Size> = emptyList(),
+    val pageSizes: List<PageSize> = emptyList(),
     val currentPage: Int = 1,
     val mode: ReaderMode = ReaderMode.PDF,
     val error: String? = null
@@ -108,7 +109,8 @@ private data class OpeningPrompts(val bookmarkSuggestion: Int? = null, val offer
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class ReaderViewModel(
-    private val context: Context,
+    private val dirs: AppDirs,
+    private val renderers: PdfRendererFactory,
     savedStateHandle: SavedStateHandle,
     private val bookRepository: BookRepository,
     contentRepository: BookContentRepository,
@@ -253,14 +255,14 @@ class ReaderViewModel(
         val saved = positions.get(bookId)
         bookRepository.markOpened(bookId)
         try {
-            val started = SystemClock.elapsedRealtime()
+            val started = TimeSource.Monotonic.markNow()
             // Los tamaños de página se guardan en caché: medirlos abre todas las páginas del PDF.
             val (opened, sizes) = withContext(io) {
-                PdfPageRenderer(File(book.filePath), File(context.cacheDir, "page_sizes/$bookId")).let {
+                renderers.open(File(book.filePath), File(dirs.cache, "page_sizes/$bookId")).let {
                     it to it.pageSizes
                 }
             }
-            Log.d(TAG, "PDF de ${opened.pageCount} páginas abierto en ${SystemClock.elapsedRealtime() - started} ms")
+            Log.d(TAG, "PDF de ${opened.pageCount} páginas abierto en ${started.elapsedNow().inWholeMilliseconds} ms")
             renderer = opened
             val start = (route.page ?: saved?.page ?: 1).coerceIn(1, opened.pageCount)
             meta.update { it.copy(opened = true, pageSizes = sizes, currentPage = start) }
@@ -293,7 +295,8 @@ class ReaderViewModel(
     }
 
     /** Página [index] (base 0) renderizada a [widthPx]. */
-    suspend fun render(index: Int, widthPx: Int): Bitmap? = runCatching { renderer?.render(index, widthPx) }.getOrNull()
+    suspend fun render(index: Int, widthPx: Int): ImageBitmap? =
+        runCatching { renderer?.render(index, widthPx) }.getOrNull()
 
     fun onPageVisible(page: Int) {
         meta.update { it.copy(currentPage = page) }

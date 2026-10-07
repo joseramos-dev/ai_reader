@@ -109,6 +109,7 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:data"))
     implementation(project(":ai:models"))
+    implementation(project(":pdf"))
     implementation(project(":indexing"))
     implementation(project(":tts"))
     implementation(project(":ai:llm"))

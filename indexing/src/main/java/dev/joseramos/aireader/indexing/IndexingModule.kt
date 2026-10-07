@@ -12,7 +12,7 @@ import org.koin.dsl.module
 val indexingModule = module {
     single { IndexScheduler(get()) }
     single { StageCrashGuard(get()) }
-    single { BookImporter(get(), get(), get(), get(IoDispatcher)) }
+    single { BookImporter(get(), get(), get(), get(), get(IoDispatcher)) }
     factory { TextIndexer(get(), get(), get(), get()) }
     factory { ChapterDetector(get(), get(), get(), getOrNull()) }
     factory { DocumentTypeDetector(get(), get(), get(), getOrNull()) }

@@ -10,7 +10,9 @@ import dev.joseramos.aireader.core.data.db.ChapterSource
 import dev.joseramos.aireader.core.data.db.ChunkEntity
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.db.PageTextEntity
+import dev.joseramos.aireader.pdf.PdfTextDocumentFactory
 import dev.joseramos.aireader.text.DetectedChapter
+import java.io.FileNotFoundException
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -87,7 +89,7 @@ class ChapterDetectorTest {
     fun tearDown() = db.close()
 
     private fun detector(fromLlm: List<DetectedChapter>) = ChapterDetector(
-        context,
+        PdfTextDocumentFactory { throw FileNotFoundException("no existe") },
         db.chapterDao(),
         db.pageTextDao(),
         object : LlmChapterDetection {

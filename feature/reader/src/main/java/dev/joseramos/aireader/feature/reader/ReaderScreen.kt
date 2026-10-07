@@ -1,6 +1,5 @@
 package dev.joseramos.aireader.feature.reader
 
-import android.graphics.Bitmap
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -65,6 +64,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
@@ -139,7 +139,7 @@ private enum class ContentsTab { CHAPTERS, BOOKMARKS, HIGHLIGHTS }
 internal fun ReaderScreen(
     state: ReaderUiState,
     playback: ReaderPlayback,
-    render: suspend (Int, Int) -> Bitmap?,
+    render: suspend (Int, Int) -> ImageBitmap?,
     actions: ReaderActions,
     extras: ReaderExtras = ReaderExtras(),
     jumpRequests: Flow<Int> = emptyFlow()

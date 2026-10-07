@@ -30,6 +30,7 @@ coroutines = "1.11.0"
 media3 = "1.11.1"
 onnxruntime = "1.30.0"
 pdfboxAndroid = "2.0.27.0"
+pdfbox = "2.0.37"
 djl = "0.33.0"
 benchmark = "1.5.0"
 uiautomator = "2.4.0"
@@ -88,7 +89,9 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 kotlinx-coroutines-guava = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-guava", version.ref = "coroutines" }
 androidx-media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 androidx-media3-common = { group = "androidx.media3", name = "media3-common", version.ref = "media3" }
+onnxruntime = { group = "com.microsoft.onnxruntime", name = "onnxruntime", version.ref = "onnxruntime" }
 onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
+pdfbox = { group = "org.apache.pdfbox", name = "pdfbox", version.ref = "pdfbox" }
 pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfboxAndroid" }
 djl-tokenizers = { group = "ai.djl.huggingface", name = "tokenizers", version.ref = "djl" }
 djl-tokenizer-native-android = { group = "ai.djl.android", name = "tokenizer-native", version.ref = "djl" }

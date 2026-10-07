@@ -1,6 +1,5 @@
 package dev.joseramos.aireader.indexing
 
-import android.content.Context
 import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.ChapterDao
@@ -9,7 +8,7 @@ import dev.joseramos.aireader.core.data.db.ChapterSource
 import dev.joseramos.aireader.core.data.db.PageTextDao
 import dev.joseramos.aireader.core.data.db.PageTextEntity
 import dev.joseramos.aireader.pdf.OutlineEntry
-import dev.joseramos.aireader.pdf.PdfTextDocument
+import dev.joseramos.aireader.pdf.PdfTextDocumentFactory
 import dev.joseramos.aireader.text.ChapterHeuristics
 import dev.joseramos.aireader.text.DetectedChapter
 import dev.joseramos.aireader.text.HeadingOutline
@@ -31,7 +30,7 @@ interface LlmChapterDetection {
  * (por su tamaño de letra) → encabezados típicos («Capítulo 3») → IA → bloques de páginas.
  */
 class ChapterDetector(
-    private val context: Context,
+    private val pdfs: PdfTextDocumentFactory,
     private val chapterDao: ChapterDao,
     private val pageTextDao: PageTextDao,
     private val llm: LlmChapterDetection?
@@ -99,7 +98,7 @@ class ChapterDetector(
 
     private suspend fun detect(book: BookEntity): Pair<List<DetectedChapter>, ChapterSource> {
         val outline = runCatching {
-            PdfTextDocument.open(context, File(book.filePath)).use { it.outline() }
+            pdfs.open(File(book.filePath)).use { it.outline() }
         }.getOrDefault(emptyList())
         fromOutline(outline).takeIf { it.isNotEmpty() }?.let { return it to ChapterSource.OUTLINE }
 
