@@ -11,7 +11,6 @@ import dev.joseramos.aireader.core.data.db.ChunkEntity
 import dev.joseramos.aireader.indexing.EmbeddingStage
 import dev.joseramos.aireader.text.Chunker
 import dev.joseramos.aireader.text.PageParagraph
-import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
 import kotlin.time.TimeSource
 import kotlinx.coroutines.ensureActive
@@ -22,7 +21,7 @@ import kotlinx.coroutines.ensureActive
  * para que el chat pueda buscar por palabras aunque los embeddings no estén. Es reanudable: solo
  * procesa los fragmentos que aún no tienen vector del modelo actual, y descarta los de modelos anteriores.
  */
-class BookEmbeddingIndexer @Inject constructor(
+class BookEmbeddingIndexer(
     private val content: BookContentRepository,
     private val chunkDao: ChunkDao,
     private val embeddingDao: ChunkEmbeddingDao,

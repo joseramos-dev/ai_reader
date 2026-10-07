@@ -4,7 +4,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
-import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.joseramos.aireader.ai.characters.AnalysisProgress
 import dev.joseramos.aireader.ai.characters.CharacterAnalysis
 import dev.joseramos.aireader.ai.characters.CharacterBrowser
@@ -15,7 +14,6 @@ import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.settings.CostConfirmation
 import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.UsageRepository
-import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -41,8 +39,7 @@ data class CharactersUiState(
         }
 }
 
-@HiltViewModel
-class CharactersViewModel @Inject constructor(
+class CharactersViewModel(
     savedStateHandle: SavedStateHandle,
     books: BookRepository,
     browser: CharacterBrowser,

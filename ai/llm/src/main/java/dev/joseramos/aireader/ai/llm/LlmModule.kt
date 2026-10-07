@@ -1,23 +1,19 @@
 package dev.joseramos.aireader.ai.llm
 
-import dagger.Binds
-import dagger.Module
-import dagger.hilt.InstallIn
-import dagger.hilt.components.SingletonComponent
+import dev.joseramos.aireader.core.common.ApplicationScope
+import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.indexing.LlmChapterDetection
 import dev.joseramos.aireader.indexing.LlmDocumentClassification
+import org.koin.dsl.bind
+import org.koin.dsl.module
 
-@Module
-@InstallIn(SingletonComponent::class)
-interface LlmModule {
-    @Binds
-    fun llmClient(impl: GeminiLlmClient): LlmClient
+val llmModule = module {
+    single { Prompts(get()) }
+    factory { BudgetNotifier(get()) }
+    single { GeminiLlmClient(get(), get(), get(), get(IoDispatcher)) } bind LlmClient::class
+    single { KeyPointsGenerator(get(), get(), get(), get(), get(), get(), get(ApplicationScope)) }
 
-    /** Activa el paso con IA de la detección de capítulos de la indexación. */
-    @Binds
-    fun chapterDetection(impl: AiChapterDetection): LlmChapterDetection
-
-    /** Activa la confirmación con IA del tipo de documento. */
-    @Binds
-    fun documentClassification(impl: AiDocumentClassification): LlmDocumentClassification
+    // Activan los pasos con IA de la indexación (detección de capítulos y tipo de documento).
+    factory { AiChapterDetection(get(), get(), get()) } bind LlmChapterDetection::class
+    factory { AiDocumentClassification(get(), get(), get()) } bind LlmDocumentClassification::class
 }

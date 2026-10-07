@@ -8,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -19,25 +18,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.AndroidEntryPoint
-import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.core.data.settings.ThemeMode
 import dev.joseramos.aireader.core.designsystem.theme.AiReaderTheme
 import dev.joseramos.aireader.indexing.BookImporter
 import dev.joseramos.aireader.indexing.ImportException
 import dev.joseramos.aireader.navigation.AiReaderApp
-import javax.inject.Inject
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.koin.androidx.viewmodel.ext.android.viewModel
 
-@HiltViewModel
-class MainViewModel @Inject constructor(settings: SettingsRepository, private val importer: BookImporter) :
-    ViewModel() {
+class MainViewModel(settings: SettingsRepository, private val importer: BookImporter) : ViewModel() {
     val themeMode = settings.settings.map { it.themeMode }
         .stateIn(viewModelScope, SharingStarted.Eagerly, ThemeMode.SYSTEM)
 
@@ -59,9 +54,8 @@ class MainViewModel @Inject constructor(settings: SettingsRepository, private va
     }
 }
 
-@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    private val viewModel: MainViewModel by viewModels()
+    private val viewModel: MainViewModel by viewModel()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

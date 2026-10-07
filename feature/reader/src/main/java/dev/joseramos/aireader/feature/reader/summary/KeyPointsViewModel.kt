@@ -4,7 +4,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
-import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.joseramos.aireader.ai.llm.KeyPointsGenerator
 import dev.joseramos.aireader.ai.llm.KeyPointsJob
 import dev.joseramos.aireader.ai.llm.KeyPointsJobKey
@@ -18,7 +17,6 @@ import dev.joseramos.aireader.core.data.settings.DailyUsage
 import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.UsageRepository
 import dev.joseramos.aireader.feature.reader.ReaderRoute
-import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,8 +35,7 @@ data class KeyPointsUiState(
     val recap: Recap? = null
 )
 
-@HiltViewModel
-class KeyPointsViewModel @Inject constructor(
+class KeyPointsViewModel(
     savedStateHandle: SavedStateHandle,
     repository: KeyPointsRepository,
     private val generator: KeyPointsGenerator,

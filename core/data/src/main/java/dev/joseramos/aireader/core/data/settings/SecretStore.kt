@@ -6,9 +6,6 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.google.crypto.tink.Aead
-import javax.inject.Inject
-import javax.inject.Named
-import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -18,11 +15,7 @@ import kotlinx.coroutines.flow.map
  * clave de cifrado vive en el Android Keystore y nunca sale de él. El valor no se registra nunca
  * en logs.
  */
-@Singleton
-class SecretStore @Inject constructor(
-    @Named(SECRETS_STORE) private val dataStore: DataStore<Preferences>,
-    private val aead: Aead
-) {
+class SecretStore(private val dataStore: DataStore<Preferences>, private val aead: Aead) {
     val hasApiKey: Flow<Boolean> = dataStore.data.map { it[API_KEY] != null }
 
     suspend fun apiKey(): String? = dataStore.data.first()[API_KEY]?.let(::decrypt)

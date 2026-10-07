@@ -9,13 +9,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.joseramos.aireader.ai.characters.CharacterAnalysis
 import dev.joseramos.aireader.ai.characters.CharacterBrowser
 import dev.joseramos.aireader.ai.characters.CharactersSnapshot
-import dev.joseramos.aireader.core.common.ApplicationScope
-import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.book.Book
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
@@ -35,7 +31,6 @@ import dev.joseramos.aireader.pdf.PdfPageRenderer
 import dev.joseramos.aireader.tts.PlaybackController
 import java.io.File
 import java.io.IOException
-import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -111,9 +106,8 @@ private data class ReaderMeta(
 private data class OpeningPrompts(val bookmarkSuggestion: Int? = null, val offerRecap: Boolean = false)
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
-@HiltViewModel
-class ReaderViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+class ReaderViewModel(
+    private val context: Context,
     savedStateHandle: SavedStateHandle,
     private val bookRepository: BookRepository,
     contentRepository: BookContentRepository,
@@ -126,8 +120,8 @@ class ReaderViewModel @Inject constructor(
     private val playbackController: PlaybackController,
     characterBrowser: CharacterBrowser,
     private val characterAnalysis: CharacterAnalysis,
-    @IoDispatcher private val io: CoroutineDispatcher,
-    @ApplicationScope private val appScope: CoroutineScope
+    private val io: CoroutineDispatcher,
+    private val appScope: CoroutineScope
 ) : ViewModel() {
     private val route = savedStateHandle.toRoute<ReaderRoute>()
     val bookId = route.bookId

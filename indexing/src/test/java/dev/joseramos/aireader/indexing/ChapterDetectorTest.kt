@@ -11,7 +11,6 @@ import dev.joseramos.aireader.core.data.db.ChunkEntity
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.db.PageTextEntity
 import dev.joseramos.aireader.text.DetectedChapter
-import java.util.Optional
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -91,11 +90,9 @@ class ChapterDetectorTest {
         context,
         db.chapterDao(),
         db.pageTextDao(),
-        Optional.of(
-            object : LlmChapterDetection {
-                override suspend fun detect(pageHeads: List<Pair<Int, String>>, pageCount: Int) = fromLlm
-            }
-        )
+        object : LlmChapterDetection {
+            override suspend fun detect(pageHeads: List<Pair<Int, String>>, pageCount: Int) = fromLlm
+        }
     )
 
     private val aiChapters = listOf(DetectedChapter("Uno", 1), DetectedChapter("Dos", 3))

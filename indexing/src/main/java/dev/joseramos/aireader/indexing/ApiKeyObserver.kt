@@ -1,12 +1,9 @@
 package dev.joseramos.aireader.indexing
 
 import android.util.Log
-import dev.joseramos.aireader.core.common.ApplicationScope
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.settings.SecretStore
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -19,12 +16,11 @@ import kotlinx.coroutines.launch
  * (verán la clave al llegar a esas etapas); el resto se relanza, incluido uno que se hubiera quedado
  * colgado a medias, y continúa desde donde estaba.
  */
-@Singleton
-class ApiKeyObserver @Inject constructor(
+class ApiKeyObserver(
     private val secrets: SecretStore,
     private val bookDao: BookDao,
     private val scheduler: IndexScheduler,
-    @ApplicationScope private val scope: CoroutineScope
+    private val scope: CoroutineScope
 ) {
     fun start() {
         scope.launch {

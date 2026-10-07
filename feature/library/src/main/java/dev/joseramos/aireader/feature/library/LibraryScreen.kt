@@ -47,7 +47,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
@@ -68,6 +67,7 @@ import java.io.File
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.serialization.Serializable
+import org.koin.compose.viewmodel.koinViewModel
 
 @Serializable
 data object LibraryRoute
@@ -75,7 +75,7 @@ data object LibraryRoute
 /** [onOpenBook] abre el libro donde se quedó la lectura o, con página, en esa página. */
 fun NavGraphBuilder.libraryScreen(onOpenBook: (bookId: String, page: Int?) -> Unit) {
     composable<LibraryRoute> {
-        val viewModel: LibraryViewModel = hiltViewModel()
+        val viewModel: LibraryViewModel = koinViewModel()
         val state by viewModel.state.collectAsStateWithLifecycle()
         val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
             uri?.let(viewModel::import)

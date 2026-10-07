@@ -4,7 +4,6 @@ import android.util.Log
 import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.book.ChapterKeyPoints
 import dev.joseramos.aireader.core.data.book.KeyPointsRepository
-import javax.inject.Inject
 
 /** Lo que hace falta saber del libro y del lector para situar una pregunta. */
 data class LocationContext(
@@ -35,7 +34,7 @@ class BookLocator internal constructor(
     /** Hechos clave guardados de cada capítulo del libro, por id de capítulo. */
     private val savedEvents: suspend (bookId: String) -> Map<Long, ChapterKeyPoints>
 ) {
-    @Inject constructor(judge: LocationJudge, keyPoints: KeyPointsRepository) : this(judge, keyPoints::all)
+    constructor(judge: LocationJudge, keyPoints: KeyPointsRepository) : this(judge, keyPoints::all)
 
     /**
      * Dónde se sitúa [question], o `null` si no habla de ninguna parte del libro (o no se ha podido situar).

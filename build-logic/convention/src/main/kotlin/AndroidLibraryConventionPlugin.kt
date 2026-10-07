@@ -24,10 +24,11 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
                 unitTests.isIncludeAndroidResources = true
             }
         }
-        // Hilt genera clases en el conjunto de pruebas aunque el módulo aún no tenga pruebas.
+        // Un módulo sin pruebas no debe hacer fallar la tarea de test.
         tasks.withType<Test>().configureEach { failOnNoDiscoveredTests.set(false) }
         dependencies {
             add("implementation", libs.lib("kotlinx-coroutines-android"))
+            add("implementation", libs.lib("koin-core"))
             add("testImplementation", libs.lib("junit"))
             add("testImplementation", libs.lib("kotlinx-coroutines-test"))
         }

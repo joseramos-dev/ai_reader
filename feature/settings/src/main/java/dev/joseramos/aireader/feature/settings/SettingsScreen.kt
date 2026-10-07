@@ -35,7 +35,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
@@ -58,13 +57,14 @@ import dev.joseramos.aireader.core.designsystem.component.formatTokens
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
 import kotlinx.serialization.Serializable
+import org.koin.compose.viewmodel.koinViewModel
 
 @Serializable
 data object SettingsRoute
 
 fun NavGraphBuilder.settingsScreen() {
     composable<SettingsRoute> {
-        val viewModel: SettingsViewModel = hiltViewModel()
+        val viewModel: SettingsViewModel = koinViewModel()
         val state by viewModel.state.collectAsStateWithLifecycle()
         val ragEval by viewModel.ragEval.collectAsStateWithLifecycle()
         SettingsScreen(state, viewModel)

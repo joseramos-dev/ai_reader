@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.aireader.android.library)
-    alias(libs.plugins.aireader.hilt)
 }
 
 android {
@@ -9,14 +8,13 @@ android {
 
 // Importación de libros e indexación en segundo plano (texto, capítulos y embeddings).
 dependencies {
+    implementation(libs.koin.androidx.workmanager)
     implementation(project(":core:common"))
     implementation(project(":core:data"))
     implementation(project(":pdf"))
     implementation(project(":text"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.androidx.hilt.work)
-    ksp(libs.androidx.hilt.compiler)
     implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)

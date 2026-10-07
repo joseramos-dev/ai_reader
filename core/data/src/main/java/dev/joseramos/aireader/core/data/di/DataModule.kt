@@ -11,77 +11,78 @@ import com.google.crypto.tink.KeyTemplates
 import com.google.crypto.tink.RegistryConfiguration
 import com.google.crypto.tink.aead.AeadConfig
 import com.google.crypto.tink.integration.android.AndroidKeysetManager
-import dagger.Module
-import dagger.Provides
-import dagger.hilt.InstallIn
-import dagger.hilt.android.qualifiers.ApplicationContext
-import dagger.hilt.components.SingletonComponent
+import dev.joseramos.aireader.core.common.IoDispatcher
+import dev.joseramos.aireader.core.data.book.BookContentRepository
+import dev.joseramos.aireader.core.data.book.BookRepository
+import dev.joseramos.aireader.core.data.book.BookmarkRepository
+import dev.joseramos.aireader.core.data.book.CharacterRepository
+import dev.joseramos.aireader.core.data.book.ChatRepository
+import dev.joseramos.aireader.core.data.book.HighlightRepository
+import dev.joseramos.aireader.core.data.book.KeyPointsRepository
+import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
 import dev.joseramos.aireader.core.data.db.AppDatabase
 import dev.joseramos.aireader.core.data.db.MIGRATION_6_7
 import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
-import javax.inject.Named
-import javax.inject.Singleton
+import dev.joseramos.aireader.core.data.settings.UsageRepository
+import org.koin.core.qualifier.named
+import org.koin.dsl.module
 
-@Module
-@InstallIn(SingletonComponent::class)
-object DataModule {
-    @Provides
-    @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
+/** Aead de Tink cuyo keyset está cifrado con una clave maestra del Android Keystore. */
+private fun createAead(context: Context): Aead {
+    AeadConfig.register()
+    return AndroidKeysetManager.Builder()
+        .withSharedPref(context, "aireader_keyset", "aireader_keyset_prefs")
+        .withKeyTemplate(KeyTemplates.get("AES256_GCM"))
+        .withMasterKeyUri("android-keystore://aireader_master_key")
+        .build()
+        .keysetHandle
+        .getPrimitive(RegistryConfiguration.get(), Aead::class.java)
+}
+
+private val settingsStore = named(SettingsRepository.SETTINGS_STORE)
+private val secretsStore = named(SecretStore.SECRETS_STORE)
+
+val dataModule = module {
+    single {
+        Room.databaseBuilder(get<Context>(), AppDatabase::class.java, AppDatabase.NAME)
             .addMigrations(MIGRATION_6_7)
             .build()
-
-    @Provides fun bookDao(db: AppDatabase) = db.bookDao()
-
-    @Provides fun chapterDao(db: AppDatabase) = db.chapterDao()
-
-    @Provides fun pageTextDao(db: AppDatabase) = db.pageTextDao()
-
-    @Provides fun pageLayoutDao(db: AppDatabase) = db.pageLayoutDao()
-
-    @Provides fun chunkDao(db: AppDatabase) = db.chunkDao()
-
-    @Provides fun chunkEmbeddingDao(db: AppDatabase) = db.chunkEmbeddingDao()
-
-    @Provides fun keyPointsDao(db: AppDatabase) = db.keyPointsDao()
-
-    @Provides fun readingPositionDao(db: AppDatabase) = db.readingPositionDao()
-
-    @Provides fun chatDao(db: AppDatabase) = db.chatDao()
-
-    @Provides fun downloadedModelDao(db: AppDatabase) = db.downloadedModelDao()
-
-    @Provides fun bookmarkDao(db: AppDatabase) = db.bookmarkDao()
-
-    @Provides fun characterDao(db: AppDatabase) = db.characterDao()
-
-    @Provides fun highlightDao(db: AppDatabase) = db.highlightDao()
-
-    @Provides
-    @Singleton
-    @Named(SettingsRepository.SETTINGS_STORE)
-    fun provideSettingsStore(@ApplicationContext context: Context): DataStore<Preferences> =
-        PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("settings") }
-
-    @Provides
-    @Singleton
-    @Named(SecretStore.SECRETS_STORE)
-    fun provideSecretsStore(@ApplicationContext context: Context): DataStore<Preferences> =
-        PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("secrets") }
-
-    /** AEAD de Tink cuyo keyset está cifrado con una clave maestra del Android Keystore. */
-    @Provides
-    @Singleton
-    fun provideAead(@ApplicationContext context: Context): Aead {
-        AeadConfig.register()
-        return AndroidKeysetManager.Builder()
-            .withSharedPref(context, "aireader_keyset", "aireader_keyset_prefs")
-            .withKeyTemplate(KeyTemplates.get("AES256_GCM"))
-            .withMasterKeyUri("android-keystore://aireader_master_key")
-            .build()
-            .keysetHandle
-            .getPrimitive(RegistryConfiguration.get(), Aead::class.java)
     }
+    factory { get<AppDatabase>().bookDao() }
+    factory { get<AppDatabase>().chapterDao() }
+    factory { get<AppDatabase>().pageTextDao() }
+    factory { get<AppDatabase>().pageLayoutDao() }
+    factory { get<AppDatabase>().chunkDao() }
+    factory { get<AppDatabase>().chunkEmbeddingDao() }
+    factory { get<AppDatabase>().keyPointsDao() }
+    factory { get<AppDatabase>().readingPositionDao() }
+    factory { get<AppDatabase>().chatDao() }
+    factory { get<AppDatabase>().downloadedModelDao() }
+    factory { get<AppDatabase>().bookmarkDao() }
+    factory { get<AppDatabase>().characterDao() }
+    factory { get<AppDatabase>().highlightDao() }
+
+    single<DataStore<Preferences>>(settingsStore) {
+        val context = get<Context>()
+        PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("settings") }
+    }
+    single<DataStore<Preferences>>(secretsStore) {
+        val context = get<Context>()
+        PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("secrets") }
+    }
+    single<Aead> { createAead(get()) }
+
+    single { SettingsRepository(get(settingsStore)) }
+    single { UsageRepository(get(settingsStore)) }
+    single { SecretStore(get(secretsStore), get()) }
+
+    single { BookRepository(get(), get(IoDispatcher)) }
+    single { BookContentRepository(get(), get(), get()) }
+    single { BookmarkRepository(get()) }
+    single { CharacterRepository(get()) }
+    single { ChatRepository(get()) }
+    single { HighlightRepository(get()) }
+    single { KeyPointsRepository(get()) }
+    single { ReadingPositionRepository(get()) }
 }

@@ -2,16 +2,13 @@ package dev.joseramos.aireader.core.data.book
 
 import dev.joseramos.aireader.core.data.db.ReadingPositionDao
 import dev.joseramos.aireader.core.data.db.ReadingPositionEntity
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /** Punto exacto de lectura: página (base 1), párrafo y frase dentro de la página. */
 data class ReadingPosition(val page: Int, val paragraph: Int = 0, val phrase: Int = 0)
 
-@Singleton
-class ReadingPositionRepository @Inject constructor(private val dao: ReadingPositionDao) {
+class ReadingPositionRepository(private val dao: ReadingPositionDao) {
     suspend fun get(bookId: String): ReadingPosition? =
         dao.get(bookId)?.let { ReadingPosition(it.page, it.paragraphIndex, it.phraseIndex) }
 

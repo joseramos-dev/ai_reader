@@ -4,7 +4,6 @@ import java.security.MessageDigest
 plugins {
     alias(libs.plugins.aireader.android.application)
     alias(libs.plugins.aireader.android.compose)
-    alias(libs.plugins.aireader.hilt)
     alias(libs.plugins.androidx.baselineprofile)
 }
 
@@ -129,10 +128,10 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.navigation.compose)
-    implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
     implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.androidx.hilt.work)
-    ksp(libs.androidx.hilt.compiler)
+    implementation(libs.koin.android)
+    implementation(libs.koin.compose.viewmodel)
+    implementation(libs.koin.androidx.workmanager)
 
     testImplementation(libs.junit)
 }

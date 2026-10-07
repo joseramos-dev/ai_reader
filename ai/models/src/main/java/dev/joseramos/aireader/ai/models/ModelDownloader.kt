@@ -5,7 +5,6 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.security.MessageDigest
-import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.ensureActive
 import okhttp3.OkHttpClient
@@ -19,7 +18,7 @@ class ChecksumMismatchException(expected: String, actual: String) :
  * interrumpe, la siguiente pide solo lo que falta con una cabecera `Range`. Al terminar
  * verifica el sha256 y solo entonces lo renombra al destino.
  */
-class ModelDownloader @Inject constructor(private val client: OkHttpClient) {
+class ModelDownloader(private val client: OkHttpClient) {
 
     /** Descarga [url] en [target]. [onProgress] recibe los bytes descargados y el total esperado. */
     suspend fun download(

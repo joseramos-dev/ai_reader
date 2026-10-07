@@ -22,7 +22,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
@@ -39,6 +38,7 @@ import dev.joseramos.aireader.core.designsystem.component.SecondaryButton
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
 import kotlinx.serialization.Serializable
+import org.koin.compose.viewmodel.koinViewModel
 
 /** Menú de personajes desbloqueados de un libro. */
 @Serializable
@@ -57,7 +57,7 @@ fun NavGraphBuilder.charactersScreens(
         enterTransition = { slideIntoContainer(SlideDirection.Start) },
         popExitTransition = { slideOutOfContainer(SlideDirection.End) }
     ) {
-        val viewModel: CharactersViewModel = hiltViewModel()
+        val viewModel: CharactersViewModel = koinViewModel()
         val state by viewModel.state.collectAsStateWithLifecycle()
         var askKey by rememberSaveable { mutableStateOf(false) }
         CharactersScreen(
@@ -84,7 +84,7 @@ fun NavGraphBuilder.charactersScreens(
         enterTransition = { slideIntoContainer(SlideDirection.Start) },
         popExitTransition = { slideOutOfContainer(SlideDirection.End) }
     ) {
-        val viewModel: RelationsGraphViewModel = hiltViewModel()
+        val viewModel: RelationsGraphViewModel = koinViewModel()
         val state by viewModel.state.collectAsStateWithLifecycle()
         RelationsGraphScreen(
             state = state,

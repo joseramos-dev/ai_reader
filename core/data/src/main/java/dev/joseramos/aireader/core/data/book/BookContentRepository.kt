@@ -5,8 +5,6 @@ import dev.joseramos.aireader.core.data.db.ChapterEntity
 import dev.joseramos.aireader.core.data.db.PageLayoutDao
 import dev.joseramos.aireader.core.data.db.PageTextDao
 import dev.joseramos.aireader.core.data.db.PageTextEntity
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -43,8 +41,7 @@ data class PageText(
 }
 
 /** Capítulos y texto extraído de un libro, tal como los usan el lector, la voz y la IA. */
-@Singleton
-class BookContentRepository @Inject constructor(
+class BookContentRepository(
     private val chapterDao: ChapterDao,
     private val pageTextDao: PageTextDao,
     private val pageLayoutDao: PageLayoutDao

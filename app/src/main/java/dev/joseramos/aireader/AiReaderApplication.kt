@@ -1,38 +1,27 @@
 package dev.joseramos.aireader
 
 import android.app.Application
-import androidx.hilt.work.HiltWorkerFactory
-import androidx.work.Configuration
-import dagger.hilt.android.HiltAndroidApp
 import dev.joseramos.aireader.ai.models.BundledModelsInstaller
 import dev.joseramos.aireader.ai.rag.EmbeddingModelObserver
 import dev.joseramos.aireader.indexing.ApiKeyObserver
 import dev.joseramos.aireader.indexing.TextUpgradeObserver
-import javax.inject.Inject
+import org.koin.android.ext.android.get
+import org.koin.android.ext.koin.androidContext
+import org.koin.androidx.workmanager.koin.workManagerFactory
+import org.koin.core.context.startKoin
 
-@HiltAndroidApp
-class AiReaderApplication :
-    Application(),
-    Configuration.Provider {
-    @Inject lateinit var workerFactory: HiltWorkerFactory
-
-    @Inject lateinit var embeddingModelObserver: EmbeddingModelObserver
-
-    @Inject lateinit var textUpgradeObserver: TextUpgradeObserver
-
-    @Inject lateinit var bundledModelsInstaller: BundledModelsInstaller
-
-    @Inject lateinit var apiKeyObserver: ApiKeyObserver
-
+class AiReaderApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        bundledModelsInstaller.start()
-        embeddingModelObserver.start()
-        textUpgradeObserver.start()
-        apiKeyObserver.start()
+        startKoin {
+            androidContext(this@AiReaderApplication)
+            // Los workers (indexación, personajes) reciben sus dependencias de Koin.
+            workManagerFactory()
+            modules(appModules)
+        }
+        get<BundledModelsInstaller>().start()
+        get<EmbeddingModelObserver>().start()
+        get<TextUpgradeObserver>().start()
+        get<ApiKeyObserver>().start()
     }
-
-    // Los workers (indexación, descargas) reciben sus dependencias por Hilt.
-    override val workManagerConfiguration: Configuration
-        get() = Configuration.Builder().setWorkerFactory(workerFactory).build()
 }

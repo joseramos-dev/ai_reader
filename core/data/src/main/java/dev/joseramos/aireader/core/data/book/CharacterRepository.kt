@@ -3,8 +3,6 @@ package dev.joseramos.aireader.core.data.book
 import dev.joseramos.aireader.core.data.db.CharacterDao
 import dev.joseramos.aireader.core.data.db.NameKind
 import dev.joseramos.aireader.core.data.db.RelationType
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 
@@ -39,8 +37,7 @@ data class CharacterData(
     val scannedChapterIds: Set<Long> = emptySet()
 )
 
-@Singleton
-class CharacterRepository @Inject constructor(private val dao: CharacterDao) {
+class CharacterRepository(private val dao: CharacterDao) {
     fun observe(bookId: String): Flow<CharacterData> = combine(
         dao.observeCharacters(bookId),
         dao.observeNames(bookId),

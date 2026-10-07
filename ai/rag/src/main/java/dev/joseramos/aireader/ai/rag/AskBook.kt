@@ -22,7 +22,6 @@ import dev.joseramos.aireader.core.data.db.ChunkEntity
 import dev.joseramos.aireader.core.data.settings.CostConfirmation
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.core.data.settings.UsageRepository
-import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
@@ -77,7 +76,7 @@ data class ReadingContext(val currentPage: Int = 1, val spoilerLimit: Int? = nul
  * Con anti-spoilers, todo lo que se envía al modelo (fragmentos, hechos clave y lista de capítulos)
  * llega como mucho hasta [ReadingContext.spoilerLimit].
  */
-class AskBook @Inject constructor(
+class AskBook(
     private val llm: LlmClient,
     private val retriever: HybridRetriever,
     private val locator: BookLocator,

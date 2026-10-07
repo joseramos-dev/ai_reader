@@ -2,16 +2,13 @@ package dev.joseramos.aireader.core.data.book
 
 import dev.joseramos.aireader.core.data.db.BookmarkDao
 import dev.joseramos.aireader.core.data.db.BookmarkEntity
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /** Marcapáginas de una página (base 1), con nota opcional. */
 data class Bookmark(val id: Long, val page: Int, val note: String?, val createdAt: Long)
 
-@Singleton
-class BookmarkRepository @Inject constructor(private val dao: BookmarkDao) {
+class BookmarkRepository(private val dao: BookmarkDao) {
     /** Marcapáginas del libro, por orden de página. */
     fun observe(bookId: String): Flow<List<Bookmark>> =
         dao.observeByBook(bookId).map { list -> list.map { Bookmark(it.id, it.page, it.note, it.createdAt) } }

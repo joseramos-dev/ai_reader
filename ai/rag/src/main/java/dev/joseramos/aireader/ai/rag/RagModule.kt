@@ -1,35 +1,33 @@
 package dev.joseramos.aireader.ai.rag
 
-import dagger.Binds
-import dagger.Module
-import dagger.hilt.InstallIn
-import dagger.hilt.components.SingletonComponent
 import dev.joseramos.aireader.ai.models.ModelCatalog
 import dev.joseramos.aireader.ai.models.ModelManager
 import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.core.common.ApplicationScope
+import dev.joseramos.aireader.core.data.book.KeyPointsRepository
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.indexing.EmbeddingStage
 import dev.joseramos.aireader.indexing.IndexScheduler
 import dev.joseramos.aireader.indexing.StageCrashGuard
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import org.koin.dsl.bind
+import org.koin.dsl.module
 
-@Module
-@InstallIn(SingletonComponent::class)
-interface RagModule {
-    /** Activa la etapa de embeddings de la indexación. */
-    @Binds
-    fun embeddingStage(impl: BookEmbeddingIndexer): EmbeddingStage
+val ragModule = module {
+    // Activa la etapa de embeddings de la indexación.
+    factory { BookEmbeddingIndexer(get(), get(), get(), get()) } bind EmbeddingStage::class
 
-    /** Decide con Gemini las ubicaciones dudosas y dónde ocurre un hecho. */
-    @Binds
-    fun locationJudge(impl: GeminiLocationJudge): LocationJudge
+    // Decide con Gemini las ubicaciones dudosas y dónde ocurre un hecho.
+    factory { GeminiLocationJudge(get(), get(), get()) } bind LocationJudge::class
+    single { HybridRetriever(get(), get(), get()) }
+    factory { BookLocator(get<LocationJudge>(), get<KeyPointsRepository>()) }
+    factory { AskBook(get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
+    factory { RagEvaluator(get(), get(), get()) }
+    single { EmbeddingModelObserver(get(), get(), get(), get(), get(ApplicationScope)) }
 }
 
 /**
@@ -43,13 +41,12 @@ interface RagModule {
  * [StageCrashGuard] evita los bucles: no se encola una etapa que tumbó la app o que no funciona en
  * este móvil, salvo tras actualizar la app.
  */
-@Singleton
-class EmbeddingModelObserver @Inject constructor(
+class EmbeddingModelObserver(
     private val models: ModelManager,
     private val bookDao: BookDao,
     private val scheduler: IndexScheduler,
     private val crashGuard: StageCrashGuard,
-    @ApplicationScope private val scope: CoroutineScope
+    private val scope: CoroutineScope
 ) {
     fun start() {
         scope.launch {

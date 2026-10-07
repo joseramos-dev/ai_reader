@@ -1,13 +1,10 @@
 package dev.joseramos.aireader.ai.llm
 
 import android.util.Log
-import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.UsageRepository
 import java.io.IOException
 import java.util.concurrent.TimeUnit
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
@@ -32,12 +29,11 @@ import okhttp3.Response
  * la URL, para que no acabe en registros. La caché de prompts de Gemini es implícita: basta con que
  * las peticiones repitan el mismo principio (instrucciones y contexto del libro). Registra los tokens.
  */
-@Singleton
-class GeminiLlmClient @Inject constructor(
+class GeminiLlmClient(
     private val secrets: SecretStore,
     private val usage: UsageRepository,
     private val budgetNotifier: BudgetNotifier,
-    @IoDispatcher private val io: CoroutineDispatcher
+    private val io: CoroutineDispatcher
 ) : LlmClient {
     private val http = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_S, TimeUnit.SECONDS)

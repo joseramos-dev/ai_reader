@@ -7,14 +7,11 @@ import android.os.Process
 import android.system.Os
 import dev.joseramos.aireader.ai.models.ModelCatalog
 import dev.joseramos.aireader.ai.models.ModelManager
-import dev.joseramos.aireader.core.common.DefaultDispatcher
 import java.io.File
 import java.nio.FloatBuffer
 import java.nio.LongBuffer
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
@@ -35,11 +32,7 @@ import kotlinx.coroutines.withContext
  * inferencia de 4 hilos con lotes de 16, y con la mitad de memoria: los núcleos rápidos no esperan a los
  * lentos en cada operación, no se calcula relleno y trabajan todos los núcleos.
  */
-@Singleton
-class E5Embedder @Inject constructor(
-    private val models: ModelManager,
-    @DefaultDispatcher private val dispatcher: CoroutineDispatcher
-) : Embedder {
+class E5Embedder(private val models: ModelManager, private val dispatcher: CoroutineDispatcher) : Embedder {
     override val modelId: String = ModelCatalog.e5Small.id
     override val dimensions: Int = DIMENSIONS
 

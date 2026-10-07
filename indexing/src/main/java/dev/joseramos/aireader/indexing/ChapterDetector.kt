@@ -2,7 +2,6 @@ package dev.joseramos.aireader.indexing
 
 import android.content.Context
 import android.util.Log
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.ChapterDao
 import dev.joseramos.aireader.core.data.db.ChapterEntity
@@ -16,8 +15,6 @@ import dev.joseramos.aireader.text.DetectedChapter
 import dev.joseramos.aireader.text.HeadingOutline
 import dev.joseramos.aireader.text.PageHeading
 import java.io.File
-import java.util.Optional
-import javax.inject.Inject
 import kotlinx.serialization.json.Json
 
 /**
@@ -33,11 +30,11 @@ interface LlmChapterDetection {
  * Índice del libro, con capítulos y sus apartados, en cascada: índice del PDF → títulos del texto
  * (por su tamaño de letra) → encabezados típicos («Capítulo 3») → IA → bloques de páginas.
  */
-class ChapterDetector @Inject constructor(
-    @ApplicationContext private val context: Context,
+class ChapterDetector(
+    private val context: Context,
     private val chapterDao: ChapterDao,
     private val pageTextDao: PageTextDao,
-    private val llm: Optional<LlmChapterDetection>
+    private val llm: LlmChapterDetection?
 ) {
     /**
      * [upgrade]: el texto se acaba de volver a procesar en un libro que ya tenía capítulos. Entonces
@@ -117,7 +114,7 @@ class ChapterDetector @Inject constructor(
         val heads = firstLines.mapIndexedNotNull { i, lines ->
             lines.firstOrNull()?.let { pages[i].page to it.take(HEAD_CHARS) }
         }
-        val fromLlm = llm.orElse(null)?.let {
+        val fromLlm = llm?.let {
             runCatching { it.detect(heads, book.pageCount) }.getOrDefault(emptyList())
         }
         if (!fromLlm.isNullOrEmpty() && fromLlm.size >= MIN_CHAPTERS) return fromLlm to ChapterSource.LLM

@@ -13,7 +13,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
@@ -25,6 +24,7 @@ import dev.joseramos.aireader.feature.reader.summary.CatchUpSheet
 import dev.joseramos.aireader.feature.reader.summary.KeyPointsSheet
 import dev.joseramos.aireader.feature.reader.summary.KeyPointsViewModel
 import kotlinx.serialization.Serializable
+import org.koin.compose.viewmodel.koinViewModel
 
 /**
  * Lector de un libro. [page] (base 1) abre en esa página, por ejemplo al tocar una cita del chat. Con
@@ -49,12 +49,12 @@ fun NavGraphBuilder.readerScreen(onBack: () -> Unit, onOpenChat: (String) -> Uni
 
 @Composable
 private fun ReaderDestination(onBack: () -> Unit, onOpenChat: (String) -> Unit, onOpenCharacters: (String) -> Unit) {
-    val viewModel: ReaderViewModel = hiltViewModel()
+    val viewModel: ReaderViewModel = koinViewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
     val extras by viewModel.extras.collectAsStateWithLifecycle()
     val playback by viewModel.playback.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val keyPointsViewModel: KeyPointsViewModel = hiltViewModel()
+    val keyPointsViewModel: KeyPointsViewModel = koinViewModel()
     var aiSheet by remember { mutableStateOf(false) }
     val aiUsage by keyPointsViewModel.today.collectAsStateWithLifecycle()
     val hasApiKey by keyPointsViewModel.hasApiKey.collectAsStateWithLifecycle()

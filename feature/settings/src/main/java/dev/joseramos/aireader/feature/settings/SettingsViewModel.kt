@@ -4,15 +4,12 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.joseramos.aireader.ai.models.ModelCatalog
 import dev.joseramos.aireader.ai.models.ModelManager
 import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.ai.rag.EvalReport
 import dev.joseramos.aireader.ai.rag.EvalSet
 import dev.joseramos.aireader.ai.rag.RagEvaluator
-import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.settings.ApiUsage
 import dev.joseramos.aireader.core.data.settings.AppSettings
 import dev.joseramos.aireader.core.data.settings.DailyUsage
@@ -20,7 +17,6 @@ import dev.joseramos.aireader.core.data.settings.SecretStore
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.core.data.settings.ThemeMode
 import dev.joseramos.aireader.core.data.settings.UsageRepository
-import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -49,11 +45,10 @@ data class SettingsUiState(
     val today: DailyUsage = DailyUsage()
 )
 
-@HiltViewModel
-class SettingsViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+class SettingsViewModel(
+    private val context: Context,
     private val ragEvaluator: RagEvaluator,
-    @IoDispatcher private val io: CoroutineDispatcher,
+    private val io: CoroutineDispatcher,
     private val settingsRepository: SettingsRepository,
     private val secretStore: SecretStore,
     private val modelManager: ModelManager,

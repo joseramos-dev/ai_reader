@@ -42,7 +42,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import dev.joseramos.aireader.core.data.settings.AppSettings
@@ -56,6 +55,7 @@ import dev.joseramos.aireader.feature.reader.R
 import dev.joseramos.aireader.tts.PlaybackState
 import dev.joseramos.aireader.tts.SleepTimer
 import java.io.File
+import org.koin.compose.viewmodel.koinViewModel
 
 /** Alto del mini reproductor, para que las pantallas reserven el espacio. */
 val MiniPlayerHeight = 64.dp
@@ -68,7 +68,7 @@ val MiniPlayerHeight = 64.dp
 fun MiniPlayer(
     onOpenBook: (String) -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: PlayerViewModel = hiltViewModel()
+    viewModel: PlayerViewModel = koinViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var expanded by rememberSaveable { mutableStateOf(false) }

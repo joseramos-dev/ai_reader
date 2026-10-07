@@ -7,13 +7,10 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import dagger.assisted.Assisted
-import dagger.assisted.AssistedInject
 import dev.joseramos.aireader.ai.llm.LlmClient
 import dev.joseramos.aireader.ai.llm.LlmException
 import dev.joseramos.aireader.core.data.book.BookContentRepository
@@ -28,10 +25,9 @@ import kotlinx.coroutines.flow.first
  * Recorre los capítulos de una novela en orden y extrae sus personajes. Cada capítulo terminado se
  * apunta en `character_scans`, así que si el trabajo se interrumpe continúa por donde iba.
  */
-@HiltWorker
-class CharacterScanWorker @AssistedInject constructor(
-    @Assisted context: Context,
-    @Assisted params: WorkerParameters,
+class CharacterScanWorker(
+    context: Context,
+    params: WorkerParameters,
     private val books: BookRepository,
     private val content: BookContentRepository,
     private val dao: CharacterDao,

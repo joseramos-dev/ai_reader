@@ -3,8 +3,6 @@ package dev.joseramos.aireader.core.data.book
 import dev.joseramos.aireader.core.data.db.ChapterKeyPointsEntity
 import dev.joseramos.aireader.core.data.db.KeyPointsDao
 import dev.joseramos.aireader.core.data.db.KeyPointsStatus
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
@@ -24,8 +22,7 @@ data class ChapterKeyPoints(val chapterId: Long, val status: KeyPointsStatus, va
  * Hechos clave guardados de cada capítulo. Se generan cuando hacen falta (`KeyPointsGenerator`):
  * un capítulo que no aparece aquí aún no los tiene.
  */
-@Singleton
-class KeyPointsRepository @Inject constructor(private val dao: KeyPointsDao) {
+class KeyPointsRepository(private val dao: KeyPointsDao) {
     fun observe(bookId: String): Flow<Map<Long, ChapterKeyPoints>> =
         dao.observeByBook(bookId).map { list -> list.associate { it.chapterId to it.toKeyPoints() } }
 

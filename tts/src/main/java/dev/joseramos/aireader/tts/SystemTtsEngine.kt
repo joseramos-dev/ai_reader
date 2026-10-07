@@ -6,15 +6,11 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import android.util.Log
-import dagger.hilt.android.qualifiers.ApplicationContext
-import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.text.Language
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -40,11 +36,7 @@ val Language.locale: Locale
  * Solo se usan voces sin conexión: si el idioma no tiene ninguna instalada, [load] devuelve
  * [VoiceAvailability.MISSING] y la app ofrece instalarla desde el sistema.
  */
-@Singleton
-class SystemTtsEngine @Inject constructor(
-    @ApplicationContext private val context: Context,
-    @IoDispatcher private val io: CoroutineDispatcher
-) : TtsEngine {
+class SystemTtsEngine(private val context: Context, private val io: CoroutineDispatcher) : TtsEngine {
     private val mutex = Mutex()
     private val pending = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
     private val ids = AtomicLong()

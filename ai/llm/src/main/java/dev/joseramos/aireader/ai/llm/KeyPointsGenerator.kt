@@ -1,7 +1,6 @@
 package dev.joseramos.aireader.ai.llm
 
 import android.util.Log
-import dev.joseramos.aireader.core.common.ApplicationScope
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Chapter
@@ -11,8 +10,6 @@ import dev.joseramos.aireader.core.data.book.KeyPointsRepository
 import dev.joseramos.aireader.core.data.db.DocumentType
 import dev.joseramos.aireader.core.data.db.KeyPointsStatus
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -54,15 +51,14 @@ data class Recap(val text: String, val untilPage: Int)
  * cada página, y el modelo responde en JSON con la página de cada punto. Un capítulo largo se parte por
  * páginas enteras en bloques de ≈30 k tokens y sus puntos se juntan en orden.
  */
-@Singleton
-class KeyPointsGenerator @Inject constructor(
+class KeyPointsGenerator(
     private val llm: LlmClient,
     private val prompts: Prompts,
     private val content: BookContentRepository,
     private val books: BookRepository,
     private val keyPoints: KeyPointsRepository,
     private val settings: SettingsRepository,
-    @ApplicationScope private val scope: CoroutineScope
+    private val scope: CoroutineScope
 ) {
     private val _jobs = MutableStateFlow<Map<KeyPointsJobKey, KeyPointsJob>>(emptyMap())
     val jobs: StateFlow<Map<KeyPointsJobKey, KeyPointsJob>> = _jobs

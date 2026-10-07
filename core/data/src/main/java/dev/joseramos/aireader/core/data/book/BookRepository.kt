@@ -1,14 +1,11 @@
 package dev.joseramos.aireader.core.data.book
 
-import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.DocumentType
 import dev.joseramos.aireader.core.data.db.DocumentTypeSource
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import java.io.File
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -40,11 +37,7 @@ data class Book(
         get() = if (pageCount > 0 && currentPage != null) currentPage.toFloat() / pageCount else 0f
 }
 
-@Singleton
-class BookRepository @Inject constructor(
-    private val bookDao: BookDao,
-    @IoDispatcher private val io: CoroutineDispatcher
-) {
+class BookRepository(private val bookDao: BookDao, private val io: CoroutineDispatcher) {
     fun observeBooks(): Flow<List<Book>> =
         bookDao.observeAll().map { rows -> rows.map { it.book.toBook(it.currentPage, it.lastBookmarkPage) } }
 

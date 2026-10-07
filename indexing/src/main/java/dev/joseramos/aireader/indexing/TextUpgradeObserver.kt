@@ -1,11 +1,8 @@
 package dev.joseramos.aireader.indexing
 
 import android.util.Log
-import dev.joseramos.aireader.core.common.ApplicationScope
 import dev.joseramos.aireader.core.data.db.PageTextDao
 import dev.joseramos.aireader.text.TextCleaner
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -14,11 +11,10 @@ import kotlinx.coroutines.launch
  * [TextCleaner] (por ejemplo, para que tengan saltos de renglón, títulos y apartados). El libro se
  * puede seguir leyendo mientras tanto.
  */
-@Singleton
-class TextUpgradeObserver @Inject constructor(
+class TextUpgradeObserver(
     private val pageTextDao: PageTextDao,
     private val scheduler: IndexScheduler,
-    @ApplicationScope private val scope: CoroutineScope
+    private val scope: CoroutineScope
 ) {
     fun start() {
         scope.launch {

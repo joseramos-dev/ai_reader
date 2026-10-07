@@ -10,20 +10,18 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.joseramos.aireader.core.data.settings.BudgetLevel
 import dev.joseramos.aireader.core.data.settings.DailyUsage
 import java.text.DateFormat
 import java.text.NumberFormat
 import java.util.Date
-import javax.inject.Inject
 
 /**
  * Notificación del sistema cuando el consumo del día cruza el 80 % o el 100 % del presupuesto. Así
  * se entera también quien tiene un análisis en segundo plano. Solo avisa: la IA sigue funcionando.
  * Sin permiso de notificaciones no hace nada (en la app ya se ve el aviso).
  */
-class BudgetNotifier @Inject constructor(@ApplicationContext private val context: Context) {
+class BudgetNotifier(private val context: Context) {
 
     fun onUsageChanged(before: DailyUsage, after: DailyUsage) {
         val level = after.level

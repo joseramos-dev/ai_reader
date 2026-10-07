@@ -10,11 +10,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import dagger.Binds
-import dagger.Module
-import dagger.hilt.InstallIn
-import dagger.hilt.android.qualifiers.ApplicationContext
-import dagger.hilt.components.SingletonComponent
 import dev.joseramos.aireader.ai.llm.LlmClient
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
@@ -24,8 +19,6 @@ import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.core.data.settings.UsageRepository
 import dev.joseramos.aireader.indexing.CharacterAnalysisTrigger
 import java.util.concurrent.TimeUnit
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -47,9 +40,8 @@ data class AnalysisProgress(
  * automático se lanza al terminar la indexación (o al abrir el libro, si entonces no se pudo), y si no,
  * cuando el usuario lo pide desde el menú de personajes.
  */
-@Singleton
-class CharacterAnalysis @Inject constructor(
-    @ApplicationContext private val context: Context,
+class CharacterAnalysis(
+    private val context: Context,
     private val books: BookRepository,
     private val content: BookContentRepository,
     private val characters: CharacterRepository,
@@ -130,14 +122,6 @@ class CharacterAnalysis @Inject constructor(
 }
 
 /** Puente con la indexación, para que los módulos de pantalla no dependan de `:indexing`. */
-class IndexedBookTrigger @Inject constructor(private val analysis: CharacterAnalysis) : CharacterAnalysisTrigger {
+class IndexedBookTrigger(private val analysis: CharacterAnalysis) : CharacterAnalysisTrigger {
     override suspend fun onBookIndexed(bookId: String) = analysis.startIfAuto(bookId)
-}
-
-@Module
-@InstallIn(SingletonComponent::class)
-interface CharactersModule {
-    /** Activa el arranque del análisis al terminar la indexación. */
-    @Binds
-    fun characterAnalysisTrigger(impl: IndexedBookTrigger): CharacterAnalysisTrigger
 }

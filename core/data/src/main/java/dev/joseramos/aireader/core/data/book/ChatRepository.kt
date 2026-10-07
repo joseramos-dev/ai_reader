@@ -4,8 +4,6 @@ import dev.joseramos.aireader.core.data.db.ChatDao
 import dev.joseramos.aireader.core.data.db.ChatMessageEntity
 import dev.joseramos.aireader.core.data.db.ChatRole
 import dev.joseramos.aireader.core.data.db.ChatThreadEntity
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
@@ -44,8 +42,7 @@ data class ChatMessage(
 )
 
 /** Conversaciones con un libro: una activa por libro; «Nueva conversación» crea otra. */
-@Singleton
-class ChatRepository @Inject constructor(private val dao: ChatDao) {
+class ChatRepository(private val dao: ChatDao) {
     suspend fun currentThread(bookId: String): Long = dao.latestThread(bookId)?.id ?: newThread(bookId)
 
     suspend fun newThread(bookId: String): Long =

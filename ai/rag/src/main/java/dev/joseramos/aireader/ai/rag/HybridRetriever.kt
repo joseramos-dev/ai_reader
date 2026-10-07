@@ -6,8 +6,6 @@ import dev.joseramos.aireader.ai.embeddings.VectorCodec
 import dev.joseramos.aireader.core.data.db.ChunkDao
 import dev.joseramos.aireader.core.data.db.ChunkEmbeddingDao
 import dev.joseramos.aireader.core.data.db.ChunkEntity
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
@@ -30,8 +28,7 @@ data class Candidates(val vector: List<Long>, val text: List<Long>, val vectorSc
  * Con `pages` solo se usan los fragmentos que caen dentro de esos rangos: la parte del libro por la
  * que se pregunta («al final del libro») y, con anti-spoilers, lo ya leído.
  */
-@Singleton
-class HybridRetriever @Inject constructor(
+class HybridRetriever(
     private val chunkDao: ChunkDao,
     private val embeddingDao: ChunkEmbeddingDao,
     private val embedder: Embedder

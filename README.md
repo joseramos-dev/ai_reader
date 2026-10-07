@@ -38,7 +38,7 @@ It is a full rewrite of an earlier web prototype (React + FastAPI + a local LLM 
 | Area | Technologies and techniques |
 |---|---|
 | **AI / ML** | Retrieval-augmented generation (RAG) · hybrid search (semantic + keyword, Reciprocal Rank Fusion) · sentence embeddings with a Hugging Face model (`multilingual-e5-small`) · ONNX Runtime · int8 quantization · on-device inference · LLM API integration (Google Gemini) · prompt engineering · structured outputs (JSON Schema) · streaming (SSE) · prompt caching · query rewriting · grounded answers with citations · retrieval evaluation (Recall@k, MRR) · LLM cost control |
-| **Android** | Kotlin · Jetpack Compose · Material 3 · Hilt · Coroutines & Flow · Room (SQLite FTS4) · WorkManager · Media3 · DataStore · Tink · Navigation Compose |
+| **Android** | Kotlin · Jetpack Compose · Material 3 · Koin · Coroutines & Flow · Room (SQLite FTS4) · WorkManager · Media3 · DataStore · Tink · Navigation Compose |
 | **Engineering** | 19-module Gradle build with convention plugins · version catalog · GitHub Actions CI · JUnit, Robolectric and Roborazzi screenshot tests · Macrobenchmark and Baseline Profiles · ktlint · detekt · Android Lint |
 
 ## Features
@@ -173,7 +173,7 @@ Reader scroll benchmark (needs a connected device, ideally a real phone):
 <summary><b>Project structure</b></summary>
 
 ```
-app/                 Application (Hilt + WorkManager), MainActivity and navigation
+app/                 Application (Koin + WorkManager), MainActivity and navigation
 core/common          Injectable dispatchers and coroutine scopes
 core/designsystem    Theme (colors, Inter, spacing) and iOS-style components
 core/data            Room, DataStore, encrypted API key (Tink) and repositories

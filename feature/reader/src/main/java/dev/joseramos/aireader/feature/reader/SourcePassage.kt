@@ -6,7 +6,6 @@ import dev.joseramos.aireader.core.data.book.ChatSource
 import dev.joseramos.aireader.text.ParagraphSpan
 import dev.joseramos.aireader.text.PassageLocator
 import dev.joseramos.aireader.text.TextLine
-import javax.inject.Inject
 import kotlinx.serialization.json.Json
 
 /**
@@ -17,7 +16,7 @@ import kotlinx.serialization.json.Json
 data class SourcePassage(val spans: List<ParagraphSpan>, val rects: Map<Int, List<Rect>>)
 
 /** Busca en el libro el pasaje de una fuente del chat, para resaltarlo al abrirla. */
-class SourcePassageLocator @Inject constructor(private val content: BookContentRepository) {
+class SourcePassageLocator(private val content: BookContentRepository) {
     /** `null` si el pasaje no se encuentra (por ejemplo, el texto del libro cambió desde la respuesta). */
     suspend fun locate(bookId: String, source: ChatSource): SourcePassage? {
         // Una página más por cada lado: los párrafos partidos entre páginas pueden estar en la vecina.

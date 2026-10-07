@@ -4,14 +4,12 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.joseramos.aireader.core.data.book.Book
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.db.DocumentType
 import dev.joseramos.aireader.indexing.BookImporter
 import dev.joseramos.aireader.indexing.ImportException
 import dev.joseramos.aireader.indexing.IndexScheduler
-import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,8 +28,7 @@ data class LibraryUiState(
     val error: String? = null
 )
 
-@HiltViewModel
-class LibraryViewModel @Inject constructor(
+class LibraryViewModel(
     private val repository: BookRepository,
     private val importer: BookImporter,
     private val scheduler: IndexScheduler,

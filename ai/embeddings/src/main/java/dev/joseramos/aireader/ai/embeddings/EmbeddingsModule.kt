@@ -1,13 +1,9 @@
 package dev.joseramos.aireader.ai.embeddings
 
-import dagger.Binds
-import dagger.Module
-import dagger.hilt.InstallIn
-import dagger.hilt.components.SingletonComponent
+import dev.joseramos.aireader.core.common.DefaultDispatcher
+import org.koin.dsl.bind
+import org.koin.dsl.module
 
-@Module
-@InstallIn(SingletonComponent::class)
-interface EmbeddingsModule {
-    @Binds
-    fun embedder(impl: E5Embedder): Embedder
+val embeddingsModule = module {
+    single { E5Embedder(get(), get(DefaultDispatcher)) } bind Embedder::class
 }

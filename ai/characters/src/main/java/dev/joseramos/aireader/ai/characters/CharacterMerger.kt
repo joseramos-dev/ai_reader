@@ -11,7 +11,6 @@ import dev.joseramos.aireader.core.data.db.NameKind
 import dev.joseramos.aireader.core.data.db.RelationEntity
 import dev.joseramos.aireader.core.data.db.RelationType
 import java.text.Normalizer
-import javax.inject.Inject
 
 /**
  * Incorpora lo extraído de un capítulo a los personajes del libro (docs/02-diseno-tecnico.md §6.6):
@@ -22,7 +21,7 @@ import javax.inject.Inject
  * - Un cambio de nombre en la historia se guarda con `isPrimaryFrom`.
  * Todo va en una transacción: un capítulo se aplica entero o no se aplica.
  */
-class CharacterMerger @Inject constructor(private val db: AppDatabase, private val dao: CharacterDao) {
+class CharacterMerger(private val db: AppDatabase, private val dao: CharacterDao) {
     suspend fun merge(bookId: String, chapter: Chapter, extraction: Extraction) = db.withTransaction {
         val state = State(bookId, chapter).apply { load() }
         extraction.same.forEach { group -> state.mergeSame(group) }

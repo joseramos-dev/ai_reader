@@ -2,15 +2,10 @@ package dev.joseramos.aireader.ai.models
 
 import android.content.Context
 import android.util.Log
-import dagger.hilt.android.qualifiers.ApplicationContext
-import dev.joseramos.aireader.core.common.ApplicationScope
-import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.db.DownloadedModelDao
 import dev.joseramos.aireader.core.data.db.DownloadedModelEntity
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -40,13 +35,12 @@ sealed interface ModelState {
  * registran en Room; las descargas en curso solo viven en memoria y, si se interrumpen,
  * se reanudan donde se quedaron la próxima vez.
  */
-@Singleton
-class ModelManager @Inject constructor(
-    @ApplicationContext context: Context,
+class ModelManager(
+    context: Context,
     private val downloader: ModelDownloader,
     private val dao: DownloadedModelDao,
-    @ApplicationScope private val scope: CoroutineScope,
-    @IoDispatcher private val io: CoroutineDispatcher
+    private val scope: CoroutineScope,
+    private val io: CoroutineDispatcher
 ) {
     private val modelsDir = File(context.filesDir, "models")
     private val assets = context.assets

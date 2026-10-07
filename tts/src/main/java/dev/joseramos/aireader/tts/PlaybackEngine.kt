@@ -5,8 +5,6 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.PowerManager
 import android.util.Log
-import dagger.hilt.android.qualifiers.ApplicationContext
-import dev.joseramos.aireader.core.common.ApplicationScope
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Chapter
@@ -15,8 +13,6 @@ import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
 import dev.joseramos.aireader.text.Language
 import dev.joseramos.aireader.text.LanguageDetector
 import dev.joseramos.aireader.text.SpeechNormalizer
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -96,14 +92,13 @@ data class PlaybackState(
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @Suppress("TooManyFunctions") // Es la API completa de un reproductor: no gana nada partiéndola.
-@Singleton
-class PlaybackEngine @Inject constructor(
-    @ApplicationContext context: Context,
+class PlaybackEngine(
+    context: Context,
     private val voice: TtsEngine,
     private val content: BookContentRepository,
     private val books: BookRepository,
     private val positions: ReadingPositionRepository,
-    @ApplicationScope private val scope: CoroutineScope
+    private val scope: CoroutineScope
 ) {
     private val _state = MutableStateFlow(PlaybackState())
     val state: StateFlow<PlaybackState> = _state

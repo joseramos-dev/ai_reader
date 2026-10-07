@@ -6,8 +6,6 @@ import dev.joseramos.aireader.core.data.db.ChapterDao
 import dev.joseramos.aireader.core.data.db.DocumentType
 import dev.joseramos.aireader.core.data.db.DocumentTypeSource
 import dev.joseramos.aireader.core.data.db.PageTextDao
-import java.util.Optional
-import javax.inject.Inject
 import kotlinx.serialization.json.Json
 
 /**
@@ -22,11 +20,11 @@ interface LlmDocumentClassification {
  * Paso de la indexación que decide el tipo de documento: heurística local y, si no es
  * concluyente, confirmación con IA. No toca los libros cuyo tipo eligió el usuario.
  */
-class DocumentTypeDetector @Inject constructor(
+class DocumentTypeDetector(
     private val bookDao: BookDao,
     private val chapterDao: ChapterDao,
     private val pageTextDao: PageTextDao,
-    private val llm: Optional<LlmDocumentClassification>
+    private val llm: LlmDocumentClassification?
 ) {
     /** [retryWithAi]: ahora hay clave de API y antes no; se recalcula por si la heurística dudaba. */
     suspend fun run(book: BookEntity, retryWithAi: Boolean = false) {
@@ -47,7 +45,7 @@ class DocumentTypeDetector @Inject constructor(
             val sample = paragraphs.flatten().joinToString(
                 "\n\n"
             ).split(Regex("\\s+")).take(SAMPLE_WORDS).joinToString(" ")
-            llm.orElse(null)?.let { runCatching { it.classify(book.title, chapterTitles, sample) }.getOrNull() }
+            llm?.let { runCatching { it.classify(book.title, chapterTitles, sample) }.getOrNull() }
                 ?: heuristic.type
         }
         bookDao.updateDocumentType(book.id, type, DocumentTypeSource.AUTO)

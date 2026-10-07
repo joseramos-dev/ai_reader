@@ -7,9 +7,6 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
-import javax.inject.Inject
-import javax.inject.Named
-import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -42,8 +39,7 @@ data class AppSettings(
     }
 }
 
-@Singleton
-class SettingsRepository @Inject constructor(@Named(SETTINGS_STORE) private val dataStore: DataStore<Preferences>) {
+class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     val settings: Flow<AppSettings> = dataStore.data.map { prefs ->
         AppSettings(
             themeMode = prefs[THEME]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.SYSTEM,

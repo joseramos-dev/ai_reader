@@ -1,7 +1,6 @@
 package dev.joseramos.aireader.ai.characters
 
 import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.joseramos.aireader.ai.llm.LlmClient
 import dev.joseramos.aireader.ai.llm.LlmException
 import dev.joseramos.aireader.ai.llm.LlmMessage
@@ -13,7 +12,6 @@ import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.book.PageText
 import dev.joseramos.aireader.core.data.db.CharacterDao
 import dev.joseramos.aireader.core.data.db.CharacterScanEntity
-import javax.inject.Inject
 import kotlinx.coroutines.delay
 
 /**
@@ -22,8 +20,8 @@ import kotlinx.coroutines.delay
  * en vez de duplicarlos.
  * Los capítulos largos van por bloques, y cada bloque ya conoce lo extraído en el anterior.
  */
-class CharacterExtractor @Inject constructor(
-    @ApplicationContext private val context: Context,
+class CharacterExtractor(
+    private val context: Context,
     private val llm: LlmClient,
     private val content: BookContentRepository,
     private val dao: CharacterDao,

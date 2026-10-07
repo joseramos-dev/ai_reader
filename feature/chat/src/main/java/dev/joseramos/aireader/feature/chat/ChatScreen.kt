@@ -53,7 +53,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
@@ -78,6 +77,7 @@ import dev.joseramos.aireader.core.designsystem.theme.Radius
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
 import kotlin.math.roundToInt
 import kotlinx.serialization.Serializable
+import org.koin.compose.viewmodel.koinViewModel
 
 @Serializable
 data class ChatRoute(val bookId: String)
@@ -95,7 +95,7 @@ fun NavGraphBuilder.chatScreen(
         enterTransition = { slideIntoContainer(SlideDirection.Up) },
         popExitTransition = { slideOutOfContainer(SlideDirection.Down) }
     ) {
-        val viewModel: ChatViewModel = hiltViewModel()
+        val viewModel: ChatViewModel = koinViewModel()
         val state by viewModel.state.collectAsStateWithLifecycle()
         var askKey by rememberSaveable { mutableStateOf(false) }
         ChatScreen(

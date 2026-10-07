@@ -3,7 +3,6 @@ package dev.joseramos.aireader.ai.llm
 import dev.joseramos.aireader.core.data.db.DocumentType
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.indexing.LlmDocumentClassification
-import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -13,7 +12,7 @@ import kotlinx.serialization.json.Json
  * Confirma el tipo de documento con el modelo de análisis (Gemini Flash-Lite por defecto) cuando la
  * heurística local no es concluyente. Recibe título, capítulos y unas 3.000 palabras del principio.
  */
-class AiDocumentClassification @Inject constructor(
+class AiDocumentClassification(
     private val llm: LlmClient,
     private val prompts: Prompts,
     private val settings: SettingsRepository

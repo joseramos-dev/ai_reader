@@ -9,16 +9,14 @@ import android.media.AudioManager
 import androidx.core.content.ContextCompat
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
-import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
+import org.koin.android.ext.android.inject
 
 /**
  * Servicio en primer plano (tipo `mediaPlayback`) que mantiene la lectura con la pantalla
  * apagada y publica la sesión multimedia. Media3 gestiona la notificación.
  */
-@AndroidEntryPoint
 class PlaybackService : MediaSessionService() {
-    @Inject lateinit var engine: PlaybackEngine
+    private val engine: PlaybackEngine by inject()
 
     private var session: MediaSession? = null
 

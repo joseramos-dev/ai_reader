@@ -2,7 +2,6 @@ package dev.joseramos.aireader.ai.rag
 
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.db.ChunkDao
-import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -64,7 +63,7 @@ object RagScoring {
     }
 }
 
-class RagEvaluator @Inject constructor(
+class RagEvaluator(
     private val books: BookRepository,
     private val retriever: HybridRetriever,
     private val chunkDao: ChunkDao

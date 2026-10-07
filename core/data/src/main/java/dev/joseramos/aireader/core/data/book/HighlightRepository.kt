@@ -2,8 +2,6 @@ package dev.joseramos.aireader.core.data.book
 
 import dev.joseramos.aireader.core.data.db.HighlightDao
 import dev.joseramos.aireader.core.data.db.HighlightEntity
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -18,8 +16,7 @@ data class Highlight(
     val createdAt: Long
 )
 
-@Singleton
-class HighlightRepository @Inject constructor(private val dao: HighlightDao) {
+class HighlightRepository(private val dao: HighlightDao) {
     /** Subrayados del libro, por página y posición. */
     fun observe(bookId: String): Flow<List<Highlight>> = dao.observeByBook(bookId).map { list ->
         list.map { Highlight(it.id, it.page, it.paragraph, it.startOffset, it.endOffset, it.note, it.createdAt) }

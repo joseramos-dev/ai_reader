@@ -3,8 +3,6 @@ package dev.joseramos.aireader.indexing
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
-import dagger.hilt.android.qualifiers.ApplicationContext
-import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.IndexStatus
@@ -12,8 +10,6 @@ import dev.joseramos.aireader.pdf.PdfPageRenderer
 import java.io.File
 import java.io.IOException
 import java.util.UUID
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 
@@ -23,12 +19,11 @@ class ImportException(message: String, cause: Throwable? = null) : IOException(m
  * Importa un PDF elegido por el usuario: lo copia al almacenamiento interno (para no depender de
  * permisos sobre el original), genera la portada, lo registra y encola su indexación.
  */
-@Singleton
-class BookImporter @Inject constructor(
-    @ApplicationContext private val context: Context,
+class BookImporter(
+    private val context: Context,
     private val bookDao: BookDao,
     private val scheduler: IndexScheduler,
-    @IoDispatcher private val io: CoroutineDispatcher
+    private val io: CoroutineDispatcher
 ) {
     /** Devuelve el id del libro importado. */
     suspend fun import(uri: Uri): String = withContext(io) {

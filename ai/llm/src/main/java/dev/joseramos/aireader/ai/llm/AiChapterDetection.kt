@@ -3,7 +3,6 @@ package dev.joseramos.aireader.ai.llm
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.indexing.LlmChapterDetection
 import dev.joseramos.aireader.text.DetectedChapter
-import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
@@ -13,7 +12,7 @@ import kotlinx.serialization.json.Json
  * Detección de capítulos con IA para libros sin índice ni encabezados reconocibles: se le pasa
  * al modelo el principio de cada página y devuelve una lista JSON que se valida antes de usarla.
  */
-class AiChapterDetection @Inject constructor(
+class AiChapterDetection(
     private val llm: LlmClient,
     private val prompts: Prompts,
     private val settings: SettingsRepository

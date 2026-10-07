@@ -4,7 +4,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
-import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.joseramos.aireader.ai.characters.CharacterBrowser
 import dev.joseramos.aireader.ai.characters.CharactersSnapshot
 import dev.joseramos.aireader.ai.characters.VisibleCharacter
@@ -12,7 +11,6 @@ import dev.joseramos.aireader.ai.characters.VisibleRelation
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
-import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -37,8 +35,7 @@ data class RelationsGraphUiState(
 
 private data class GraphFilters(val chapterLimit: Int?, val hideMinor: Boolean)
 
-@HiltViewModel
-class RelationsGraphViewModel @Inject constructor(
+class RelationsGraphViewModel(
     savedStateHandle: SavedStateHandle,
     browser: CharacterBrowser,
     content: BookContentRepository,

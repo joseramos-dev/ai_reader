@@ -9,9 +9,6 @@ import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
-import javax.inject.Inject
-import javax.inject.Named
-import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -73,10 +70,8 @@ data class DailyUsage(
 /** Tarea de IA que no cabe en lo que queda del presupuesto de hoy: se pide confirmación antes de lanzarla. */
 data class CostConfirmation(val estimatedTokens: Long, val remainingTokens: Long)
 
-@Singleton
 class UsageRepository internal constructor(private val dataStore: DataStore<Preferences>, private val clock: Clock) {
-    @Inject
-    constructor(@Named(SettingsRepository.SETTINGS_STORE) dataStore: DataStore<Preferences>) :
+    constructor(dataStore: DataStore<Preferences>) :
         this(dataStore, Clock.systemUTC())
 
     val usage: Flow<ApiUsage> = dataStore.data.map {

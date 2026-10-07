@@ -2,7 +2,6 @@ package dev.joseramos.aireader.indexing
 
 import android.content.Context
 import android.util.Log
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.PageLayoutDao
@@ -15,7 +14,6 @@ import dev.joseramos.aireader.text.TextBlock
 import dev.joseramos.aireader.text.TextCleaner
 import dev.joseramos.aireader.text.TextLine
 import java.io.File
-import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.Json
@@ -31,8 +29,8 @@ import kotlinx.serialization.json.Json
  * Cuando sube [TextCleaner.VERSION], los libros ya procesados se vuelven a limpiar sin dejar de
  * poderse leer: el texto anterior se mantiene hasta que se sustituye.
  */
-class TextIndexer @Inject constructor(
-    @ApplicationContext private val context: Context,
+class TextIndexer(
+    private val context: Context,
     private val bookDao: BookDao,
     private val pageTextDao: PageTextDao,
     private val pageLayoutDao: PageLayoutDao

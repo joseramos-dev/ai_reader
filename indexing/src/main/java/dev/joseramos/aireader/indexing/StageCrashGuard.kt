@@ -4,9 +4,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.edit
-import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * Evita bucles infinitos cuando una etapa de la indexación tumba la app (un fallo nativo o falta de
@@ -19,8 +16,7 @@ import javax.inject.Singleton
  * Todo se olvida al instalar una versión nueva de la app, para que tenga ocasión de probar sus
  * arreglos (sin bucles: si sigue fallando, se vuelve a apuntar).
  */
-@Singleton
-class StageCrashGuard @Inject constructor(@ApplicationContext private val context: Context) {
+class StageCrashGuard(private val context: Context) {
     private val prefs = context.getSharedPreferences("indexing_crash_guard", Context.MODE_PRIVATE)
     private val updateCheck by lazy { forgetIfAppUpdated() }
 

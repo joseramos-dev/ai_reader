@@ -19,7 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -51,6 +50,7 @@ import dev.joseramos.aireader.feature.settings.SettingsRoute
 import dev.joseramos.aireader.feature.settings.settingsScreen
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import org.koin.compose.viewmodel.koinViewModel
 
 /** Pestañas de primer nivel (docs/02-diseno-tecnico.md §3.3). */
 private enum class TopLevel(val route: Any) { LIBRARY(LibraryRoute), SETTINGS(SettingsRoute) }
@@ -61,7 +61,7 @@ fun AiReaderApp(
     navController: NavHostController = rememberNavController()
 ) {
     val hazeState = rememberHazeState()
-    val player: PlayerViewModel = hiltViewModel()
+    val player: PlayerViewModel = koinViewModel()
     val playback by player.state.collectAsStateWithLifecycle()
     // PDFs abiertos desde otras apps: se importan y se abren directamente en el lector.
     LaunchedEffect(openBookRequests) {

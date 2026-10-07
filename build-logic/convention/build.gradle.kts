@@ -54,9 +54,5 @@ gradlePlugin {
             id = "aireader.kmp.compose"
             implementationClass = "KmpComposeConventionPlugin"
         }
-        register("hilt") {
-            id = "aireader.hilt"
-            implementationClass = "HiltConventionPlugin"
-        }
     }
 }

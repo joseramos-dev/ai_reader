@@ -5,7 +5,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
-import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.joseramos.aireader.ai.embeddings.EmbeddingModelMissingException
 import dev.joseramos.aireader.ai.llm.LlmException
 import dev.joseramos.aireader.ai.models.ModelCatalog
@@ -16,8 +15,6 @@ import dev.joseramos.aireader.ai.rag.AskEvent
 import dev.joseramos.aireader.ai.rag.AskStage
 import dev.joseramos.aireader.ai.rag.HybridRetriever
 import dev.joseramos.aireader.ai.rag.ReadingContext
-import dev.joseramos.aireader.core.common.ApplicationScope
-import dev.joseramos.aireader.core.common.IoDispatcher
 import dev.joseramos.aireader.core.data.book.Book
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
@@ -36,7 +33,6 @@ import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.core.data.settings.UsageRepository
 import dev.joseramos.aireader.indexing.IndexScheduler
 import dev.joseramos.aireader.indexing.StageCrashGuard
-import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -98,8 +94,7 @@ private data class Transient(
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
-@HiltViewModel
-class ChatViewModel @Inject constructor(
+class ChatViewModel(
     savedStateHandle: SavedStateHandle,
     books: BookRepository,
     content: BookContentRepository,
@@ -114,8 +109,8 @@ class ChatViewModel @Inject constructor(
     private val positions: ReadingPositionRepository,
     private val models: ModelManager,
     private val usage: UsageRepository,
-    @ApplicationScope private val appScope: CoroutineScope,
-    @IoDispatcher private val io: CoroutineDispatcher
+    private val appScope: CoroutineScope,
+    private val io: CoroutineDispatcher
 ) : ViewModel() {
     val bookId = savedStateHandle.toRoute<ChatRoute>().bookId
     private val threadId = MutableStateFlow<Long?>(null)

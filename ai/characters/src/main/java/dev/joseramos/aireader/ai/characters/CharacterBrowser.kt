@@ -3,7 +3,6 @@ package dev.joseramos.aireader.ai.characters
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.CharacterRepository
 import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
-import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -12,7 +11,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 
 /** Personajes de un libro filtrados sin spoilers, actualizados según se lee y se analiza. */
-class CharacterBrowser @Inject constructor(
+class CharacterBrowser(
     private val characters: CharacterRepository,
     private val positions: ReadingPositionRepository,
     private val content: BookContentRepository

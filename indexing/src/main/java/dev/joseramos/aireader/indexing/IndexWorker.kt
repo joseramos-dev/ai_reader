@@ -7,17 +7,13 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
-import dagger.assisted.Assisted
-import dagger.assisted.AssistedInject
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.settings.SecretStore
-import java.util.Optional
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
@@ -50,16 +46,15 @@ interface CharacterAnalysisTrigger {
  * libro se indexó sin clave de API y ahora la hay, repasa las etapas que usan la IA
  * ([BookEntity.aiPrepared]).
  */
-@HiltWorker
-class IndexWorker @AssistedInject constructor(
-    @Assisted context: Context,
-    @Assisted params: WorkerParameters,
+class IndexWorker(
+    context: Context,
+    params: WorkerParameters,
     private val bookDao: BookDao,
     private val textIndexer: TextIndexer,
     private val chapterDetector: ChapterDetector,
     private val documentTypeDetector: DocumentTypeDetector,
-    private val embeddingStage: Optional<EmbeddingStage>,
-    private val characterAnalysis: Optional<CharacterAnalysisTrigger>,
+    private val embeddingStage: EmbeddingStage?,
+    private val characterAnalysis: CharacterAnalysisTrigger?,
     private val crashGuard: StageCrashGuard,
     private val secrets: SecretStore
 ) : CoroutineWorker(context, params) {
@@ -93,7 +88,7 @@ class IndexWorker @AssistedInject constructor(
                 if (embedded) 1f else TEXT_SHARE
             )
             if (withAi) bookDao.setAiPrepared(bookId, true)
-            characterAnalysis.orElse(null)?.let { runCatching { it.onBookIndexed(bookId) } }
+            characterAnalysis?.let { runCatching { it.onBookIndexed(bookId) } }
             Result.success()
         } catch (e: CancellationException) {
             throw e
@@ -133,7 +128,7 @@ class IndexWorker @AssistedInject constructor(
      * con este libro, se salta y el libro queda listo para leer, en lugar de reintentarlo para siempre.
      */
     private suspend fun searchIndex(bookId: String): Boolean {
-        val stage = embeddingStage.orElse(null) ?: return true
+        val stage = embeddingStage ?: return true
         val chunked = guarded(StageCrashGuard.CHUNKS, bookId) {
             stage.prepareChunks(bookId)
             true

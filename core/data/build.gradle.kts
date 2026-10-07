@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.aireader.android.library)
-    alias(libs.plugins.aireader.hilt)
     alias(libs.plugins.aireader.android.room)
     alias(libs.plugins.kotlin.serialization)
 }

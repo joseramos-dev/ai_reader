@@ -10,7 +10,6 @@ import dev.joseramos.aireader.ai.llm.ResponseSchema
 import dev.joseramos.aireader.ai.llm.Thinking
 import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
-import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerialName
@@ -38,7 +37,7 @@ interface LocationJudge {
  * respuesta JSON y sin razonamiento. Si falla (sin clave, sin red, respuesta rara) no decide, y la
  * pregunta se responde como si no hablara de ninguna parte del libro.
  */
-class GeminiLocationJudge @Inject constructor(
+class GeminiLocationJudge(
     private val llm: LlmClient,
     private val prompts: Prompts,
     private val settings: SettingsRepository

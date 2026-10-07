@@ -7,16 +7,12 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * Encola la indexación de un libro como trabajo único: WorkManager la conserva aunque se cierre
  * la app y [IndexWorker] continúa desde donde se quedó.
  */
-@Singleton
-class IndexScheduler @Inject constructor(@ApplicationContext private val context: Context) {
+class IndexScheduler(private val context: Context) {
     private val workManager get() = WorkManager.getInstance(context)
 
     fun enqueue(bookId: String, replace: Boolean = false) {

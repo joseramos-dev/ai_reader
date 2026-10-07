@@ -4,12 +4,9 @@ import android.content.ComponentName
 import android.content.Context
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.joseramos.aireader.core.data.book.ReadingPosition
 import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.guava.await
@@ -18,9 +15,8 @@ import kotlinx.coroutines.guava.await
  * Punto de entrada de la UI a la lectura en voz alta. Conecta un `MediaController` con el
  * [PlaybackService] (lo que lo arranca y lo pasa a primer plano al sonar) y delega en el motor.
  */
-@Singleton
-class PlaybackController @Inject constructor(
-    @ApplicationContext private val context: Context,
+class PlaybackController(
+    private val context: Context,
     private val engine: PlaybackEngine,
     private val positions: ReadingPositionRepository,
     private val settings: SettingsRepository

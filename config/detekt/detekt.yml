@@ -24,8 +24,6 @@ complexity:
   LongParameterList:
     ignoreAnnotated: ['Composable']
   TooManyFunctions:
-    # Los módulos de Hilt tienen una función @Provides por dependencia.
-    ignoreAnnotated: ['Module']
     allowedFunctionsPerObject: 15
     allowedFunctionsPerClass: 20
   CyclomaticComplexMethod:

@@ -1,13 +1,12 @@
 package dev.joseramos.aireader.tts
 
-import dagger.Binds
-import dagger.Module
-import dagger.hilt.InstallIn
-import dagger.hilt.components.SingletonComponent
+import dev.joseramos.aireader.core.common.ApplicationScope
+import dev.joseramos.aireader.core.common.IoDispatcher
+import org.koin.dsl.bind
+import org.koin.dsl.module
 
-@Module
-@InstallIn(SingletonComponent::class)
-internal abstract class TtsModule {
-    @Binds
-    abstract fun bindTtsEngine(engine: SystemTtsEngine): TtsEngine
+val ttsModule = module {
+    single { SystemTtsEngine(get(), get(IoDispatcher)) } bind TtsEngine::class
+    single { PlaybackEngine(get(), get(), get(), get(), get(), get(ApplicationScope)) }
+    single { PlaybackController(get(), get(), get(), get()) }
 }
