@@ -64,6 +64,7 @@
         <provider
             android:name="ai.onnxruntime.TelemetryInitializer"
             android:authorities="${applicationId}.onnxruntime_telemetry_initializer"
+            tools:ignore="MissingClass"
             tools:node="remove" />
     </application>
 
