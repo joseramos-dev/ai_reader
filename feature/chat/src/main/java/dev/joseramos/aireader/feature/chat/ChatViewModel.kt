@@ -1,6 +1,5 @@
 package dev.joseramos.aireader.feature.chat
 
-import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,6 +14,7 @@ import dev.joseramos.aireader.ai.rag.AskEvent
 import dev.joseramos.aireader.ai.rag.AskStage
 import dev.joseramos.aireader.ai.rag.HybridRetriever
 import dev.joseramos.aireader.ai.rag.ReadingContext
+import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.book.Book
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository

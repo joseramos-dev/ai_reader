@@ -1,6 +1,6 @@
 package dev.joseramos.aireader.ai.llm
 
-import android.util.Log
+import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.book.Chapter

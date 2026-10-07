@@ -1,8 +1,8 @@
 package dev.joseramos.aireader.ai.rag
 
-import android.util.Log
 import dev.joseramos.aireader.ai.embeddings.Embedder
 import dev.joseramos.aireader.ai.embeddings.VectorCodec
+import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.db.ChunkDao
 import dev.joseramos.aireader.core.data.db.ChunkEmbeddingDao
 import dev.joseramos.aireader.core.data.db.ChunkEntity

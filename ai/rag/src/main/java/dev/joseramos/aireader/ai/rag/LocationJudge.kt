@@ -1,6 +1,5 @@
 package dev.joseramos.aireader.ai.rag
 
-import android.util.Log
 import dev.joseramos.aireader.ai.llm.LlmClient
 import dev.joseramos.aireader.ai.llm.LlmMessage
 import dev.joseramos.aireader.ai.llm.LlmRequest
@@ -8,6 +7,7 @@ import dev.joseramos.aireader.ai.llm.LlmRole
 import dev.joseramos.aireader.ai.llm.Prompts
 import dev.joseramos.aireader.ai.llm.ResponseSchema
 import dev.joseramos.aireader.ai.llm.Thinking
+import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import kotlinx.coroutines.CancellationException

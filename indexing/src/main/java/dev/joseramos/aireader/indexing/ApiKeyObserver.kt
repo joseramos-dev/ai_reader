@@ -1,6 +1,6 @@
 package dev.joseramos.aireader.indexing
 
-import android.util.Log
+import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.IndexStatus
 import dev.joseramos.aireader.core.data.settings.SecretStore

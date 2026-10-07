@@ -1,6 +1,6 @@
 package dev.joseramos.aireader.ai.embeddings
 
-import android.util.Log
+import dev.joseramos.aireader.core.common.Log
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File

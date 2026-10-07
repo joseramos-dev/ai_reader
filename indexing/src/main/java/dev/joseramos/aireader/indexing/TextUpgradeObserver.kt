@@ -1,6 +1,6 @@
 package dev.joseramos.aireader.indexing
 
-import android.util.Log
+import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.db.PageTextDao
 import dev.joseramos.aireader.text.TextCleaner
 import kotlinx.coroutines.CoroutineScope

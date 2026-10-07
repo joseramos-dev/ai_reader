@@ -1,7 +1,7 @@
 package dev.joseramos.aireader.ai.models
 
 import android.content.Context
-import android.util.Log
+import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.db.DownloadedModelDao
 import dev.joseramos.aireader.core.data.db.DownloadedModelEntity
 import java.io.File

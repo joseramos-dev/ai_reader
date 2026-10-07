@@ -1,7 +1,7 @@
 package dev.joseramos.aireader.indexing
 
 import android.content.Context
-import android.util.Log
+import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.PageLayoutDao

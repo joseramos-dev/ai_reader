@@ -1,6 +1,6 @@
 package dev.joseramos.aireader.ai.rag
 
-import android.util.Log
+import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.book.Chapter
 import dev.joseramos.aireader.core.data.book.ChapterKeyPoints
 import dev.joseramos.aireader.core.data.book.KeyPointsRepository

@@ -3,7 +3,7 @@ package dev.joseramos.aireader.tts
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
-import android.util.Log
+import dev.joseramos.aireader.core.common.Log
 
 /** Atributos de la voz (los usan el track y la petición de foco de audio). */
 internal val speechAudioAttributes: AudioAttributes = AudioAttributes.Builder()
