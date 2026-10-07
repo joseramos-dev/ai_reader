@@ -35,6 +35,8 @@
     <string name="reader_language_spanish">español</string>
     <string name="reader_language_english">inglés</string>
     <string name="reader_text_not_ready_title">El texto aún no está listo</string>
+    <string name="reader_audio_output_title">No se puede reproducir el audio</string>
+    <string name="reader_audio_output_message">No hay ninguna salida de sonido disponible. Conecta unos altavoces o auriculares y vuelve a intentarlo.</string>
     <string name="reader_text_not_ready_message">El libro se está preparando. Podrás escucharlo en cuanto termine.</string>
     <string name="player_play">Reproducir</string>
     <string name="player_pause">Pausar</string>

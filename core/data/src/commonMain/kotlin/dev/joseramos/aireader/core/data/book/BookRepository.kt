@@ -1,5 +1,6 @@
 package dev.joseramos.aireader.core.data.book
 
+import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
@@ -52,12 +53,21 @@ class BookRepository(private val bookDao: BookDao, private val io: CoroutineDisp
     suspend fun setDocumentType(id: String, type: DocumentType) =
         bookDao.updateDocumentType(id, type, DocumentTypeSource.USER)
 
-    /** Borra el libro con todos sus datos (en cascada) y sus ficheros (PDF y portada). */
+    /**
+     * Borra el libro con todos sus datos (en cascada) y sus ficheros (PDF y portada). En Windows no se puede borrar un
+     * fichero abierto (el PDF, si el lector o la indexación aún lo tienen): lo que quede lo borra el barrido de
+     * ficheros huérfanos al arrancar.
+     */
     suspend fun deleteBook(id: String) = withContext(io) {
         val book = bookDao.get(id) ?: return@withContext
         bookDao.delete(id)
-        File(book.filePath).delete()
-        book.coverPath?.let { File(it).delete() }
+        listOfNotNull(book.filePath, book.coverPath).map(::File).filter { it.exists() && !it.delete() }.forEach {
+            Log.w(TAG, "No se pudo borrar ${it.name}: se borrará al volver a abrir la app")
+        }
+    }
+
+    private companion object {
+        const val TAG = "BookRepository"
     }
 }
 

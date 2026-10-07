@@ -18,10 +18,13 @@ object TextCleaner {
     const val VERSION = 3
 
     private const val HYPHENS = "-‐‑–—"
-    private val hyphenBreak = Regex("(\\w)[$HYPHENS]\\s*\\n\\s*(\\w)")
-    private val hyphenBreakSpaced = Regex("(\\w)[$HYPHENS]\\s+(\\p{Ll})")
-    private val lineHyphenSuffix = Regex("(\\w+)[$HYPHENS]\\s*$")
-    private val trailingHyphenWord = Regex("^(.+?\\s)?(\\w+)[$HYPHENS]\\s*$", RegexOption.DOT_MATCHES_ALL)
+
+    // Letra o número de cualquier idioma: `\w` solo es Unicode en Android; en la JVM de escritorio no incluye «á».
+    private const val WORD = "[\\p{L}\\p{M}\\p{N}_]"
+    private val hyphenBreak = Regex("($WORD)[$HYPHENS]\\s*\\n\\s*($WORD)")
+    private val hyphenBreakSpaced = Regex("($WORD)[$HYPHENS]\\s+(\\p{Ll})")
+    private val lineHyphenSuffix = Regex("($WORD+)[$HYPHENS]\\s*$")
+    private val trailingHyphenWord = Regex("^(.+?\\s)?($WORD+)[$HYPHENS]\\s*$", RegexOption.DOT_MATCHES_ALL)
     private val pageNumber = Regex(
         "^\\s*(?:(?:p[áa]g(?:\\.|ina)?\\.?\\s*)?\\d+\\s*(?:de\\s+\\d+)?|[-–—]\\s*\\d+\\s*[-–—]|\\d+\\s*/\\s*\\d+)\\s*$",
         RegexOption.IGNORE_CASE

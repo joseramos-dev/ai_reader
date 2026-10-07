@@ -65,7 +65,8 @@ internal class SapiTtsEngine(dirs: AppDirs, private val io: CoroutineDispatcher)
     }
 
     private fun synthesizeLocked(text: String, speed: Float): Pcm {
-        val session = checkNotNull(session) { "La voz no está cargada" }
+        // Si una frase agotó el tiempo y se cerró PowerShell, se vuelve a arrancar en vez de fallar el resto.
+        val session = checkNotNull(session()) { "La voz de Windows no está disponible" }
         dir.mkdirs()
         val file = File(dir, "phrase-${ids.incrementAndGet()}.wav")
         try {

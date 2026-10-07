@@ -25,6 +25,13 @@ class TextCleanerTest {
     }
 
     @Test
+    fun joinsWordsSplitNextToAccentedLetters() {
+        // En la JVM de escritorio `\w` no incluye «á»: estas no se unían en Windows (en Android sí).
+        assertEquals("La página del año", TextCleaner.fixHyphens("La pá-\ngina del a-\nño"))
+        assertEquals("Sintió que alguien", TextCleaner.fixHyphens("Sin-\ntió que alguien"))
+    }
+
+    @Test
     fun joinsWordsSplitByLineBreakHyphen() {
         val paragraphs = TextCleaner.pageToParagraphs("La economía inter-\nnacional creció mucho.", DocumentLayout())
         assertEquals(listOf("La economía internacional creció mucho."), paragraphs)

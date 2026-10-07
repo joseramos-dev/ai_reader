@@ -56,8 +56,9 @@ class LibraryViewModel(
                 importer.import(file)
             } catch (e: ImportException) {
                 transient.update { it.copy(error = e.message) }
+            } finally {
+                transient.update { it.copy(importing = false) }
             }
-            transient.update { it.copy(importing = false) }
         }
     }
 

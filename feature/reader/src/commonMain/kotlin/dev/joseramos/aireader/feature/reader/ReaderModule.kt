@@ -28,7 +28,8 @@ val readerModule = module {
             get(),
             get(),
             get(IoDispatcher),
-            get(ApplicationScope)
+            get(ApplicationScope),
+            get()
         )
     }
     viewModelOf(::KeyPointsViewModel)

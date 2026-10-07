@@ -7,6 +7,7 @@ import dev.joseramos.aireader.ai.models.BundledModelsInstaller
 import dev.joseramos.aireader.ai.models.modelsModule
 import dev.joseramos.aireader.ai.rag.EmbeddingModelObserver
 import dev.joseramos.aireader.ai.rag.ragModule
+import dev.joseramos.aireader.core.common.ApplicationScope
 import dev.joseramos.aireader.core.common.commonModule
 import dev.joseramos.aireader.core.data.di.dataModule
 import dev.joseramos.aireader.feature.characters.charactersFeatureModule
@@ -15,34 +16,40 @@ import dev.joseramos.aireader.feature.library.libraryModule
 import dev.joseramos.aireader.feature.reader.readerModule
 import dev.joseramos.aireader.feature.settings.settingsModule
 import dev.joseramos.aireader.indexing.ApiKeyObserver
+import dev.joseramos.aireader.indexing.BookImporter
 import dev.joseramos.aireader.indexing.TextUpgradeObserver
 import dev.joseramos.aireader.indexing.indexingModule
 import dev.joseramos.aireader.pdf.pdfModule
 import dev.joseramos.aireader.tts.ttsModule
-import org.koin.core.module.dsl.singleOf
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
 /**
- * Lo que hay que hacer una vez al arrancar la app, en cualquier plataforma: instalar los modelos empaquetados y
- * poner en marcha los observadores que vuelven a encolar la indexación de los libros que lo necesiten.
+ * Lo que hay que hacer una vez al arrancar la app, en cualquier plataforma: instalar los modelos empaquetados,
+ * poner en marcha los observadores que vuelven a encolar la indexación de los libros que lo necesiten y borrar los
+ * ficheros de libros que ya no existen.
  */
 class AppStartup(
     private val bundledModels: BundledModelsInstaller,
     private val embeddingModels: EmbeddingModelObserver,
     private val textUpgrades: TextUpgradeObserver,
-    private val apiKeys: ApiKeyObserver
+    private val apiKeys: ApiKeyObserver,
+    private val importer: BookImporter,
+    private val scope: CoroutineScope
 ) {
     fun start() {
         bundledModels.start()
         embeddingModels.start()
         textUpgrades.start()
         apiKeys.start()
+        scope.launch { importer.deleteOrphanFiles() }
     }
 }
 
 private val appShellModule = module {
-    singleOf(::AppStartup)
+    single { AppStartup(get(), get(), get(), get(), get(), get(ApplicationScope)) }
     viewModelOf(::MainViewModel)
 }
 

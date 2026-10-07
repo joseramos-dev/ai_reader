@@ -1,6 +1,7 @@
 package dev.joseramos.aireader.tts
 
 import dev.joseramos.aireader.core.common.Log
+import dev.joseramos.aireader.core.common.ShutdownTasks
 import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.book.BookContentRepository
 import dev.joseramos.aireader.core.data.book.BookRepository
@@ -40,7 +41,10 @@ enum class PlaybackError {
 
     /** El dispositivo no tiene motor de texto a voz. */
     NO_ENGINE,
-    TEXT_NOT_READY
+    TEXT_NOT_READY,
+
+    /** No se ha podido sacar el audio (por ejemplo, un PC sin altavoces ni auriculares). */
+    AUDIO_OUTPUT
 }
 
 sealed interface SleepTimer {
@@ -97,8 +101,14 @@ class PlaybackEngine(
     private val scope: CoroutineScope,
     private val sinks: AudioSinkFactory,
     private val focus: AudioFocusController,
-    private val wakeLock: WakeLock
+    private val wakeLock: WakeLock,
+    shutdown: ShutdownTasks
 ) {
+    init {
+        // Al cerrar la ventana en Windows, la posición de la voz se guarda al momento (si no, cada 3 s).
+        shutdown.register { savePosition(force = true) }
+    }
+
     private val _state = MutableStateFlow(PlaybackState())
     val state: StateFlow<PlaybackState> = _state
 
@@ -196,7 +206,20 @@ class PlaybackEngine(
             focus.request()
             wakeLock.acquire(WAKE_LOCK_TIMEOUT_MS)
         }
-        session = scope.launch { runSession(bookId, from, language) }
+        session = scope.launch {
+            try {
+                runSession(bookId, from, language)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                // Sin esto la sesión moría en silencio y el estado se quedaba en «cargando» para siempre.
+                Log.e(TAG, "Fallo reproduciendo la voz de $bookId", e)
+                releaseWakeLock()
+                _state.update {
+                    it.copy(status = PlaybackStatus.IDLE, phrase = null, error = PlaybackError.AUDIO_OUTPUT)
+                }
+            }
+        }
     }
 
     fun pause() {

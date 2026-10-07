@@ -10,6 +10,7 @@ import dev.joseramos.aireader.ai.characters.CharacterBrowser
 import dev.joseramos.aireader.ai.characters.CharactersSnapshot
 import dev.joseramos.aireader.core.common.AppDirs
 import dev.joseramos.aireader.core.common.Log
+import dev.joseramos.aireader.core.common.ShutdownTasks
 import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.book.Book
 import dev.joseramos.aireader.core.data.book.BookContentRepository
@@ -124,7 +125,8 @@ class ReaderViewModel(
     characterBrowser: CharacterBrowser,
     private val characterAnalysis: CharacterAnalysis,
     private val io: CoroutineDispatcher,
-    private val appScope: CoroutineScope
+    private val appScope: CoroutineScope,
+    shutdown: ShutdownTasks
 ) : ViewModel() {
     private val route = savedStateHandle.toRoute<ReaderRoute>()
     val bookId = route.bookId
@@ -133,6 +135,9 @@ class ReaderViewModel(
     private val meta = MutableStateFlow(ReaderMeta(mode = savedStateHandle[KEY_MODE] ?: ReaderMode.PDF))
     private val savedState = savedStateHandle
     private val visiblePage = MutableStateFlow<Int?>(null)
+
+    // Al cerrar la ventana en Windows no da tiempo al guardado con retraso: se guarda la página que se ve.
+    private val unregisterShutdown = shutdown.register { visiblePage.value?.let { savePage(it) } }
     private val prompts = MutableStateFlow(OpeningPrompts())
     private val jumps = Channel<Int>(Channel.CONFLATED)
 
@@ -236,10 +241,7 @@ class ReaderViewModel(
         viewModelScope.launch { open() }
         viewModelScope.launch { locateSource() }
         viewModelScope.launch {
-            visiblePage.filterNotNull().distinctUntilChanged().debounce(SAVE_DEBOUNCE_MS).collect { page ->
-                // Si la voz ya guardó una posición más precisa en esta página, se respeta.
-                if (positions.get(bookId)?.page != page) positions.save(bookId, ReadingPosition(page))
-            }
+            visiblePage.filterNotNull().distinctUntilChanged().debounce(SAVE_DEBOUNCE_MS).collect(::savePage)
         }
         viewModelScope.launch {
             // Una página cuenta como leída (y desbloquea personajes) si se queda en pantalla un rato,
@@ -344,7 +346,13 @@ class ReaderViewModel(
 
     fun dismissRecapOffer() = prompts.update { it.copy(offerRecap = false) }
 
+    /** Guarda [page] como la posición de lectura, salvo que la voz ya guardara una más precisa en esa página. */
+    private suspend fun savePage(page: Int) {
+        if (positions.get(bookId)?.page != page) positions.save(bookId, ReadingPosition(page))
+    }
+
     override fun onCleared() {
+        unregisterShutdown()
         val toRelease = renderer ?: return
         appScope.launch { toRelease.release() }
     }

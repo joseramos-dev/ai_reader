@@ -13,6 +13,8 @@ import dev.joseramos.aireader.core.designsystem.component.PrimaryButton
 import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
 import dev.joseramos.aireader.feature.reader.generated.resources.Res
+import dev.joseramos.aireader.feature.reader.generated.resources.reader_audio_output_message
+import dev.joseramos.aireader.feature.reader.generated.resources.reader_audio_output_title
 import dev.joseramos.aireader.feature.reader.generated.resources.reader_cancel
 import dev.joseramos.aireader.feature.reader.generated.resources.reader_language_english
 import dev.joseramos.aireader.feature.reader.generated.resources.reader_language_spanish
@@ -56,6 +58,9 @@ internal fun PlaybackProblemSheet(
         PlaybackError.TEXT_NOT_READY ->
             stringResource(Res.string.reader_text_not_ready_title) to
                 stringResource(Res.string.reader_text_not_ready_message)
+        PlaybackError.AUDIO_OUTPUT ->
+            stringResource(Res.string.reader_audio_output_title) to
+                stringResource(Res.string.reader_audio_output_message)
     }
     AppBottomSheet(onDismissRequest = onDismiss, title = title) {
         Column(Modifier.padding(horizontal = Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
@@ -71,7 +76,7 @@ internal fun PlaybackProblemSheet(
                     { voiceSettings.openSettings() },
                     Modifier.fillMaxWidth()
                 )
-                PlaybackError.TEXT_NOT_READY -> Unit
+                PlaybackError.TEXT_NOT_READY, PlaybackError.AUDIO_OUTPUT -> Unit
             }
             if (error != PlaybackError.TEXT_NOT_READY) {
                 PlainButton(stringResource(Res.string.reader_voice_retry), onRetry, Modifier.fillMaxWidth())

@@ -1,7 +1,9 @@
 package dev.joseramos.aireader.ai.characters
 
 import dev.joseramos.aireader.core.common.ApplicationScope
+import dev.joseramos.aireader.core.common.Log
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -44,7 +46,7 @@ internal class CoroutineCharacterScanScheduler(
     private suspend fun runWithRetries(bookId: String) {
         var attempt = 0
         while (true) {
-            val state = when (runner().scan(bookId, attempt)) {
+            val state = when (scan(bookId, attempt)) {
                 ScanResult.SUCCESS -> ScanJobState()
                 ScanResult.FAILED -> ScanJobState(failed = true)
                 ScanResult.NEEDS_API_KEY -> ScanJobState(failed = true, needsApiKey = true)
@@ -59,7 +61,21 @@ internal class CoroutineCharacterScanScheduler(
         }
     }
 
+    /**
+     * Un fallo que no es de la IA (base de datos, la clave guardada que no se puede descifrar…) cuenta como fallido:
+     * si no, el trabajo terminaría con el estado «en curso» para siempre y no se podría volver a lanzar.
+     */
+    private suspend fun scan(bookId: String, attempt: Int): ScanResult = try {
+        runner().scan(bookId, attempt)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+        Log.e(TAG, "Fallo analizando los personajes de $bookId", e)
+        ScanResult.FAILED
+    }
+
     private companion object {
+        const val TAG = "CharacterScanScheduler"
         const val RETRY_DELAY_MS = 60_000L
         const val MAX_BACKOFF_STEPS = 5
     }

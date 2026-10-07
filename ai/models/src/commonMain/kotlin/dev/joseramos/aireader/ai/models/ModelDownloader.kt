@@ -4,6 +4,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.ensureActive
@@ -31,7 +33,8 @@ class ModelDownloader(private val client: OkHttpClient) {
         val partial = File(target.path + ".part")
         fetchInto(url, partial, onProgress)
         verify(partial, sha256)
-        if (!partial.renameTo(target)) throw IOException("No se pudo mover ${partial.name}")
+        // En Windows, renameTo falla si el destino ya existe; se reemplaza.
+        Files.move(partial.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
     }
 
     private suspend fun fetchInto(url: String, partial: File, onProgress: (Long, Long) -> Unit) {

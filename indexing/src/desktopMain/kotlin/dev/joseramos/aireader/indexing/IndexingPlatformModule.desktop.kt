@@ -29,7 +29,7 @@ internal class CoroutineIndexScheduler(private val scope: CoroutineScope, privat
                 if (!replace) return
                 current.cancel()
             }
-            val job = scope.launch { oneAtATime.withPermit { runWithRetries(bookId) } }
+            val job = scope.launch { runWithRetries(bookId) }
             jobs[bookId] = job
             job.invokeOnCompletion { synchronized(jobs) { if (jobs[bookId] === job) jobs.remove(bookId) } }
         }
@@ -42,7 +42,8 @@ internal class CoroutineIndexScheduler(private val scope: CoroutineScope, privat
     private suspend fun runWithRetries(bookId: String) {
         var attempt = 0
         while (true) {
-            when (runner().index(bookId, attempt)) {
+            // El turno solo se ocupa mientras se indexa: un libro que espera para reintentar no frena a los demás.
+            when (oneAtATime.withPermit { runner().index(bookId, attempt) }) {
                 IndexResult.SUCCESS, IndexResult.FAILED -> return
                 IndexResult.RETRY -> {
                     attempt++

@@ -24,6 +24,7 @@ val commonModule = module {
     includes(commonPlatformModule)
 
     single<CoroutineDispatcher>(IoDispatcher) { Dispatchers.IO }
+    single { ShutdownTasks() }
     single<CoroutineDispatcher>(DefaultDispatcher) { Dispatchers.Default }
     single<CoroutineScope>(ApplicationScope) {
         CoroutineScope(SupervisorJob() + get<CoroutineDispatcher>(DefaultDispatcher))

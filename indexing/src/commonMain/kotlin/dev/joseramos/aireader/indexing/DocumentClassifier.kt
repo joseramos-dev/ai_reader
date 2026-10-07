@@ -24,22 +24,28 @@ object DocumentClassifier {
     private const val STRONG = 3.0
 
     private val dialogueStart = Regex("^\\s*[—–―«“\"]")
+
+    // Sin `(?i)` dentro del patrón: en la JVM de escritorio solo ignora mayúsculas en ASCII («METODOLOGÍA» no casaría).
+    // Con RegexOption.IGNORE_CASE, Kotlin añade UNICODE_CASE.
+    private val ignoreCaseLines = setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)
     private val scientificSections = listOf(
-        Regex("(?im)^\\s*(abstract|resumen)\\s*$"),
-        Regex("(?im)^\\s*(\\d+\\.?\\s*)?(introducci[oó]n|introduction)\\s*$"),
-        Regex("(?im)^\\s*(\\d+\\.?\\s*)?(m[eé]todos?|metodolog[ií]a|materiales y m[eé]todos|methods)\\s*$"),
-        Regex("(?im)^\\s*(\\d+\\.?\\s*)?(resultados|results)\\s*$"),
-        Regex("(?im)^\\s*(\\d+\\.?\\s*)?(discusi[oó]n|discussion)\\s*$"),
-        Regex("(?im)^\\s*(referencias|bibliograf[ií]a|references)\\s*$")
+        Regex("^\\s*(abstract|resumen)\\s*$", ignoreCaseLines),
+        Regex("^\\s*(\\d+\\.?\\s*)?(introducci[oó]n|introduction)\\s*$", ignoreCaseLines),
+        Regex("^\\s*(\\d+\\.?\\s*)?(m[eé]todos?|metodolog[ií]a|materiales y m[eé]todos|methods)\\s*$", ignoreCaseLines),
+        Regex("^\\s*(\\d+\\.?\\s*)?(resultados|results)\\s*$", ignoreCaseLines),
+        Regex("^\\s*(\\d+\\.?\\s*)?(discusi[oó]n|discussion)\\s*$", ignoreCaseLines),
+        Regex("^\\s*(referencias|bibliograf[ií]a|references)\\s*$", ignoreCaseLines)
     )
-    private val keywords = Regex("(?i)(palabras clave|keywords)\\s*:")
-    private val doi = Regex("(?i)\\bdoi\\s*:?\\s*10\\.\\d{4,}")
+    private val keywords = Regex("(palabras clave|keywords)\\s*:", RegexOption.IGNORE_CASE)
+    private val doi = Regex("\\bdoi\\s*:?\\s*10\\.\\d{4,}", RegexOption.IGNORE_CASE)
+    private val chapterHeading = Regex("^\\s*(cap[ií]tulo|parte|libro)\\b|^[IVXLC]+\\.?$", RegexOption.IGNORE_CASE)
     private val authorYear =
         Regex("\\(\\p{Lu}[\\p{L}'-]+(?: et al\\.| y \\p{Lu}[\\p{L}'-]+)?,? (?:19|20)\\d{2}[a-z]?\\)")
     private val numbered = Regex("\\[\\d{1,3}(?:[,–-]\\s*\\d{1,3})*]")
     private val educationalHeadings = Regex(
-        "(?im)^\\s*(tema|unidad|lecci[oó]n|m[oó]dulo)\\s+\\d+|^\\s*(ejercicios|actividades|autoevaluaci[oó]n|" +
-            "objetivos( de aprendizaje)?|soluciones|recuerda|para saber m[aá]s)\\b"
+        "^\\s*(tema|unidad|lecci[oó]n|m[oó]dulo)\\s+\\d+|^\\s*(ejercicios|actividades|autoevaluaci[oó]n|" +
+            "objetivos( de aprendizaje)?|soluciones|recuerda|para saber m[aá]s)\\b",
+        ignoreCaseLines
     )
     private val numberedQuestion = Regex("(?m)^\\s*\\d{1,2}[.)]\\s+.{5,200}\\?\\s*$")
 
@@ -80,7 +86,7 @@ object DocumentClassifier {
             dialogue >= DIALOGUE_RATIO_WEAK -> MEDIUM
             else -> 0.0
         }
-        if (chapterTitles.any { Regex("(?i)^\\s*(cap[ií]tulo|parte|libro)\\b|^[IVXLC]+\\.?$").containsMatchIn(it) }) {
+        if (chapterTitles.any { chapterHeading.containsMatchIn(it) }) {
             score += WEAK
         }
         return score

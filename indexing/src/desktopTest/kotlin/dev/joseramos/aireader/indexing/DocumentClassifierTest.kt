@@ -27,6 +27,20 @@ class DocumentClassifierTest {
     }
 
     @Test
+    fun uppercaseAccentedHeadingsCountLikeLowercase() {
+        // En la JVM de escritorio un `(?i)` dentro del patrón no iguala «Ó» y «ó»: en Windows contaban menos.
+        val headings =
+            listOf("Resumen", "1. Introducción", "2. Metodología", "3. Resultados", "4. Discusión", "Bibliografía")
+        fun paper(titles: List<String>) = titles.map { listOf(it, "Texto de la sección sin otras pistas.") }
+
+        val lower = DocumentClassifier.classify(paper(headings), pageCount = 12, chapterTitles = emptyList())
+        val upper = DocumentClassifier.classify(paper(headings.map { it.uppercase() }), 12, emptyList())
+
+        assertEquals(DocumentType.SCIENTIFIC, lower.type)
+        assertEquals(lower, upper)
+    }
+
+    @Test
     fun paperWithSectionsAndCitationsIsScientific() {
         val paper = listOf(
             listOf(

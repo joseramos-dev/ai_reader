@@ -13,6 +13,6 @@ expect val ttsPlatformModule: Module
 val ttsModule = module {
     includes(ttsPlatformModule)
 
-    single { PlaybackEngine(get(), get(), get(), get(), get(ApplicationScope), get(), get(), get()) }
+    single { PlaybackEngine(get(), get(), get(), get(), get(ApplicationScope), get(), get(), get(), get()) }
     single { PlaybackController(get(), get(), get(), get()) }
 }
