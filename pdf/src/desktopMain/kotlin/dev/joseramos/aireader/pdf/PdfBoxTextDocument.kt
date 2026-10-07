@@ -65,6 +65,8 @@ internal class PdfBoxTextDocument private constructor(private val document: PDDo
         private const val MAIN_MEMORY_BYTES = 16L * 1024 * 1024
 
         fun open(dirs: AppDirs, file: File): PdfBoxTextDocument {
+            // PDFBox guarda lo que no cabe en memoria en esta carpeta: tiene que existir.
+            dirs.cache.mkdirs()
             val memory = MemoryUsageSetting.setupMixed(MAIN_MEMORY_BYTES).setTempDir(dirs.cache)
             return PdfBoxTextDocument(PDDocument.load(file, memory))
         }

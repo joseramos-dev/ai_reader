@@ -107,10 +107,10 @@ internal class PdfBoxPageRenderer(file: File, tempDir: File) : PdfPageRenderer {
 
 /** Abre PDF con Apache PDFBox. */
 internal class PdfBoxRendererFactory(private val dirs: AppDirs) : PdfRendererFactory {
-    override fun open(file: File, sizesCache: File?): PdfPageRenderer = PdfBoxPageRenderer(file, dirs.cache)
+    override fun open(file: File, sizesCache: File?): PdfPageRenderer = PdfBoxPageRenderer(file, scratchDir())
 
     override fun writeCover(pdf: File, cover: File, widthPx: Int): Int = try {
-        PdfBoxPageRenderer(pdf, dirs.cache).use { renderer ->
+        PdfBoxPageRenderer(pdf, scratchDir()).use { renderer ->
             cover.parentFile?.mkdirs()
             if (!ImageIO.write(
                     renderer.renderImage(0, widthPx),
@@ -125,4 +125,7 @@ internal class PdfBoxRendererFactory(private val dirs: AppDirs) : PdfRendererFac
     } catch (e: InvalidPasswordException) {
         throw SecurityException("El PDF está protegido con contraseña.", e)
     }
+
+    /** Donde PDFBox guarda lo que no cabe en memoria: tiene que existir. */
+    private fun scratchDir(): File = dirs.cache.also { it.mkdirs() }
 }
