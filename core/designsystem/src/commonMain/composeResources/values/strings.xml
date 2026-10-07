@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="api_key_title">Clave de API de Gemini</string>
+    <string name="api_key_hint">AIza…</string>
+    <string name="api_key_help">Créala gratis en aistudio.google.com/apikey y pégala aquí. Se guarda cifrada en este dispositivo y solo se usa para llamar a la API de Gemini.</string>
+    <string name="api_key_paste">Pegar</string>
+    <string name="api_key_save">Guardar</string>
+    <string name="api_key_remove">Eliminar clave</string>
+
+    <string name="usage_title">Consumo de IA de hoy</string>
+    <string name="usage_detail">%1$s de %2$s tokens · se renueva a las %3$s</string>
+    <string name="usage_exhausted_title">Cuota de IA de hoy agotada</string>
+    <string name="usage_exhausted_detail">Gemini no admite más peticiones hasta las %1$s.</string>
+    <string name="usage_over_budget_title">Presupuesto de IA de hoy superado</string>
+    <string name="usage_over_budget_detail">%1$s de %2$s tokens · la IA sigue funcionando</string>
+    <string name="budget_alert_near">Llevas el 80 % de tu presupuesto de IA de hoy (%1$s de %2$s tokens).</string>
+    <string name="budget_alert_over">Has superado tu presupuesto de IA de hoy (%1$s de %2$s tokens). Puedes seguir usándola; el contador se renueva a las %3$s.</string>
+    <string name="budget_alert_exhausted">Gemini ha agotado la cuota de hoy: no admitirá más peticiones hasta las %1$s.</string>
+    <string name="budget_alert_dismiss">Entendido</string>
+    <string name="cost_confirm_title">¿Seguir con esta tarea?</string>
+    <string name="cost_confirm_message">Usará unos %1$s tokens y hoy te quedan %2$s de tu presupuesto. Si sigues, lo superarás (la IA seguirá funcionando).</string>
+    <string name="cost_confirm_continue">Continuar</string>
+    <string name="cost_confirm_cancel">Cancelar</string>
+    <string name="usage_ring_description">Consumo de IA: queda el %1$d por ciento</string>
+</resources>

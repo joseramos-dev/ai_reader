@@ -1,17 +1,29 @@
 plugins {
-    alias(libs.plugins.aireader.android.feature)
+    alias(libs.plugins.aireader.kmp.feature)
 }
 
-android {
-    namespace = "dev.joseramos.aireader.feature.reader"
+kotlin {
+    android {
+        namespace = "dev.joseramos.aireader.feature.reader"
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":pdf"))
+            implementation(project(":text"))
+            implementation(project(":tts"))
+            implementation(project(":ai:llm"))
+            implementation(project(":ai:characters"))
+            implementation(project(":feature:characters"))
+            implementation(libs.coil.compose)
+        }
+        getByName("desktopTest").dependencies {
+            implementation(libs.junit)
+        }
+    }
 }
 
-dependencies {
-    implementation(project(":pdf"))
-    implementation(project(":text"))
-    implementation(project(":tts"))
-    implementation(project(":ai:llm"))
-    implementation(project(":ai:characters"))
-    implementation(project(":feature:characters"))
-    implementation(libs.coil.compose)
+compose.resources {
+    packageOfResClass = "dev.joseramos.aireader.feature.reader.generated.resources"
+    publicResClass = false
 }

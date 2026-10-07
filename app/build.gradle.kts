@@ -105,33 +105,16 @@ android {
 }
 
 dependencies {
+    implementation(project(":shared"))
     implementation(project(":core:common"))
-    implementation(project(":core:designsystem"))
-    implementation(project(":core:data"))
-    implementation(project(":ai:models"))
-    implementation(project(":pdf"))
-    implementation(project(":indexing"))
-    implementation(project(":tts"))
-    implementation(project(":ai:llm"))
-    implementation(project(":ai:embeddings"))
-    implementation(project(":ai:rag"))
-    implementation(project(":ai:characters"))
-    implementation(project(":feature:library"))
-    implementation(project(":feature:reader"))
-    implementation(project(":feature:chat"))
-    implementation(project(":feature:characters"))
-    implementation(project(":feature:settings"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.profileinstaller)
     // Baseline Profile generado por :benchmark (./gradlew :app:generateBaselineProfile).
     baselineProfile(project(":benchmark"))
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.koin.android)
-    implementation(libs.koin.compose.viewmodel)
     implementation(libs.koin.androidx.workmanager)
 
     testImplementation(libs.junit)

@@ -1,12 +1,9 @@
 package dev.joseramos.aireader
 
 import android.app.Application
-import dev.joseramos.aireader.ai.models.BundledModelsInstaller
-import dev.joseramos.aireader.ai.rag.EmbeddingModelObserver
 import dev.joseramos.aireader.core.common.AndroidLogSink
 import dev.joseramos.aireader.core.common.Log
-import dev.joseramos.aireader.indexing.ApiKeyObserver
-import dev.joseramos.aireader.indexing.TextUpgradeObserver
+import dev.joseramos.aireader.shared.AppStartup
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.workmanager.koin.workManagerFactory
@@ -22,9 +19,6 @@ class AiReaderApplication : Application() {
             workManagerFactory()
             modules(appModules)
         }
-        get<BundledModelsInstaller>().start()
-        get<EmbeddingModelObserver>().start()
-        get<TextUpgradeObserver>().start()
-        get<ApiKeyObserver>().start()
+        get<AppStartup>().start()
     }
 }

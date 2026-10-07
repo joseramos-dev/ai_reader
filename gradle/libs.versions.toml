@@ -9,6 +9,8 @@ activityCompose = "1.13.0"
 coreKtx = "1.19.1"
 lifecycle = "2.11.0"
 navigation = "2.10.2"
+jbNavigation = "2.10.0-rc01"
+jbLifecycle = "2.11.0"
 koin = "4.2.2"
 room = "2.8.5"
 androidxSqlite = "2.6.2"
@@ -54,6 +56,9 @@ androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "materialIconsExtended" }
+jb-navigation-compose = { group = "org.jetbrains.androidx.navigation", name = "navigation-compose", version.ref = "jbNavigation" }
+jb-lifecycle-viewmodel-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "jbLifecycle" }
+jb-lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "jbLifecycle" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
 koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
 koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
@@ -132,3 +137,4 @@ aireader-android-room = { id = "aireader.android.room" }
 aireader-kmp-library = { id = "aireader.kmp.library" }
 aireader-kmp-compose = { id = "aireader.kmp.compose" }
 aireader-kmp-room = { id = "aireader.kmp.room" }
+aireader-kmp-feature = { id = "aireader.kmp.feature" }

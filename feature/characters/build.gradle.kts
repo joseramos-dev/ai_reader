@@ -1,12 +1,23 @@
 plugins {
-    alias(libs.plugins.aireader.android.feature)
+    alias(libs.plugins.aireader.kmp.feature)
 }
 
-android {
-    namespace = "dev.joseramos.aireader.feature.characters"
+kotlin {
+    android {
+        namespace = "dev.joseramos.aireader.feature.characters"
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":ai:characters"))
+        }
+        getByName("desktopTest").dependencies {
+            implementation(libs.junit)
+        }
+    }
 }
 
-// Menú de personajes, ficha de cada uno y grafo de relaciones.
-dependencies {
-    implementation(project(":ai:characters"))
+compose.resources {
+    packageOfResClass = "dev.joseramos.aireader.feature.characters.generated.resources"
+    publicResClass = false
 }

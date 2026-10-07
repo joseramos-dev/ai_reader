@@ -1,14 +1,23 @@
 plugins {
-    alias(libs.plugins.aireader.android.feature)
+    alias(libs.plugins.aireader.kmp.feature)
 }
 
-android {
-    namespace = "dev.joseramos.aireader.feature.settings"
+kotlin {
+    android {
+        namespace = "dev.joseramos.aireader.feature.settings"
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":ai:models"))
+            implementation(project(":tts"))
+            implementation(project(":text"))
+            implementation(project(":ai:rag"))
+        }
+    }
 }
 
-dependencies {
-    implementation(project(":ai:models"))
-    implementation(project(":tts"))
-    implementation(project(":text"))
-    implementation(project(":ai:rag"))
+compose.resources {
+    packageOfResClass = "dev.joseramos.aireader.feature.settings.generated.resources"
+    publicResClass = false
 }

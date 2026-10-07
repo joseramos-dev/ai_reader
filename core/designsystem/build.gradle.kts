@@ -1,24 +1,30 @@
 plugins {
-    alias(libs.plugins.aireader.android.library)
-    alias(libs.plugins.aireader.android.compose)
-    alias(libs.plugins.roborazzi)
+    alias(libs.plugins.aireader.kmp.library)
+    alias(libs.plugins.aireader.kmp.compose)
 }
 
-android {
-    namespace = "dev.joseramos.aireader.core.designsystem"
+// Sistema de diseño compartido: tema, componentes y recursos (fuentes y textos) de Compose Multiplatform.
+kotlin {
+    android {
+        namespace = "dev.joseramos.aireader.core.designsystem"
+        androidResources { enable = true }
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":core:common"))
+            api(compose.materialIconsExtended)
+            api(libs.haze)
+            api(libs.haze.blur)
+        }
+        getByName("androidMain").dependencies {
+            implementation(libs.androidx.activity.compose)
+            implementation(libs.androidx.core.ktx)
+        }
+    }
 }
 
-dependencies {
-    api(libs.androidx.compose.material.icons.extended)
-    api(libs.haze)
-    api(libs.haze.blur)
-    implementation(libs.androidx.core.ktx)
-
-    // Capturas de los componentes en la JVM: ./gradlew :core:designsystem:recordRoborazziDebug
-    testImplementation(libs.robolectric)
-    testImplementation(libs.roborazzi)
-    testImplementation(libs.roborazzi.compose)
-    testImplementation(platform(libs.androidx.compose.bom))
-    testImplementation(libs.androidx.compose.ui.test.junit4)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
+compose.resources {
+    packageOfResClass = "dev.joseramos.aireader.core.designsystem.generated.resources"
+    publicResClass = false
 }

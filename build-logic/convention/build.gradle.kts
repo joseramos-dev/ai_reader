@@ -50,6 +50,10 @@ gradlePlugin {
             id = "aireader.kmp.library"
             implementationClass = "KmpLibraryConventionPlugin"
         }
+        register("kmpFeature") {
+            id = "aireader.kmp.feature"
+            implementationClass = "KmpFeatureConventionPlugin"
+        }
         register("kmpRoom") {
             id = "aireader.kmp.room"
             implementationClass = "KmpRoomConventionPlugin"

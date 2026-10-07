@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_title">Ajustes</string>
+
+    <string name="settings_appearance">Apariencia</string>
+    <string name="settings_theme">Tema</string>
+    <string name="settings_theme_system">Sistema</string>
+    <string name="settings_theme_light">Claro</string>
+    <string name="settings_theme_dark">Oscuro</string>
+
+    <string name="settings_reading">Lectura en voz alta</string>
+    <string name="settings_speed">Velocidad</string>
+    <string name="settings_speed_value">%1$s×</string>
+    <string name="settings_voice_downloading">Descargando… %1$d %</string>
+    <string name="settings_voice_installing">Instalando…</string>
+    <string name="settings_voice_failed">Error: %1$s</string>
+    <string name="settings_download">Descargar</string>
+    <string name="settings_cancel">Cancelar</string>
+    <string name="settings_delete">Borrar</string>
+    <string name="settings_retry">Reintentar</string>
+
+    <string name="settings_ai">Inteligencia artificial</string>
+    <string name="settings_api_key">Clave de API</string>
+    <string name="settings_api_key_set">Configurada</string>
+    <string name="settings_api_key_unset">Sin configurar</string>
+    <string name="settings_analysis_model">Modelo de análisis</string>
+    <string name="settings_model_not_installed">Para el chat · No descargado · %1$d MB</string>
+    <string name="settings_model_installed">Para el chat · Descargado · %1$d MB</string>
+    <string name="settings_characters">Análisis de personajes</string>
+    <string name="settings_characters_auto">Automático en novelas</string>
+    <string name="settings_characters_manual">Solo cuando lo pidas desde Personajes</string>
+    <string name="settings_usage">Uso de la API</string>
+    <string name="settings_usage_detail">%1$s tokens de entrada · %2$s de salida</string>
+    <string name="settings_usage_reset">Reiniciar</string>
+    <string name="settings_ai_footer">Las preguntas y los fragmentos del libro necesarios para responder se envían a Google (API de Gemini). Con una clave del nivel gratuito, Google puede usar ese contenido para mejorar sus productos. Tus PDFs y su índice no salen del móvil.</string>
+
+    <string name="settings_ai_usage">Consumo de IA</string>
+    <string name="settings_ai_usage_footer">Gemini no dice cuánta cuota gratuita te queda, así que el anillo compara lo gastado hoy con el límite diario que elijas. Te avisa al llegar al 80 % y al superarlo, y pide confirmación antes de tareas grandes que no quepan, pero nunca bloquea la IA. Si Gemini responde que se ha agotado la cuota del día, se vacía. Se renueva a medianoche, hora del Pacífico.</string>
+    <string name="settings_daily_budget">Límite diario</string>
+    <string name="settings_tokens">%1$s tokens</string>
+    <string name="settings_about">Acerca de</string>
+    <string name="settings_version">Versión</string>
+    <string name="settings_rag_eval">Evaluar la búsqueda</string>
+    <string name="settings_rag_eval_hint">Desarrollo: elige un fichero JSON de preguntas (ver tools/rag-eval)</string>
+    <string name="settings_rag_eval_running">Buscando cada pregunta en su libro…</string>
+    <string name="settings_rag_eval_questions">%1$d preguntas evaluadas</string>
+    <string name="settings_rag_eval_vector">Vectorial</string>
+    <string name="settings_rag_eval_text">Texto</string>
+    <string name="settings_rag_eval_hybrid">Híbrida</string>
+    <string name="settings_rag_eval_missing">No están en la biblioteca: %1$s</string>
+    <string name="settings_rag_eval_misses">Sin resolver en el top-8</string>
+    <string name="settings_rag_eval_miss_detail">%1$s · p. %2$s · puesto vectorial %3$s, texto %4$s, híbrida %5$s</string>
+</resources>

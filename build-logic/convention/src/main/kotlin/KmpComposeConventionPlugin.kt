@@ -23,6 +23,7 @@ class KmpComposeConventionPlugin : Plugin<Project> {
                 implementation(compose.foundation)
                 implementation(compose.material3)
                 implementation(compose.ui)
+                implementation(compose.components.resources)
             }
         }
     }
