@@ -24,6 +24,14 @@ subprojects {
 
     extensions.configure<dev.detekt.gradle.extensions.DetektExtension> {
         buildUponDefaultConfig.set(true)
+        // Los módulos multiplataforma tienen varios conjuntos de fuentes (commonMain, androidMain, desktopMain…).
+        source.setFrom(
+            fileTree("src") {
+                include("**/*.kt")
+                // Las pruebas (test, commonTest, desktopTest, androidHostTest…) no se analizan.
+                exclude("**/test/**", "**/*Test/**")
+            }
+        )
         config.setFrom(rootProject.files("config/detekt/detekt.yml"))
     }
 }

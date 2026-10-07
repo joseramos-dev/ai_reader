@@ -1,13 +1,20 @@
 plugins {
-    alias(libs.plugins.aireader.android.library)
+    alias(libs.plugins.aireader.kmp.library)
     alias(libs.plugins.kotlin.serialization)
 }
 
-android {
-    namespace = "dev.joseramos.aireader.text"
-}
+kotlin {
+    android {
+        namespace = "dev.joseramos.aireader.text"
+    }
 
-// Las líneas con su geometría (TextLine) se guardan como JSON.
-dependencies {
-    implementation(libs.kotlinx.serialization.json)
+    sourceSets {
+        // Las líneas con su geometría (TextLine) se guardan como JSON.
+        commonMain.dependencies {
+            implementation(libs.kotlinx.serialization.json)
+        }
+        getByName("desktopTest").dependencies {
+            implementation(libs.junit)
+        }
+    }
 }
