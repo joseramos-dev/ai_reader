@@ -1,9 +1,9 @@
 package dev.joseramos.aireader.feature.library
 
-import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.joseramos.aireader.core.common.PickedFile
 import dev.joseramos.aireader.core.data.book.Book
 import dev.joseramos.aireader.core.data.book.BookRepository
 import dev.joseramos.aireader.core.data.db.DocumentType
@@ -49,11 +49,11 @@ class LibraryViewModel(
         transient.update { it.copy(sort = sort) }
     }
 
-    fun import(uri: Uri) {
+    fun import(file: PickedFile) {
         viewModelScope.launch {
             transient.update { it.copy(importing = true) }
             try {
-                importer.import(uri)
+                importer.import(file)
             } catch (e: ImportException) {
                 transient.update { it.copy(error = e.message) }
             }

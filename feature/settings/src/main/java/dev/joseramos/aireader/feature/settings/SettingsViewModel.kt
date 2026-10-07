@@ -1,7 +1,5 @@
 package dev.joseramos.aireader.feature.settings
 
-import android.content.Context
-import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.joseramos.aireader.ai.models.ModelCatalog
@@ -10,6 +8,7 @@ import dev.joseramos.aireader.ai.models.ModelState
 import dev.joseramos.aireader.ai.rag.EvalReport
 import dev.joseramos.aireader.ai.rag.EvalSet
 import dev.joseramos.aireader.ai.rag.RagEvaluator
+import dev.joseramos.aireader.core.common.PickedFile
 import dev.joseramos.aireader.core.data.settings.ApiUsage
 import dev.joseramos.aireader.core.data.settings.AppSettings
 import dev.joseramos.aireader.core.data.settings.DailyUsage
@@ -46,7 +45,6 @@ data class SettingsUiState(
 )
 
 class SettingsViewModel(
-    private val context: Context,
     private val ragEvaluator: RagEvaluator,
     private val io: CoroutineDispatcher,
     private val settingsRepository: SettingsRepository,
@@ -97,8 +95,8 @@ class SettingsViewModel(
     private val _ragEval = MutableStateFlow<RagEvalState?>(null)
     val ragEval: StateFlow<RagEvalState?> = _ragEval
 
-    /** Ejecuta el fichero de evaluación [uri] contra los libros ya indexados. */
-    fun runRagEvaluation(uri: Uri) = launch {
+    /** Ejecuta el fichero de evaluación [file] contra los libros ya indexados. */
+    fun runRagEvaluation(file: PickedFile) = launch {
         if (state.value.searchModel !is ModelState.Installed) {
             _ragEval.value = RagEvalState.Failed("Descarga antes el modelo para el chat.")
             return@launch
@@ -106,7 +104,7 @@ class SettingsViewModel(
         _ragEval.value = RagEvalState.Running
         _ragEval.value = try {
             val text = withContext(io) {
-                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                file.openStream()?.bufferedReader()?.use { it.readText() }
             } ?: error("No se pudo leer el fichero.")
             RagEvalState.Done(ragEvaluator.run(EvalSet.parse(text)))
         } catch (e: SerializationException) {

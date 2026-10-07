@@ -1,23 +1,21 @@
 package dev.joseramos.aireader.indexing
 
-import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.core.content.edit
+import dev.joseramos.aireader.core.common.InstallStamp
+import dev.joseramos.aireader.core.common.KeyValueStoreFactory
 
 /**
  * Evita bucles infinitos cuando una etapa de la indexación tumba la app (un fallo nativo o falta de
  * memoria no se puede capturar): se apunta el intento antes de empezar y se borra al terminar. Si
  * al volver a empezar ya había [MAX_CRASHES] intentos sin terminar, la etapa se salta para ese libro.
  *
- * Una etapa también puede quedar marcada como imposible en este móvil ([markUnsupported]), por
+ * Una etapa también puede quedar marcada como imposible en este equipo ([markUnsupported]), por
  * ejemplo si falta una biblioteca nativa: entonces se salta en todos los libros sin intentarlo.
  *
  * Todo se olvida al instalar una versión nueva de la app, para que tenga ocasión de probar sus
  * arreglos (sin bucles: si sigue fallando, se vuelve a apuntar).
  */
-class StageCrashGuard(private val context: Context) {
-    private val prefs = context.getSharedPreferences("indexing_crash_guard", Context.MODE_PRIVATE)
+class StageCrashGuard(stores: KeyValueStoreFactory, private val installStamp: InstallStamp) {
+    private val prefs = stores.open("indexing_crash_guard")
     private val updateCheck by lazy { forgetIfAppUpdated() }
 
     fun shouldSkip(stage: String, bookId: String): Boolean {
@@ -37,7 +35,7 @@ class StageCrashGuard(private val context: Context) {
         prefs.edit { remove(key(stage, bookId)) }
     }
 
-    /** La etapa no puede funcionar en este móvil con esta versión de la app (no merece la pena reintentarla). */
+    /** La etapa no puede funcionar en este equipo con esta versión de la app (no merece la pena reintentarla). */
     fun markUnsupported(stage: String) {
         prefs.edit { putBoolean(unsupportedKey(stage), true) }
     }
@@ -45,30 +43,17 @@ class StageCrashGuard(private val context: Context) {
     /** Lo pide el usuario («Reintentar»): se olvidan los fallos de este libro y las etapas imposibles. */
     fun reset(bookId: String) {
         updateCheck
-        prefs.edit {
-            prefs.all.keys.filter { it.endsWith(":$bookId") || it.startsWith(UNSUPPORTED_PREFIX) }.forEach(::remove)
-        }
+        val keys = prefs.keys().filter { it.endsWith(":$bookId") || it.startsWith(UNSUPPORTED_PREFIX) }
+        prefs.edit { keys.forEach(::remove) }
     }
 
     private fun forgetIfAppUpdated() {
-        val install = runCatching { installStamp() }.getOrNull() ?: return
-        if (prefs.getString(INSTALL_KEY, null) == install) return
+        val install = runCatching { installStamp.get() }.getOrNull() ?: return
+        if (prefs.getString(INSTALL_KEY) == install) return
         prefs.edit(commit = true) {
             clear()
             putString(INSTALL_KEY, install)
         }
-    }
-
-    /** Cambia con cada instalación o actualización, aunque no cambie el número de versión (depuración). */
-    private fun installStamp(): String {
-        val pm = context.packageManager
-        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pm.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
-        } else {
-            @Suppress("DEPRECATION")
-            pm.getPackageInfo(context.packageName, 0)
-        }
-        return "${info.longVersionCode}:${info.lastUpdateTime}"
     }
 
     private fun key(stage: String, bookId: String) = "$stage:$bookId"

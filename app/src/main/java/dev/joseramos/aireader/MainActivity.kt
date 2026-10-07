@@ -18,6 +18,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
+import dev.joseramos.aireader.core.common.PickedFile
+import dev.joseramos.aireader.core.common.UriPickedFile
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import dev.joseramos.aireader.core.data.settings.ThemeMode
 import dev.joseramos.aireader.core.designsystem.theme.AiReaderTheme
@@ -43,10 +45,10 @@ class MainViewModel(settings: SettingsRepository, private val importer: BookImpo
     val openBookRequests = openBook.receiveAsFlow()
     val importErrors = errors.receiveAsFlow()
 
-    fun importShared(uri: Uri) {
+    fun importShared(file: PickedFile) {
         viewModelScope.launch {
             try {
-                openBook.send(importer.import(uri))
+                openBook.send(importer.import(file))
             } catch (e: ImportException) {
                 errors.send(e.message ?: "No se pudo importar el PDF")
             }
@@ -100,6 +102,6 @@ class MainActivity : ComponentActivity() {
             Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
             else -> null
         } ?: return
-        viewModel.importShared(uri)
+        viewModel.importShared(UriPickedFile(this, uri))
     }
 }

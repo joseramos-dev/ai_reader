@@ -12,10 +12,10 @@ import androidx.work.workDataOf
  * Encola la indexación de un libro como trabajo único: WorkManager la conserva aunque se cierre
  * la app y [IndexWorker] continúa desde donde se quedó.
  */
-class IndexScheduler(private val context: Context) {
+internal class WorkManagerIndexScheduler(private val context: Context) : IndexScheduler {
     private val workManager get() = WorkManager.getInstance(context)
 
-    fun enqueue(bookId: String, replace: Boolean = false) {
+    override fun enqueue(bookId: String, replace: Boolean) {
         val request = OneTimeWorkRequestBuilder<IndexWorker>()
             .setInputData(workDataOf(IndexWorker.KEY_BOOK_ID to bookId))
             .setConstraints(Constraints.Builder().setRequiresStorageNotLow(true).build())
@@ -28,7 +28,7 @@ class IndexScheduler(private val context: Context) {
         workManager.enqueueUniqueWork(workName(bookId), policy, request)
     }
 
-    fun cancel(bookId: String) {
+    override fun cancel(bookId: String) {
         workManager.cancelUniqueWork(workName(bookId))
     }
 

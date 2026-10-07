@@ -40,6 +40,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import dev.joseramos.aireader.ai.models.ModelCatalog
 import dev.joseramos.aireader.ai.models.ModelState
+import dev.joseramos.aireader.core.common.UriPickedFile
 import dev.joseramos.aireader.core.data.settings.AppSettings
 import dev.joseramos.aireader.core.data.settings.BudgetLevel
 import dev.joseramos.aireader.core.data.settings.DailyUsage
@@ -99,7 +100,7 @@ private fun SettingsScreen(state: SettingsUiState, viewModel: SettingsViewModel)
     val version = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
     val debuggable = remember { context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0 }
     val evalPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        uri?.let(viewModel::runRagEvaluation)
+        uri?.let { viewModel.runRagEvaluation(UriPickedFile(context, it)) }
     }
 
     LargeTitleScaffold(title = stringResource(R.string.settings_title), grouped = true) {

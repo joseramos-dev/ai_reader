@@ -1,8 +1,7 @@
 package dev.joseramos.aireader.indexing
 
-import android.content.Context
-import android.net.Uri
-import android.provider.OpenableColumns
+import dev.joseramos.aireader.core.common.AppDirs
+import dev.joseramos.aireader.core.common.PickedFile
 import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
@@ -17,26 +16,25 @@ import kotlinx.coroutines.withContext
 class ImportException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
 /**
- * Importa un PDF elegido por el usuario: lo copia al almacenamiento interno (para no depender de
+ * Importa un PDF elegido por el usuario: lo copia al almacenamiento de la app (para no depender de
  * permisos sobre el original), genera la portada, lo registra y encola su indexación.
  */
 class BookImporter(
-    private val context: Context,
+    private val dirs: AppDirs,
     private val renderers: PdfRendererFactory,
     private val bookDao: BookDao,
     private val scheduler: IndexScheduler,
     private val io: CoroutineDispatcher
 ) {
     /** Devuelve el id del libro importado. */
-    suspend fun import(uri: Uri): String = withContext(io) {
+    suspend fun import(picked: PickedFile): String = withContext(io) {
         val id = Uuid.random().toString()
-        val fileName = displayName(uri) ?: DEFAULT_NAME
-        val pdf = File(context.filesDir, "$BOOKS_DIR/$id.pdf").apply { parentFile?.mkdirs() }
-        val input =
-            context.contentResolver.openInputStream(uri) ?: throw ImportException("No se pudo abrir el archivo.")
+        val fileName = picked.name ?: DEFAULT_NAME
+        val pdf = File(dirs.files, "$BOOKS_DIR/$id.pdf").apply { parentFile?.mkdirs() }
+        val input = picked.openStream() ?: throw ImportException("No se pudo abrir el archivo.")
         input.use { source -> pdf.outputStream().use { source.copyTo(it) } }
 
-        val cover = File(context.filesDir, "$COVERS_DIR/$id.png")
+        val cover = File(dirs.files, "$COVERS_DIR/$id.png")
         val pageCount = try {
             renderers.writeCover(pdf, cover, COVER_WIDTH_PX)
         } catch (e: IOException) {
@@ -66,10 +64,6 @@ class BookImporter(
         scheduler.enqueue(id)
         id
     }
-
-    private fun displayName(uri: Uri): String? = context.contentResolver
-        .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-        ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
 
     companion object {
         private const val BOOKS_DIR = "books"

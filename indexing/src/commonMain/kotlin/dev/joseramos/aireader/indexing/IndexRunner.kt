@@ -1,14 +1,5 @@
 package dev.joseramos.aireader.indexing
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.content.Context
-import android.content.pm.ServiceInfo
-import android.os.Build
-import androidx.core.app.NotificationCompat
-import androidx.work.CoroutineWorker
-import androidx.work.ForegroundInfo
-import androidx.work.WorkerParameters
 import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.data.db.BookDao
 import dev.joseramos.aireader.core.data.db.BookEntity
@@ -40,15 +31,25 @@ interface CharacterAnalysisTrigger {
     suspend fun onBookIndexed(bookId: String)
 }
 
+/** Qué hacer con un libro tras un intento de indexarlo. */
+enum class IndexResult {
+    /** Indexado (o ya no existe). */
+    SUCCESS,
+
+    /** Falló, pero merece otro intento más tarde. */
+    RETRY,
+
+    /** Falló y ya no se reintenta: el libro queda marcado como fallido. */
+    FAILED
+}
+
 /**
- * Indexa un libro en segundo plano: texto → capítulos → tipo de documento → embeddings. Cada etapa guarda su
- * progreso en Room, así que si Android detiene el trabajo, WorkManager lo relanza y continúa. Si el
- * libro se indexó sin clave de API y ahora la hay, repasa las etapas que usan la IA
- * ([BookEntity.aiPrepared]).
+ * Indexa un libro: texto → capítulos → tipo de documento → embeddings. Cada etapa guarda su progreso en Room,
+ * así que si algo detiene el trabajo (Android, el cierre de la app), al relanzarlo continúa donde estaba. Si el
+ * libro se indexó sin clave de API y ahora la hay, repasa las etapas que usan la IA ([BookEntity.aiPrepared]).
+ * No sabe cómo se programa: lo hace [IndexScheduler] en cada plataforma.
  */
-class IndexWorker(
-    context: Context,
-    params: WorkerParameters,
+class IndexRunner(
     private val bookDao: BookDao,
     private val textIndexer: TextIndexer,
     private val chapterDetector: ChapterDetector,
@@ -57,15 +58,17 @@ class IndexWorker(
     private val characterAnalysis: CharacterAnalysisTrigger?,
     private val crashGuard: StageCrashGuard,
     private val secrets: SecretStore
-) : CoroutineWorker(context, params) {
-
+) {
+    /**
+     * [attempt] es el intento actual (0 el primero). [onStart] se llama con el título del libro antes de empezar
+     * (Android pasa a primer plano); si falla, la indexación sigue igual.
+     */
     @Suppress("TooGenericExceptionCaught")
-    override suspend fun doWork(): Result {
-        val bookId = inputData.getString(KEY_BOOK_ID) ?: return Result.failure()
-        val book = bookDao.get(bookId) ?: return Result.success()
+    suspend fun index(bookId: String, attempt: Int, onStart: suspend (title: String) -> Unit = {}): IndexResult {
+        val book = bookDao.get(bookId) ?: return IndexResult.SUCCESS
         // Si Android no deja pasar a primer plano (por ejemplo, desde segundo plano en Android 12+),
         // el trabajo sigue igual; como es reanudable, si lo detienen continuará donde se quedó.
-        runCatching { setForeground(foregroundInfo(book.title)) }
+        runCatching { onStart(book.title) }
             .onFailure { Log.w(TAG, "Sin primer plano para $bookId", it) }
 
         return try {
@@ -89,16 +92,16 @@ class IndexWorker(
             )
             if (withAi) bookDao.setAiPrepared(bookId, true)
             characterAnalysis?.let { runCatching { it.onBookIndexed(bookId) } }
-            Result.success()
+            IndexResult.SUCCESS
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(TAG, "Fallo indexando $bookId (intento ${runAttemptCount + 1})", e)
-            if (runAttemptCount < MAX_ATTEMPTS) {
-                Result.retry()
+            Log.w(TAG, "Fallo indexando $bookId (intento ${attempt + 1})", e)
+            if (attempt < MAX_ATTEMPTS) {
+                IndexResult.RETRY
             } else {
                 bookDao.updateIndexState(bookId, IndexStatus.FAILED, 0f)
-                Result.failure()
+                IndexResult.FAILED
             }
         }
     }
@@ -165,41 +168,11 @@ class IndexWorker(
         }
     }
 
-    /** Necesario para los trabajos urgentes en Android 11 o anterior. */
-    override suspend fun getForegroundInfo(): ForegroundInfo =
-        foregroundInfo(inputData.getString(KEY_BOOK_ID)?.let { bookDao.get(it)?.title }.orEmpty())
-
-    private fun foregroundInfo(title: String): ForegroundInfo {
-        val manager = applicationContext.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                applicationContext.getString(R.string.indexing_channel),
-                NotificationManager.IMPORTANCE_LOW
-            )
-        )
-        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(applicationContext.getString(R.string.indexing_title))
-            .setContentText(title)
-            .setOngoing(true)
-            .setSilent(true)
-            .build()
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            ForegroundInfo(NOTIFICATION_ID, notification)
-        }
-    }
-
-    companion object {
-        const val KEY_BOOK_ID = "book_id"
-        private const val TAG = "IndexWorker"
-        private const val CHANNEL_ID = "indexing"
-        private const val NOTIFICATION_ID = 4101
-        private const val MAX_ATTEMPTS = 3
+    private companion object {
+        const val TAG = "IndexWorker"
+        const val MAX_ATTEMPTS = 3
 
         /** Parte de la barra de progreso que corresponde al texto y los capítulos. */
-        private const val TEXT_SHARE = 0.5f
+        const val TEXT_SHARE = 0.5f
     }
 }

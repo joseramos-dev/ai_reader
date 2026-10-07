@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -51,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import coil3.compose.AsyncImage
+import dev.joseramos.aireader.core.common.UriPickedFile
 import dev.joseramos.aireader.core.data.book.Book
 import dev.joseramos.aireader.core.data.db.DocumentType
 import dev.joseramos.aireader.core.data.db.IndexStatus
@@ -77,8 +79,9 @@ fun NavGraphBuilder.libraryScreen(onOpenBook: (bookId: String, page: Int?) -> Un
     composable<LibraryRoute> {
         val viewModel: LibraryViewModel = koinViewModel()
         val state by viewModel.state.collectAsStateWithLifecycle()
+        val context = LocalContext.current
         val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-            uri?.let(viewModel::import)
+            uri?.let { viewModel.import(UriPickedFile(context, it)) }
         }
         LibraryScreen(
             state = state,

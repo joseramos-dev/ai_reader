@@ -1,8 +1,7 @@
 package dev.joseramos.aireader.indexing
 
-import android.content.Context
 import androidx.room.Room
-import androidx.test.core.app.ApplicationProvider
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import dev.joseramos.aireader.core.data.db.AppDatabase
 import dev.joseramos.aireader.core.data.db.BookEntity
 import dev.joseramos.aireader.core.data.db.ChapterEntity
@@ -13,24 +12,19 @@ import dev.joseramos.aireader.core.data.db.PageTextEntity
 import dev.joseramos.aireader.pdf.PdfTextDocumentFactory
 import dev.joseramos.aireader.text.DetectedChapter
 import java.io.FileNotFoundException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
 /**
  * Un libro indexado sin clave de API se queda con capítulos en bloques de páginas; al repasarlo con
  * clave ([ChapterDetector.run] con `retryWithAi`), el índice se rehace con la IA.
  */
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
 class ChapterDetectorTest {
     private lateinit var db: AppDatabase
-    private val context = ApplicationProvider.getApplicationContext<Context>()
 
     /** El libro no tiene índice en el PDF (el fichero no existe) ni títulos reconocibles en el texto. */
     private val book = BookEntity(
@@ -50,7 +44,10 @@ class ChapterDetectorTest {
 
     @Before
     fun setUp() = runTest {
-        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        db = Room.inMemoryDatabaseBuilder<AppDatabase>()
+            .setDriver(BundledSQLiteDriver())
+            .setQueryCoroutineContext(Dispatchers.IO)
+            .build()
         db.bookDao().upsert(book)
         for (page in 1..PAGES) {
             val text = "texto corriente de la página $page sin ningún encabezado"
