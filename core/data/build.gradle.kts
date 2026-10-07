@@ -1,22 +1,33 @@
 plugins {
-    alias(libs.plugins.aireader.android.library)
-    alias(libs.plugins.aireader.android.room)
+    alias(libs.plugins.aireader.kmp.library)
+    alias(libs.plugins.aireader.kmp.room)
     alias(libs.plugins.kotlin.serialization)
 }
 
-android {
-    namespace = "dev.joseramos.aireader.core.data"
-    // MigrationTestHelper lee los esquemas exportados como assets de las pruebas.
+kotlin {
+    android {
+        namespace = "dev.joseramos.aireader.core.data"
+    }
+
     sourceSets {
-        named("test") { assets.directories.add("$projectDir/schemas") }
+        commonMain.dependencies {
+            implementation(project(":core:common"))
+            implementation(libs.androidx.datastore.preferences)
+            implementation(libs.kotlinx.serialization.json)
+        }
+        getByName("androidMain").dependencies {
+            implementation(libs.tink.android)
+        }
+        getByName("desktopMain").dependencies {
+            implementation(libs.jna.platform)
+        }
+        getByName("desktopTest").dependencies {
+            implementation(libs.junit)
+            implementation(libs.androidx.room.testing)
+        }
     }
 }
 
 dependencies {
-    implementation(project(":core:common"))
-    implementation(libs.androidx.datastore.preferences)
-    implementation(libs.tink.android)
-    implementation(libs.kotlinx.serialization.json)
-    testImplementation(libs.robolectric)
-    testImplementation(libs.androidx.test.core)
+    add("kspAndroid", libs.androidx.room.compiler)
 }

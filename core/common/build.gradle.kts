@@ -1,7 +1,9 @@
 plugins {
-    alias(libs.plugins.aireader.android.library)
+    alias(libs.plugins.aireader.kmp.library)
 }
 
-android {
-    namespace = "dev.joseramos.aireader.core.common"
+kotlin {
+    android {
+        namespace = "dev.joseramos.aireader.core.common"
+    }
 }

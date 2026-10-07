@@ -15,3 +15,7 @@ ktlint_function_naming_ignore_when_annotated_with = Composable
 
 [*.{yml,yaml}]
 indent_size = 2
+
+# El código que genera KSP (Room) vive en build/ y no sigue las reglas de estilo.
+[**/build/**]
+ktlint = disabled

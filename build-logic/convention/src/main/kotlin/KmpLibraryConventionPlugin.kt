@@ -27,6 +27,14 @@ class KmpLibraryConventionPlugin : Plugin<Project> {
             }
             sourceSets.getByName("commonMain").dependencies {
                 implementation(libs.lib("kotlinx-coroutines-core"))
+                implementation(libs.lib("koin-core"))
+            }
+            // Dispatchers.Main: el hilo principal de Android y el de Swing en escritorio.
+            sourceSets.getByName("androidMain").dependencies {
+                implementation(libs.lib("kotlinx-coroutines-android"))
+            }
+            sourceSets.getByName("desktopMain").dependencies {
+                implementation(libs.lib("kotlinx-coroutines-swing"))
             }
             sourceSets.getByName("commonTest").dependencies {
                 implementation(libs.lib("kotlin-test"))
