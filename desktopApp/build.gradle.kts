@@ -47,7 +47,7 @@ compose.desktop {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             appResourcesRootDir.set(layout.buildDirectory.dir("appResources"))
             packageName = "AIReader"
-            packageVersion = "0.1.0"
+            packageVersion = "0.1.1"
             description = "Lector de PDF con IA"
             vendor = "joseramos-dev"
             // El runtime recortado de jlink se quedaba sin módulos que usan Room, JNA y ONNX Runtime.
