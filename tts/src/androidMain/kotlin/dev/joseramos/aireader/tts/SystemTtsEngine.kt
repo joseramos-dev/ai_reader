@@ -21,13 +21,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** Locale con el que se pide la voz de cada idioma (se prefiere ese país si hay varias). */
-val Language.locale: Locale
-    get() = when (this) {
-        Language.SPANISH -> Locale.forLanguageTag("es-ES")
-        Language.ENGLISH -> Locale.US
-    }
-
 /**
  * Voz del sistema (`android.speech.tts`, normalmente Google TTS). Cada frase se sintetiza a un WAV
  * temporal con `synthesizeToFile`, que se lee como PCM y se borra: así el pipeline sigue teniendo

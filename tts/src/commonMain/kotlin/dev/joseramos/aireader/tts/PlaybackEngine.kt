@@ -1,9 +1,5 @@
 package dev.joseramos.aireader.tts
 
-import android.content.Context
-import android.media.AudioFocusRequest
-import android.media.AudioManager
-import android.os.PowerManager
 import dev.joseramos.aireader.core.common.Log
 import dev.joseramos.aireader.core.common.currentTimeMillis
 import dev.joseramos.aireader.core.data.book.BookContentRepository
@@ -94,12 +90,14 @@ data class PlaybackState(
 @OptIn(ExperimentalCoroutinesApi::class)
 @Suppress("TooManyFunctions") // Es la API completa de un reproductor: no gana nada partiéndola.
 class PlaybackEngine(
-    context: Context,
     private val voice: TtsEngine,
     private val content: BookContentRepository,
     private val books: BookRepository,
     private val positions: ReadingPositionRepository,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val sinks: AudioSinkFactory,
+    private val focus: AudioFocusController,
+    private val wakeLock: WakeLock
 ) {
     private val _state = MutableStateFlow(PlaybackState())
     val state: StateFlow<PlaybackState> = _state
@@ -122,15 +120,28 @@ class PlaybackEngine(
     /** Idioma detectado de cada libro (se calcula una vez por sesión). */
     private val languages = mutableMapOf<String, Language>()
 
-    private val audioManager = context.getSystemService(AudioManager::class.java)
-    private val wakeLock = context.getSystemService(PowerManager::class.java)
-        .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "aireader:read-aloud")
-        .apply { setReferenceCounted(false) }
     private var resumeOnFocusGain = false
-    private val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-        .setAudioAttributes(speechAudioAttributes)
-        .setOnAudioFocusChangeListener(::onFocusChange)
-        .build()
+
+    init {
+        focus.listener = object : AudioFocusListener {
+            override fun onLoss() = pause()
+
+            override fun onTransientLoss() {
+                // Una voz hablando no se «baja de volumen»: se pausa y se reanuda al recuperar el foco.
+                if (_state.value.isPlaying) {
+                    resumeOnFocusGain = true
+                    pause()
+                }
+            }
+
+            override fun onGain() {
+                if (resumeOnFocusGain) {
+                    resumeOnFocusGain = false
+                    resume()
+                }
+            }
+        }
+    }
 
     /** Empieza a leer [bookId] desde [from]. */
     suspend fun start(bookId: String, from: ReadingPosition, speed: Float = _state.value.speed) {
@@ -182,7 +193,7 @@ class PlaybackEngine(
             return
         }
         if (!paused.value) {
-            audioManager.requestAudioFocus(focusRequest)
+            focus.request()
             wakeLock.acquire(WAKE_LOCK_TIMEOUT_MS)
         }
         session = scope.launch { runSession(bookId, from, language) }
@@ -200,7 +211,7 @@ class PlaybackEngine(
         val current = _state.value
         when (current.status) {
             PlaybackStatus.PAUSED -> {
-                audioManager.requestAudioFocus(focusRequest)
+                focus.request()
                 wakeLock.acquire(WAKE_LOCK_TIMEOUT_MS)
                 paused.value = false
                 _state.update { it.copy(status = PlaybackStatus.PLAYING) }
@@ -222,7 +233,7 @@ class PlaybackEngine(
         savePosition(force = true)
         stopSession()
         setSleepTimer(SleepTimer.Off)
-        audioManager.abandonAudioFocusRequest(focusRequest)
+        focus.abandon()
         voice.release()
         chapters = emptyList()
         paused.value = false
@@ -396,13 +407,13 @@ class PlaybackEngine(
             previous.started(all = true).forEach { onPhraseStart(it) }
             previous.release()
         }
-        val track = SpeechTrack(sampleRate)
+        val track = SpeechTrack(sinks.open(sampleRate))
         if (speedAtPlayback && !track.setSpeed(_state.value.speed)) {
             // Este dispositivo no cambia la velocidad al reproducir: se vuelve a empezar sintetizándola.
             speedAtPlayback = false
             if (_state.value.speed != 1f) jump { _, position -> position }
         }
-        track.track.play()
+        track.play()
         output = track
         return track
     }
@@ -460,14 +471,14 @@ class PlaybackEngine(
             stalledMs = if (played == lastPlayed) stalledMs + FOLLOW_INTERVAL_MS else 0L
             lastPlayed = played
         }
-        runCatching { track.track.stop() }
+        runCatching { track.stop() }
     }
 
     private suspend fun waitWhilePaused(track: SpeechTrack) {
         if (!paused.value) return
-        track.track.pause()
+        track.pause()
         paused.first { !it }
-        track.track.play()
+        track.play()
     }
 
     private suspend fun savePosition(force: Boolean) {
@@ -496,26 +507,7 @@ class PlaybackEngine(
 
     private fun chapterAt(page: Int): Chapter? = chapters.lastOrNull { page >= it.startPage }
 
-    private fun releaseWakeLock() {
-        if (wakeLock.isHeld) wakeLock.release()
-    }
-
-    private fun onFocusChange(change: Int) {
-        when (change) {
-            AudioManager.AUDIOFOCUS_LOSS -> pause()
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                // Una voz hablando no se «baja de volumen»: se pausa y se reanuda al recuperar el foco.
-                if (_state.value.isPlaying) {
-                    resumeOnFocusGain = true
-                    pause()
-                }
-            }
-            AudioManager.AUDIOFOCUS_GAIN -> if (resumeOnFocusGain) {
-                resumeOnFocusGain = false
-                resume()
-            }
-        }
-    }
+    private fun releaseWakeLock() = wakeLock.release()
 
     private companion object {
         const val TAG = "PlaybackEngine"

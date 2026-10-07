@@ -1,28 +1,21 @@
 package dev.joseramos.aireader.tts
 
-import android.content.ComponentName
-import android.content.Context
-import androidx.media3.session.MediaController
-import androidx.media3.session.SessionToken
 import dev.joseramos.aireader.core.data.book.ReadingPosition
 import dev.joseramos.aireader.core.data.book.ReadingPositionRepository
 import dev.joseramos.aireader.core.data.settings.SettingsRepository
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.guava.await
 
 /**
- * Punto de entrada de la UI a la lectura en voz alta. Conecta un `MediaController` con el
- * [PlaybackService] (lo que lo arranca y lo pasa a primer plano al sonar) y delega en el motor.
+ * Punto de entrada de la UI a la lectura en voz alta: delega en el motor y, para lo que depende de la plataforma
+ * (en Android, la sesión multimedia que mantiene la lectura en primer plano), en el [PlaybackBridge].
  */
 class PlaybackController(
-    private val context: Context,
     private val engine: PlaybackEngine,
     private val positions: ReadingPositionRepository,
-    private val settings: SettingsRepository
+    private val settings: SettingsRepository,
+    private val bridge: PlaybackBridge
 ) {
-    private var controller: MediaController? = null
-
     val state: StateFlow<PlaybackState> = engine.state
 
     /**
@@ -35,7 +28,7 @@ class PlaybackController(
             current.status == PlaybackStatus.PAUSED &&
             (page == null || page == current.position?.page)
         ) {
-            connect().play()
+            bridge.resume()
             return
         }
         val saved = positions.get(bookId)
@@ -46,14 +39,14 @@ class PlaybackController(
         }
         val speed = settings.settings.first().readingSpeed
         engine.start(bookId, from, speed)
-        if (engine.state.value.error == null) connect().play()
+        if (engine.state.value.error == null) bridge.started()
     }
 
     /** Lee [bookId] desde una frase concreta (por ejemplo, al tocarla en el modo texto). */
     suspend fun playFrom(bookId: String, position: ReadingPosition) {
         val speed = settings.settings.first().readingSpeed
         engine.start(bookId, position, speed)
-        if (engine.state.value.error == null) connect().play()
+        if (engine.state.value.error == null) bridge.started()
     }
 
     /**
@@ -64,9 +57,7 @@ class PlaybackController(
 
     fun pause() = engine.pause()
 
-    suspend fun resume() {
-        connect().play()
-    }
+    suspend fun resume() = bridge.resume()
 
     fun stop() = engine.stop()
 
@@ -86,10 +77,4 @@ class PlaybackController(
     }
 
     fun setSleepTimer(timer: SleepTimer) = engine.setSleepTimer(timer)
-
-    private suspend fun connect(): MediaController {
-        controller?.takeIf { it.isConnected }?.let { return it }
-        val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        return MediaController.Builder(context, token).buildAsync().await().also { controller = it }
-    }
 }

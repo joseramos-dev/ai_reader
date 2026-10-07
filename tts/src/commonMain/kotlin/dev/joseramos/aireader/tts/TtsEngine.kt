@@ -1,6 +1,7 @@
 package dev.joseramos.aireader.tts
 
 import dev.joseramos.aireader.text.Language
+import java.util.Locale
 
 /** Audio de una frase: PCM float mono a [sampleRate]. */
 class Pcm(val samples: FloatArray, val sampleRate: Int)
@@ -32,3 +33,10 @@ interface TtsEngine {
 
     fun release()
 }
+
+/** Locale con el que se pide la voz de cada idioma (se prefiere ese país si hay varias). */
+val Language.locale: Locale
+    get() = when (this) {
+        Language.SPANISH -> Locale.forLanguageTag("es-ES")
+        Language.ENGLISH -> Locale.US
+    }

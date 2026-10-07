@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import dev.joseramos.aireader.core.designsystem.component.AppBottomSheet
 import dev.joseramos.aireader.core.designsystem.component.PlainButton
@@ -16,7 +15,8 @@ import dev.joseramos.aireader.core.designsystem.theme.AppTheme
 import dev.joseramos.aireader.core.designsystem.theme.Spacing
 import dev.joseramos.aireader.text.Language
 import dev.joseramos.aireader.tts.PlaybackError
-import dev.joseramos.aireader.tts.SystemVoiceSettings
+import dev.joseramos.aireader.tts.VoiceSettings
+import org.koin.compose.koinInject
 
 /**
  * Hoja que aparece si no se puede empezar a leer: al móvil le falta la voz del idioma del libro (o
@@ -30,7 +30,7 @@ internal fun PlaybackProblemSheet(
     onRetry: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val context = LocalContext.current
+    val voiceSettings: VoiceSettings = koinInject()
     val languageName = stringResource(
         if (language == Language.ENGLISH) R.string.reader_language_english else R.string.reader_language_spanish
     )
@@ -49,12 +49,12 @@ internal fun PlaybackProblemSheet(
             when (error) {
                 PlaybackError.VOICE_MISSING -> PrimaryButton(
                     stringResource(R.string.reader_voice_install),
-                    { SystemVoiceSettings.installVoice(context) },
+                    { voiceSettings.installVoice() },
                     Modifier.fillMaxWidth()
                 )
                 PlaybackError.NO_ENGINE -> PrimaryButton(
                     stringResource(R.string.reader_voice_settings),
-                    { SystemVoiceSettings.openSettings(context) },
+                    { voiceSettings.openSettings() },
                     Modifier.fillMaxWidth()
                 )
                 PlaybackError.TEXT_NOT_READY -> Unit
